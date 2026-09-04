@@ -207,23 +207,28 @@ jobs:
           ANIO: ${{ inputs.historico_anio }}
           MES: ${{ inputs.historico_mes }}
           SIMULACRO: ${{ inputs.historico_simulacro }}
+          # Un año entero de la sindicación 643 ronda las 620.000 entradas.
+          # Con el tope por defecto (400.000) el recorrido se cortaría a
+          # mitad, y el aviso pasaría desapercibido entre el resto.
+          MAX_ENTRADAS_HISTORICO: '900000'
         run: |
           set -e
           if [ -z "$CPV" ]; then
             echo "::error::Falta historico_cpv. Ejemplo: 18,35"
             exit 1
           fi
-          # Los argumentos se construyen sin trocear cadenas: cada dato
-          # llega ya separado desde el formulario.
-          ARGS="--cpv $CPV --anio ${ANIO:-2026}"
+          # Los argumentos se pasan uno a uno y entrecomillados. Con una
+          # sola cadena, un espacio en los prefijos ("18, 35") la partía
+          # en dos argumentos y el importador recibía basura.
+          OPCIONES=""
           if [ -n "$MES" ]; then
-            ARGS="$ARGS --mes $MES"
+            OPCIONES="--mes $MES"
           fi
           if [ "$SIMULACRO" = "true" ]; then
-            ARGS="$ARGS --simulacro"
+            OPCIONES="$OPCIONES --simulacro"
           fi
-          echo "Ejecutando: python importar_historico.py $ARGS"
-          python importar_historico.py $ARGS
+          echo "Prefijos CPV: $CPV"
+          python importar_historico.py --cpv "$CPV" --anio "${ANIO:-2026}" $OPCIONES
 
       - name: Comprobar que el repositorio sigue limpio
         run: |
@@ -270,7 +275,6 @@ jobs:
           echo "### Interfaz publicada" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.despliegue.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
-
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.despliegue.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
