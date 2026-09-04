@@ -274,31 +274,31 @@ def subir(datos: bytes, ruta: str) -> bool:
         return False
 
 
-def volcar_vivas(filas: list[dict], etiqueta: str) -> int:
+def volcar_todo(filas: list[dict], etiqueta: str) -> int:
     """
-    Guarda en la base TODAS las licitaciones que siguen abiertas.
+    Guarda en la base todas las licitaciones del mes, vivas o cerradas.
+
+    Volcar solo las abiertas fue un error: de 12.000 licitaciones de un
+    sector, apenas 40 siguen vivas en un momento dado, y con eso no hay
+    material suficiente para que un cliente entrene su criterio. La
+    muestra acababa llenándose de las familias con más volumen, que
+    normalmente no son las suyas.
+
+    Y para entrenar, lo cerrado es MEJOR: son contratos que el
+    profesional probablemente reconoce, y llevan adjudicatario, así que
+    de paso enseñan quién ganó y por cuánto.
+
+    Lo cerrado no contamina las alertas: la vista `oportunidades` solo
+    deja pasar lo que está en estado PUB con plazo abierto.
 
     Sin filtrar por sector: el catálogo sirve para cualquier cliente
     futuro, y guardar solo lo de los sectores actuales obligaría a
-    recorrerlo otra vez cada vez que entrara alguien de un sector nuevo.
-
-    Es la pieza que hace instantánea el alta. La alternativa era que la
-    función leyera el catálogo en el momento del registro, y eso agota
-    su tiempo de cálculo: son cientos de miles de líneas de CSV.
-
-    El coste en espacio es pequeño porque lo vivo es una fracción: la
-    mayor parte del histórico está adjudicado o formalizado.
+    reprocesarlo cada vez que entrara alguien nuevo.
     """
-    ahora = datetime.now(timezone.utc).isoformat()
-    vivas = [
-        f for f in filas
-        if f["estado_licitacion"] == "PUB"
-        and (not f["fecha_limite"] or f["fecha_limite"] >= ahora)
-    ]
-    if not vivas:
-        logging.info("Ninguna licitación sigue abierta en este mes.")
+    if not filas:
         return 0
 
+    vivas = filas
     cliente = lector.obtener_cliente_supabase()
     filas_bd = [
         {
@@ -333,12 +333,13 @@ def volcar_vivas(filas: list[dict], etiqueta: str) -> int:
         except Exception as error:
             logging.error("Fallo al volcar un lote: %s", error)
 
-    logging.info("Volcadas %d licitaciones abiertas de %d procesadas.",
-                 guardadas, len(filas))
+    abiertas = sum(1 for f in filas if f["estado_licitacion"] == "PUB")
+    logging.info("Volcadas %d licitaciones (%d abiertas, %d cerradas).",
+                 guardadas, abiertas, guardadas - abiertas)
     return guardadas
 
 
-def actualizar_resumen(filas: list[dict]) -> None:
+def actualizar_resumen(filas: list[dict], periodo: str) -> None:
     """
     Guarda cuántas licitaciones hay por familia CPV.
 
@@ -370,21 +371,19 @@ def actualizar_resumen(filas: list[dict]) -> None:
     cliente = lector.obtener_cliente_supabase()
     ahora = datetime.now(timezone.utc).isoformat()
 
-    # Se suma a lo que ya haya: cada mes aporta su parte y los doce
-    # juntos dan el año. Por eso se lee antes de escribir.
-    try:
-        previos = {f["prefijo"]: f for f in
-                   (cliente.table("resumen_cpv").select("*")
-                    .in_("prefijo", list(total)[:500]).execute().data or [])}
-    except Exception as error:
-        logging.warning("No se pudo leer el resumen previo: %s", error)
-        previos = {}
-
+    # El recuento se guarda POR MES y no acumulado. Sumar sobre lo que
+    # hubiera hacía que el resultado dependiera de cuántas veces se
+    # hubiese lanzado el proceso: al relanzarlo, los números se
+    # duplicaban y el cliente elegía familias con datos inventados.
+    #
+    # El total del año se obtiene sumando los doce meses al consultar,
+    # que es una operación barata y siempre correcta.
     filas_resumen = [
         {
             "prefijo": p,
-            "licitaciones": total[p] + (previos.get(p, {}).get("licitaciones") or 0),
-            "vivas": vivas[p] + (previos.get(p, {}).get("vivas") or 0),
+            "periodo": periodo,
+            "licitaciones": total[p],
+            "vivas": vivas[p],
             "actualizado": ahora,
         }
         for p in total
@@ -450,8 +449,8 @@ def main() -> int:
     logging.info("  Estados: %s", ", ".join(f"{k}={v}" for k, v in reparto.most_common(6)))
 
     if not opciones.local:
-        actualizar_resumen(filas)
-        volcar_vivas(filas, etiqueta)
+        actualizar_resumen(filas, f"{opciones.anio}-{opciones.mes:02d}")
+        volcar_todo(filas, etiqueta)
 
     if opciones.local:
         destino = ruta.replace("/", "_")
