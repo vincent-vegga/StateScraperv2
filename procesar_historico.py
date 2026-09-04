@@ -390,15 +390,30 @@ def actualizar_resumen(filas: list[dict], periodo: str) -> None:
     ]
 
     guardados = 0
+    fallos = 0
     for i in range(0, len(filas_resumen), 200):
         try:
+            # La clave de la tabla es (prefijo, periodo): así reprocesar un
+            # mes lo reemplaza en vez de duplicarlo. Indicar solo "prefijo"
+            # hacía fallar la escritura entera, y en silencio.
             (cliente.table("resumen_cpv")
-             .upsert(filas_resumen[i:i + 200], on_conflict="prefijo").execute())
+             .upsert(filas_resumen[i:i + 200], on_conflict="prefijo,periodo")
+             .execute())
             guardados += len(filas_resumen[i:i + 200])
         except Exception as error:
-            logging.error("Fallo al guardar el resumen: %s", error)
+            fallos += 1
+            if fallos <= 2:
+                logging.error("Fallo al guardar el resumen: %s", error)
 
     logging.info("Resumen de CPV actualizado: %d familias.", guardados)
+
+    # Si se calculó y no se guardó nada, hay que enterarse: un resumen
+    # vacío hace que el cliente elija sus familias viendo ceros.
+    if filas_resumen and guardados == 0:
+        raise RuntimeError(
+            f"El resumen no se ha podido guardar ({len(filas_resumen)} familias "
+            "calculadas, 0 escritas). Revisa el esquema de `resumen_cpv`."
+        )
 
 
 # ==============================================================
