@@ -1,16 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-STATE SCRAPER · Paso 4a — Cribado semántico
-===========================================
+STATE SCRAPER · Cribado diario por perfil
+=========================================
 
-Decide si una licitación es una oportunidad real para un profesional del
-espectáculo en vivo, leyendo su título, órgano, importe y códigos CPV.
+Clasifica lo que ha entrado nuevo, una vez por cada cliente y con SU
+criterio. Complementa al cribado inicial, que se ejecuta en el momento
+del alta y recorre todo lo vivo de golpe.
 
-Por qué existe este paso: el CPV no discrimina. `92312250` significa
-"servicios prestados por artistas individuales" y lo usan por igual un
-cantautor y un apoderado taurino. No hay ningún filtro por códigos que
-los separe, así que la precisión tiene que venir de leer el texto.
+Por qué son dos procesos y no uno:
+
+  · El INICIAL da la experiencia inmediata: al terminar de configurarse,
+    el cliente ve sus oportunidades. Son cientos de licitaciones, se
+    hace por lotes desde la función de Supabase y muestra progreso,
+    porque hay alguien esperando delante de una pantalla.
+
+  · El DIARIO mantiene el servicio: solo mira lo que ha entrado desde
+    la última pasada. Son pocas licitaciones por muchos perfiles, y va
+    aquí porque no hay nadie esperando.
+
+Y este actúa además de red de seguridad: si el cribado inicial se cortó
+a mitad —porque el cliente cerró el navegador—, esta pasada lo termina.
+Por eso recorre todo lo pendiente de cada perfil, no solo lo de hoy.
 
 Tres salidas, nunca dos:
 
@@ -23,15 +34,15 @@ céntimos; una oportunidad perdida cuesta un cliente. Ante la duda, el
 cribado deja pasar y decide la persona.
 
 Uso:
-    python cribador.py                # clasifica lo pendiente
-    python cribador.py --muestra 20   # prueba 20 sin guardar nada
-    python cribador.py --limite 50    # tope de llamadas en esta pasada
+    python cribador.py                    # todos los perfiles activos
+    python cribador.py --perfil <uuid>    # solo uno
+    python cribador.py --muestra 20       # prueba, sin guardar nada
 
 Variables de entorno:
     SUPABASE_URL, SUPABASE_KEY   -> obligatorias
     OPENAI_API_KEY               -> obligatoria (salvo en --muestra vacía)
     MODELO_CRIBADO               -> por defecto gpt-4o-mini
-    MAX_CRIBADO_POR_EJECUCION    -> tope de seguridad, por defecto 300
+    MAX_CRIBADO_POR_PERFIL       -> tope por perfil y pasada (300)
 """
 
 from __future__ import annotations
@@ -52,215 +63,32 @@ from typing import Any
 
 MODELO = os.environ.get("MODELO_CRIBADO", "gpt-4o-mini")
 
-# Versión del prompt. SUBIR ESTE NÚMERO cada vez que se cambie el
-# texto de abajo: es lo que permite comparar iteraciones y saber de
-# qué versión viene cada veredicto guardado.
-VERSION_PROMPT = "v3"
+TABLA_VEREDICTOS = "veredictos"
+VISTA_PENDIENTES = "pendientes_por_perfil"
 
-TABLA = "licitaciones"
-VISTA_PENDIENTES = "licitaciones_por_cribar"
-
-MAX_POR_EJECUCION = int(os.environ.get("MAX_CRIBADO_POR_EJECUCION", "300"))
-TAMANO_LOTE_ESCRITURA = 50
+MAX_POR_PERFIL = int(os.environ.get("MAX_CRIBADO_POR_PERFIL", "300"))
+TAMANO_LOTE = 50
 REINTENTOS = 3
-ESPERA_REINTENTO = 4  # segundos, se duplica en cada intento
+ESPERA_REINTENTO = 4
 
 VEREDICTOS_VALIDOS = {"si", "quizas", "no"}
 
-# Qué veredictos se listan en el informe de GitHub Actions, y cuántos de
-# cada uno. Por secciones, para que auditar los "no" no dependa de que
-# quepan detrás de los demás. Para revisar solo los rechazos:
-#   VEREDICTOS_INFORME=no
-VEREDICTOS_INFORME = [
-    v.strip() for v in os.environ.get("VEREDICTOS_INFORME", "si,quizas,no").split(",")
-    if v.strip() in VEREDICTOS_VALIDOS
-] or ["si", "quizas", "no"]
-MAX_FILAS_POR_VEREDICTO = int(os.environ.get("MAX_FILAS_POR_VEREDICTO", "60"))
+# El criterio de cada cliente se genera durante su alta y vive en su
+# perfil. Aquí solo se le añade el formato de respuesta: mezclar el
+# criterio con instrucciones técnicas al generarlo lo haría más difícil
+# de leer y de corregir a mano.
+FORMATO = """
 
-
-# ==============================================================
-# 2. EL PROMPT
-#
-#    Los ejemplos NO son decorativos: son casos reales clasificados
-#    a mano por el Director de Proyecto. Definen la frontera mejor
-#    que cualquier regla abstracta, sobre todo en los "quizas".
-# ==============================================================
-
-INSTRUCCIONES = """\
-Eres un analista de contratación pública española especializado en el \
-sector del espectáculo en vivo y la producción cultural.
-
-TU CLIENTE es un profesional o pequeña empresa de ese sector: músicos y \
-grupos, cantautores, humoristas, compañías de teatro y danza, productoras \
-de eventos culturales, técnicos de sonido e iluminación, empresas de \
-montaje escénico y de producción de exposiciones.
-
-LA PREGUNTA QUE DEBES RESPONDER NO ES "¿esto tiene que ver con la cultura?" \
-sino "¿PODRÍA MI CLIENTE SER EL CONTRATISTA PRINCIPAL de este contrato?".
-
-Esa es la prueba decisiva y se aplica siempre. No basta con que el contrato \
-contenga actividades culturales: hay que preguntarse quién ejecutaría la \
-mayor parte del encargo. Si esa persona es un productor de espectáculos, un \
-técnico de sonido o iluminación, una compañía o un artista, el contrato \
-vale. Si es un monitor de ocio, un educador, un docente, un guía, un \
-comercial, un instalador o un proveedor de bienes, NO vale, por muchas \
-actividades culturales que incluya.
-
-Fíjate siempre en el OBJETO PRINCIPAL del contrato, no en el contexto ni en \
-las palabras sueltas del título.
-
-RESPONDE "si" solo cuando el objeto PRINCIPAL sea:
-- Ejecutar actuaciones artísticas, conciertos o espectáculos en vivo.
-- Producir, dirigir o coordinar técnicamente un evento cultural, festival o \
-programación escénica.
-- Prestar servicios técnicos de espectáculo: sonido, iluminación, \
-escenografía, montaje escénico, regiduría.
-- Producir y montar una exposición.
-
-RESPONDE "quizas" cuando:
-- El contrato incluya producción o programación cultural junto a otras \
-prestaciones ajenas (contrato "ómnibus").
-- Haya componente escénico o de producción, pero el objeto principal sea \
-otro o no se deduzca del título.
-- Sean servicios auxiliares o de comunicación de un festival o espectáculo \
-concreto.
-- Se organice un evento no cultural (institucional, deportivo, académico) \
-pero que requiere producción y medios técnicos escénicos.
-
-NO uses "quizas" como cajón de sastre. Si al aplicar la prueba del \
-contratista principal la respuesta es claramente que NO sería un profesional \
-del espectáculo, responde "no" aunque el contrato mencione cultura, fiestas \
-o actividades.
-
-RESPONDE "no" cuando el objeto principal sea:
-- Espectáculos taurinos de cualquier tipo.
-- Hostelería, catering, barras o restauración.
-- Ferias comerciales, stands, promoción turística o participación \
-institucional en ferias, sea cual sea el sector de la feria.
-- Mercados y mercadillos, incluidos navideños y de feriantes.
-- Visitas guiadas, atención al visitante, auxiliares de sala de museo.
-- Bibliotecas, archivos, gestión, custodia o destrucción de documentación.
-- ENSEÑANZA o formación artística: escuelas de música, teatro o danza, \
-talleres y clases. Enseñar no es actuar.
-- Actividades deportivas, saludables, de ocio infantil, animación, \
-socioeducativas o de atención a personas: el contratista sería un monitor o \
-un educador, no un profesional del espectáculo.
-- Contratos mixtos cuya prestación principal es el suministro o la \
-instalación de bienes, aunque se destinen a un evento festivo.
-- Programas de residencias, becas o convocatorias artísticas: el \
-contratista gestiona un programa, no produce un espectáculo.
-- Alquiler o arrendamiento de material sin producción (carpas, carrozas, \
-mobiliario, estructuras).
-- Control de acceso, seguridad, limpieza, vigilancia o mantenimiento.
-- Obras, construcción o reforma de inmuebles.
-- Artes plásticas, escultura o diseño gráfico sin espectáculo en vivo.
-
-REGLA DE ORO: entre "quizas" y "no", ante duda razonable elige "quizas". \
-Pero entre "si" y "quizas", exige que el objeto principal sea inequívoco \
-para decir "si". Perder una oportunidad es grave; llamar "si" a lo que solo \
-es "quizas" hace inútil la distinción.
-
-Devuelve EXCLUSIVAMENTE un objeto JSON, sin texto alrededor ni marcas de \
+Devuelve EXCLUSIVAMENTE un objeto JSON, sin texto alrededor ni marcas de
 código, con esta forma:
-{"veredicto": "si|quizas|no", "motivo": "una frase breve en español"}\
-"""
+{"veredicto": "si|quizas|no", "motivo": "una frase breve en español"}"""
 
-# Casos reales clasificados a mano, más los fallos detectados en la v1.
-EJEMPLOS: list[tuple[str, str, str]] = [
-    ("Contrato para la producción de conciertos en la semana grande de Laredo 2026",
-     "si", "Producción directa de conciertos."),
-    ("Serveis de producció, regidoria, coordinació tècnica i execució d'activitats "
-     "culturals",
-     "si", "Producción y regiduría de actividades culturales."),
-    ("Servicios de organización, gestión y explotación de espectáculos taurinos "
-     "Fiestas del Cristo 2026",
-     "no", "Espectáculo taurino."),
-    ("Contracte de serveis d'auxiliars d'espai per a les Festes de la Mercè 2026",
-     "quizas", "Servicios auxiliares en un festival: depende del alcance."),
-    ("Servicio de producción, montaje y desmontaje de la exposición temporal "
-     "'La ilusión de la simetría'",
-     "quizas", "Producción de exposición: encaja a nivel de producción."),
-    ("Uso temporal de terrenos del Recinto Ferial para la instalación de una barra",
-     "no", "Explotación de barra: hostelería."),
-    ("Organización, programación, desarrollo y ejecución de la programación de "
-     "actividades de los centros culturales",
-     "quizas", "Contrato amplio que incluye programación cultural."),
-    ("Contratación de una empresa especializada en diseño, montaje y alquiler de "
-     "carrozas para cabalgatas",
-     "no", "Alquiler de material sin producción artística."),
-    # --- Fallos corregidos respecto a la v1 ---
-    ("Organización de la Gala del Deporte de Xirivella",
-     "quizas", "Gala no cultural, pero requiere producción y medios técnicos."),
-    ("Servicios necesarios para la participación del Ministerio de Educación en "
-     "una feria educativa",
-     "no", "Participación institucional en feria."),
-    ("Contrato de Servicios de la Gestión y Desarrollo de las clases de Bailes de "
-     "Salón",
-     "no", "Enseñanza de baile, no espectáculo."),
-    ("Contrato Mixto de Servicio de recogida y destrucción de documentación "
-     "confidencial",
-     "no", "Gestión documental."),
-    ("Servicio de actividades saludables",
-     "no", "Actividad deportiva o de salud sin componente escénico."),
-    # --- Fallos corregidos respecto a la v2: el "quizás" era un cajón ---
-    ("Servei de producció global del Saló Infantil Adrilàndia",
-     "no", "Ocio infantil: el contratista sería un animador, no un productor."),
-    ("Contractació mixta de la prestació de serveis i subministrament "
-     "d'elements per a un esdeveniment festiu",
-     "no", "La prestación principal es el suministro de bienes."),
-    ("Servicio de creación y ejecución del programa 'Residencias creativas'",
-     "no", "Gestión de un programa de residencias, no producción de espectáculo."),
-    ("Organització d'un esdeveniment cultural relacionat amb el món literari",
-     "no", "Evento literario: el contratista sería un gestor cultural."),
-]
-
-
-def construir_mensajes(licitacion: dict[str, Any]) -> list[dict[str, str]]:
-    """Arma la conversación: instrucciones, ejemplos resueltos y el caso real."""
-    mensajes: list[dict[str, str]] = [{"role": "system", "content": INSTRUCCIONES}]
-
-    for titulo, veredicto, motivo in EJEMPLOS:
-        mensajes.append({"role": "user", "content": f"Título: {titulo}"})
-        mensajes.append({
-            "role": "assistant",
-            "content": json.dumps({"veredicto": veredicto, "motivo": motivo},
-                                  ensure_ascii=False),
-        })
-
-    cpvs = licitacion.get("cpvs") or []
-    if isinstance(cpvs, str):
-        try:
-            cpvs = json.loads(cpvs)
-        except json.JSONDecodeError:
-            cpvs = [cpvs]
-
-    ficha = [f"Título: {licitacion.get('titulo', '')}"]
-    if licitacion.get("organo"):
-        ficha.append(f"Órgano: {licitacion['organo']}")
-
-    presupuesto = licitacion.get("presupuesto")
-    if presupuesto is not None:
-        # Notación española: 67.990,00. El separador se intercambia con un
-        # símbolo puente porque hacerlo en dos pasos directos se pisa a sí mismo.
-        importe = f"{float(presupuesto):,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
-        ficha.append(f"Presupuesto: {importe} EUR")
-    if cpvs:
-        ficha.append(f"CPV: {', '.join(str(c) for c in cpvs[:8])}")
-
-    mensajes.append({"role": "user", "content": "\n".join(ficha)})
-    return mensajes
-
-
-# ==============================================================
-# 3. UTILIDADES
-# ==============================================================
 
 def configurar_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)-8s | %(message)s",
-        datefmt="%H:%M:%S",
-        stream=sys.stdout,
+        datefmt="%H:%M:%S", stream=sys.stdout,
     )
 
 
@@ -269,8 +97,11 @@ def dividir_en_lotes(elementos, tamano):
         yield elementos[inicio:inicio + tamano]
 
 
+# ==============================================================
+# 2. CONEXIONES
+# ==============================================================
+
 def obtener_cliente_supabase():
-    """Conexión a Supabase, con las mismas cautelas que el lector de feeds."""
     from supabase import create_client
 
     url = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
@@ -283,66 +114,82 @@ def obtener_cliente_supabase():
         logging.error("Faltan SUPABASE_URL o SUPABASE_KEY en los secrets.")
         sys.exit(1)
     try:
-        return create_client(url, clave)
+        cliente = create_client(url, clave)
+        cliente.table("perfiles").select("id").limit(1).execute()
+        return cliente
     except Exception as error:
         logging.error("No se pudo conectar con Supabase: %s", error)
         sys.exit(1)
 
 
 def obtener_cliente_openai():
-    """Cliente de OpenAI. La clave nunca aparece en el código ni en los registros."""
     from openai import OpenAI
 
     clave = os.environ.get("OPENAI_API_KEY", "").strip()
     if not clave:
-        logging.error(
-            "Falta OPENAI_API_KEY. Créala en Settings > Secrets and variables > "
-            "Actions del repositorio."
-        )
+        logging.error("Falta OPENAI_API_KEY en los secrets del repositorio.")
         sys.exit(1)
     return OpenAI(api_key=clave)
 
 
 # ==============================================================
-# 4. CLASIFICACIÓN
+# 3. CLASIFICACIÓN
 # ==============================================================
 
-def clasificar(cliente_ia, licitacion: dict[str, Any]) -> dict[str, str] | None:
-    """
-    Pide un veredicto al modelo para una licitación.
+def construir_mensajes(criterio: str, licitacion: dict[str, Any]) -> list[dict]:
+    cpvs = licitacion.get("cpvs") or []
+    if isinstance(cpvs, str):
+        try:
+            cpvs = json.loads(cpvs)
+        except json.JSONDecodeError:
+            cpvs = [cpvs]
 
-    Devuelve None si tras los reintentos no se obtiene respuesta válida.
-    Un fallo puntual no debe tumbar la pasada entera: la licitación se
-    queda sin veredicto y se reintentará en la siguiente ejecución, que
-    es exactamente lo que hace falta que pase.
+    ficha = [f"Título: {licitacion.get('titulo', '')}"]
+    if licitacion.get("organo"):
+        ficha.append(f"Órgano: {licitacion['organo']}")
+    presupuesto = licitacion.get("presupuesto")
+    if presupuesto is not None:
+        importe = f"{float(presupuesto):,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+        ficha.append(f"Presupuesto: {importe} EUR")
+    if cpvs:
+        ficha.append(f"CPV: {', '.join(str(c) for c in cpvs[:8])}")
+
+    return [
+        {"role": "system", "content": criterio + FORMATO},
+        {"role": "user", "content": "\n".join(ficha)},
+    ]
+
+
+def clasificar(cliente_ia, criterio: str, licitacion: dict) -> dict | None:
+    """
+    Pide un veredicto para una licitación, con el criterio de su cliente.
+
+    Devuelve None si tras los reintentos no hay respuesta válida. Un
+    fallo puntual no debe tumbar la pasada: esa licitación se queda sin
+    veredicto y se reintenta mañana, que es exactamente lo que hace
+    falta que pase.
     """
     espera = ESPERA_REINTENTO
     for intento in range(1, REINTENTOS + 1):
         try:
             respuesta = cliente_ia.chat.completions.create(
                 model=MODELO,
-                messages=construir_mensajes(licitacion),
+                messages=construir_mensajes(criterio, licitacion),
                 response_format={"type": "json_object"},
-                temperature=0,
-                max_tokens=150,
+                temperature=0, max_tokens=150,
             )
-            bruto = (respuesta.choices[0].message.content or "").strip()
-            datos = json.loads(bruto)
+            datos = json.loads((respuesta.choices[0].message.content or "").strip())
             veredicto = str(datos.get("veredicto", "")).strip().lower()
-
             if veredicto not in VEREDICTOS_VALIDOS:
                 raise ValueError(f"veredicto no reconocido: {veredicto!r}")
-
-            return {
-                "veredicto": veredicto,
-                "motivo": str(datos.get("motivo", "")).strip()[:300],
-            }
+            return {"veredicto": veredicto,
+                    "motivo": str(datos.get("motivo", "")).strip()[:300]}
 
         except json.JSONDecodeError as error:
-            logging.warning("Respuesta no interpretable (intento %d/%d): %s",
+            logging.warning("Respuesta no interpretable (%d/%d): %s",
                             intento, REINTENTOS, error)
         except Exception as error:
-            logging.warning("Error del modelo (intento %d/%d): %s",
+            logging.warning("Error del modelo (%d/%d): %s",
                             intento, REINTENTOS, error)
 
         if intento < REINTENTOS:
@@ -355,121 +202,98 @@ def clasificar(cliente_ia, licitacion: dict[str, Any]) -> dict[str, str] | None:
 
 
 # ==============================================================
-# 5. LECTURA Y ESCRITURA
+# 4. LECTURA Y ESCRITURA
 # ==============================================================
 
-def leer_pendientes(cliente, limite: int) -> list[dict[str, Any]]:
-    """Licitaciones vivas y sin veredicto, de más reciente a más antigua."""
+def leer_perfiles(cliente, solo: str | None) -> list[dict]:
+    """Perfiles activos que ya tienen criterio. Sin criterio no hay nada que aplicar."""
     try:
-        respuesta = (
-            cliente.table(VISTA_PENDIENTES)
-            .select("id_licitacion, titulo, organo, presupuesto, cpvs, enlace")
-            .limit(limite)
-            .execute()
-        )
-        return respuesta.data or []
+        consulta = (cliente.table("perfiles")
+                    .select("id, nombre, criterio, criterio_version")
+                    .eq("activo", True).not_.is_("criterio", "null"))
+        if solo:
+            consulta = consulta.eq("id", solo)
+        return consulta.execute().data or []
     except Exception as error:
-        logging.error("No se pudo leer la cola de cribado: %s", error)
+        logging.error("No se pudieron leer los perfiles: %s", error)
         sys.exit(1)
 
 
-def guardar_veredictos(cliente, resultados: list[dict[str, Any]]) -> int:
+def leer_pendientes(cliente, perfil_id: str, limite: int) -> list[dict]:
+    try:
+        return (cliente.table(VISTA_PENDIENTES)
+                .select("id_licitacion, titulo, organo, presupuesto, cpvs, enlace")
+                .eq("perfil_id", perfil_id).limit(limite).execute().data) or []
+    except Exception as error:
+        logging.error("No se pudo leer la cola del perfil: %s", error)
+        return []
+
+
+def guardar_veredictos(cliente, resultados: list[dict]) -> int:
     """
-    Escribe los veredictos con UPDATE, no con upsert.
+    Escribe los veredictos.
 
-    El upsert parcial no vale aquí: PostgreSQL comprueba las restricciones
-    NOT NULL sobre la fila propuesta ANTES de detectar el conflicto, así que
-    un envío sin `fuente` ni `titulo` se rechaza aunque la fila ya exista y
-    la operación fuese a resolverse como actualización.
-
-    Una petición por fila. Es más lenta que un lote, pero es la operación
-    correcta: aquí nunca queremos insertar, solo actualizar lo que ya está.
+    Se usa `upsert` sobre la clave compuesta (licitación, perfil): si dos
+    pasadas se solapan, la segunda actualiza en vez de reventar con un
+    error de clave duplicada.
     """
     if not resultados:
         return 0
 
     ahora = datetime.now(timezone.utc).isoformat()
-    guardados = 0
-    fallos = 0
-
-    for indice, resultado in enumerate(resultados, 1):
-        cambios = {
-            "cribado_veredicto": resultado["veredicto"],
-            "cribado_motivo": resultado["motivo"],
-            "cribado_fecha": ahora,
-            "cribado_version": VERSION_PROMPT,
-            "cribado_modelo": MODELO,
+    filas = [
+        {
+            "id_licitacion": r["id_licitacion"],
+            "perfil_id": r["perfil_id"],
+            "veredicto": r["veredicto"],
+            "motivo": r["motivo"],
+            "criterio_version": r["criterio_version"],
+            "modelo": MODELO,
+            "fecha": ahora,
         }
+        for r in resultados
+    ]
+
+    guardados = 0
+    for lote in dividir_en_lotes(filas, TAMANO_LOTE):
         try:
-            respuesta = (
-                cliente.table(TABLA)
-                .update(cambios)
-                .eq("id_licitacion", resultado["id_licitacion"])
-                .execute()
-            )
-            if respuesta.data:
-                guardados += 1
-            else:
-                # Sin filas afectadas: el identificador no existe. Es raro,
-                # pero silenciarlo dejaría veredictos perdidos sin rastro.
-                fallos += 1
-                logging.warning("Sin fila que actualizar: %s",
-                                resultado["id_licitacion"][:80])
+            (cliente.table(TABLA_VEREDICTOS)
+             .upsert(list(lote), on_conflict="id_licitacion,perfil_id")
+             .execute())
+            guardados += len(lote)
         except Exception as error:
-            fallos += 1
-            logging.error("Fallo al guardar el veredicto de %s: %s",
-                          resultado["id_licitacion"][:60], error)
+            logging.error("Fallo al guardar un lote de %d: %s", len(lote), error)
 
-        if indice % 50 == 0:
-            logging.info("  Guardados %d/%d...", guardados, len(resultados))
-
-    if fallos:
-        logging.error("%d veredictos NO se han guardado.", fallos)
     return guardados
 
 
-def publicar_informe(resultados: list[dict[str, Any]]) -> None:
-    """Resumen en el registro y en la pantalla de GitHub Actions."""
-    reparto = Counter(r["veredicto"] for r in resultados)
-    total = len(resultados)
+# ==============================================================
+# 5. INFORME
+# ==============================================================
 
-    logging.info("--- REPARTO DE VEREDICTOS ---")
-    for veredicto in ("si", "quizas", "no"):
-        n = reparto.get(veredicto, 0)
-        logging.info("  %-8s %4d  (%5.1f %%)", veredicto, n,
-                     100 * n / total if total else 0)
+def publicar_informe(por_perfil: dict[str, Counter], fallos: int) -> None:
+    total = sum(sum(c.values()) for c in por_perfil.values())
+
+    logging.info("--- RESUMEN ---")
+    for nombre, reparto in por_perfil.items():
+        n = sum(reparto.values())
+        logging.info("  %-28s %4d  ·  sí %d · quizás %d · no %d",
+                     nombre[:28], n, reparto.get("si", 0),
+                     reparto.get("quizas", 0), reparto.get("no", 0))
+    if fallos:
+        logging.warning("  %d licitaciones sin veredicto. Se reintentarán mañana.", fallos)
 
     ruta = os.environ.get("GITHUB_STEP_SUMMARY")
     if not ruta or not total:
         return
-
-    etiquetas = {"si": "Sí", "quizas": "Quizás", "no": "No (auditar)"}
     try:
         with open(ruta, "a", encoding="utf-8") as fichero:
-            fichero.write(f"\n## Cribado ({VERSION_PROMPT}, {MODELO})\n\n")
-            fichero.write(f"Clasificadas **{total}** · "
-                          f"sí {reparto.get('si', 0)} · "
-                          f"quizás {reparto.get('quizas', 0)} · "
-                          f"no {reparto.get('no', 0)}\n")
-
-            # Una sección por veredicto. Antes iban en una sola tabla con
-            # tope de 40 filas, así que los "no" nunca llegaban a verse:
-            # quedaban detrás de los síes y los quizás.
-            for veredicto in VEREDICTOS_INFORME:
-                grupo = [r for r in resultados if r["veredicto"] == veredicto]
-                if not grupo:
-                    continue
-                fichero.write(f"\n### {etiquetas[veredicto]} ({len(grupo)})\n\n")
-                fichero.write("| Título | Motivo |\n|---|---|\n")
-                for r in grupo[:MAX_FILAS_POR_VEREDICTO]:
-                    titulo = r["titulo"][:200].replace("|", "/")
-                    motivo = r["motivo"][:200].replace("|", "/")
-                    enlace = r.get("enlace", "")
-                    celda = f"[{titulo}]({enlace})" if enlace else titulo
-                    fichero.write(f"| {celda} | {motivo} |\n")
-                if len(grupo) > MAX_FILAS_POR_VEREDICTO:
-                    fichero.write(f"\n_...y {len(grupo) - MAX_FILAS_POR_VEREDICTO} "
-                                  f"más. Consulta Supabase._\n")
+            fichero.write(f"\n## Cribado diario ({MODELO})\n\n")
+            fichero.write("| Perfil | Clasificadas | Sí | Quizás | No |\n|---|---|---|---|---|\n")
+            for nombre, reparto in por_perfil.items():
+                fichero.write(f"| {nombre.replace('|', '/')} | {sum(reparto.values())} | "
+                              f"{reparto.get('si', 0)} | {reparto.get('quizas', 0)} | "
+                              f"{reparto.get('no', 0)} |\n")
     except OSError as error:
         logging.warning("No se pudo escribir el informe: %s", error)
 
@@ -480,81 +304,92 @@ def publicar_informe(resultados: list[dict[str, Any]]) -> None:
 
 def main() -> int:
     argumentos = argparse.ArgumentParser(
-        description="State Scraper · Paso 4a, cribado semántico."
+        description="State Scraper · Cribado diario por perfil."
     )
+    argumentos.add_argument("--perfil", help="UUID de un perfil concreto.")
     argumentos.add_argument("--muestra", type=int, metavar="N",
-                            help="Clasifica N licitaciones y las muestra SIN guardar.")
+                            help="Clasifica N por perfil y las imprime SIN guardar.")
     argumentos.add_argument("--limite", type=int, metavar="N",
-                            help="Tope de llamadas en esta pasada.")
+                            help="Tope de clasificaciones por perfil.")
     opciones = argumentos.parse_args()
 
     configurar_logging()
     es_prueba = opciones.muestra is not None
-    limite = opciones.muestra or opciones.limite or MAX_POR_EJECUCION
-    limite = min(limite, MAX_POR_EJECUCION)
+    limite = min(opciones.muestra or opciones.limite or MAX_POR_PERFIL, MAX_POR_PERFIL)
 
     logging.info("=" * 62)
-    logging.info("CRIBADO SEMÁNTICO · prompt %s · modelo %s", VERSION_PROMPT, MODELO)
-    logging.info("Modo: %s | Tope de llamadas: %d",
+    logging.info("CRIBADO DIARIO POR PERFIL · modelo %s", MODELO)
+    logging.info("Modo: %s | Tope por perfil: %d",
                  "PRUEBA (no guarda)" if es_prueba else "normal", limite)
     logging.info("=" * 62)
 
     cliente = obtener_cliente_supabase()
-    pendientes = leer_pendientes(cliente, limite)
+    perfiles = leer_perfiles(cliente, opciones.perfil)
 
-    if not pendientes:
-        logging.info("No hay licitaciones pendientes de cribar.")
+    if not perfiles:
+        logging.info("No hay perfiles activos con criterio. Nada que hacer.")
         return 0
 
-    logging.info("A clasificar: %d licitaciones.", len(pendientes))
-    cliente_ia = obtener_cliente_openai()
-
-    resultados: list[dict[str, Any]] = []
+    logging.info("Perfiles a procesar: %d", len(perfiles))
+    cliente_ia = None
+    por_perfil: dict[str, Counter] = {}
     fallos = 0
+    guardados_total = 0
 
-    for indice, licitacion in enumerate(pendientes, 1):
-        veredicto = clasificar(cliente_ia, licitacion)
-        if veredicto is None:
-            fallos += 1
+    for perfil in perfiles:
+        pendientes = leer_pendientes(cliente, perfil["id"], limite)
+        if not pendientes:
+            logging.info("[%s] Sin novedades que clasificar.", perfil["nombre"])
             continue
 
-        resultados.append({
-            "id_licitacion": licitacion["id_licitacion"],
-            "titulo": licitacion.get("titulo", ""),
-            "enlace": licitacion.get("enlace", ""),
-            **veredicto,
-        })
+        logging.info("[%s] %d pendientes.", perfil["nombre"], len(pendientes))
+        if cliente_ia is None:
+            cliente_ia = obtener_cliente_openai()
 
-        if es_prueba or indice % 25 == 0:
-            # En prueba se imprime todo sin recortar y con el enlace: la
-            # verificación a mano se hace abriendo el expediente, que es lo
-            # que ve un usuario real al decidir.
-            titulo = licitacion.get("titulo", "")
-            logging.info("  [%3d/%d] %-6s · %s",
-                         indice, len(pendientes), veredicto["veredicto"],
-                         titulo if es_prueba else titulo[:75])
-            if es_prueba and licitacion.get("enlace"):
-                logging.info("           %s", licitacion["enlace"])
+        resultados: list[dict] = []
+        reparto = Counter()
 
-    if fallos:
-        logging.warning("%d licitaciones sin veredicto. Se reintentarán "
-                        "en la próxima ejecución.", fallos)
+        for indice, licitacion in enumerate(pendientes, 1):
+            veredicto = clasificar(cliente_ia, perfil["criterio"], licitacion)
+            if veredicto is None:
+                fallos += 1
+                continue
 
-    publicar_informe(resultados)
+            reparto[veredicto["veredicto"]] += 1
+            resultados.append({
+                "id_licitacion": licitacion["id_licitacion"],
+                "perfil_id": perfil["id"],
+                "criterio_version": perfil.get("criterio_version"),
+                **veredicto,
+            })
+
+            if es_prueba or indice % 50 == 0:
+                logging.info("  [%3d/%d] %-6s · %s", indice, len(pendientes),
+                             veredicto["veredicto"],
+                             licitacion.get("titulo", "")[:70])
+
+        por_perfil[perfil["nombre"]] = reparto
+
+        if not es_prueba:
+            guardados = guardar_veredictos(cliente, resultados)
+            guardados_total += guardados
+            if resultados and guardados == 0:
+                logging.error("[%s] Se clasificaron %d y no se guardó ninguna.",
+                              perfil["nombre"], len(resultados))
+
+    publicar_informe(por_perfil, fallos)
 
     if es_prueba:
-        logging.info("MODO PRUEBA: no se ha guardado nada en Supabase.")
+        logging.info("MODO PRUEBA: no se ha guardado nada.")
         return 0
 
-    guardados = guardar_veredictos(cliente, resultados)
-    logging.info("Guardados %d de %d veredictos.", guardados, len(resultados))
+    clasificadas = sum(sum(c.values()) for c in por_perfil.values())
+    logging.info("Guardados %d de %d veredictos.", guardados_total, clasificadas)
 
-    # Si se clasificó pero no se guardó nada, la ejecución DEBE fallar. Un
-    # resumen tranquilizador sobre un guardado fallido es peor que un error:
-    # el trabajo se pierde y nadie se entera hasta días después.
-    if resultados and guardados == 0:
-        logging.error("Se clasificaron %d licitaciones y no se guardó ninguna.",
-                      len(resultados))
+    # Si se clasificó y no se guardó nada, la ejecución DEBE fallar: un
+    # resumen tranquilizador sobre un guardado fallido es peor que un
+    # error, porque el trabajo se pierde y nadie se entera.
+    if clasificadas and guardados_total == 0:
         return 1
     return 0
 
