@@ -1,0 +1,396 @@
+// ============================================================
+// STATE SCRAPER · Función de alta
+// ============================================================
+//
+// Atiende el flujo de alta de un cliente, en tres acciones:
+//
+//   proponer  -> lee su descripción, propone prefijos CPV y cuenta
+//                cuántas licitaciones trae cada uno
+//   material  -> filtra el catálogo por esos prefijos y devuelve las
+//                licitaciones que se le van a enseñar
+//   guardar   -> recibe sus respuestas, genera su criterio y lo activa
+//
+// Va aquí y no en el navegador por dos motivos: la clave de OpenAI no
+// puede salir del servidor, y el catálogo son ficheros de decenas de
+// megas que no tiene sentido descargar en el cliente.
+//
+// Todas las acciones exigen sesión. La función se ejecuta en nombre de
+// quien llama y solo toca su propio perfil.
+//
+// Despliegue:
+//   supabase functions deploy alta
+// ============================================================
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const MODELO = Deno.env.get("MODELO_ALTA") ?? "gpt-4o-mini";
+const OPENAI = "https://api.openai.com/v1/chat/completions";
+const ANIO_CATALOGO = Number(Deno.env.get("ANIO_CATALOGO") ?? "2025");
+
+// Cuántas licitaciones se le enseñan y cómo se reparten. El núcleo fija
+// el centro del negocio; la frontera define el borde. Solo con frontera,
+// el criterio sale sesgado hacia la excepción y rechaza el negocio
+// principal; solo con núcleo, no aprende dónde termina.
+const CUANTAS = 30;
+const PROPORCION_NUCLEO = 0.4;
+
+const cors = {
+  "Access-Control-Allow-Origin": Deno.env.get("ORIGEN_PERMITIDO") ?? "*",
+  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const responder = (cuerpo: unknown, estado = 200) =>
+  new Response(JSON.stringify(cuerpo), {
+    status: estado,
+    headers: { ...cors, "Content-Type": "application/json" },
+  });
+
+// ------------------------------------------------------------
+// Propuesta de CPV
+// ------------------------------------------------------------
+
+const INSTRUCCIONES_CPV = `\
+Eres un experto en contratación pública española y en el vocabulario CPV, \
+la clasificación europea de los contratos.
+
+Te dan la descripción de un negocio en lenguaje corriente. Propón los \
+PREFIJOS CPV bajo los que ese negocio encontraría contratos públicos.
+
+REGLAS:
+1. Devuelve PREFIJOS, no códigos completos. Dos dígitos cubren una división \
+entera; cuatro, un grupo. Elige la longitud según el alcance del negocio.
+2. PECA DE AMPLIO. Este filtro solo delimita qué se captura; después hay un \
+segundo filtro semántico que decide qué es relevante. Dejar fuera una \
+familia es un error grave y silencioso: nadie se entera de lo que nunca \
+llegó. Traer de más cuesta céntimos.
+3. Máximo 8 prefijos. Si el negocio abarca más, usa prefijos más cortos.
+4. Ordena de más a menos central.
+5. Explica cada uno en UNA FRASE en lenguaje llano, sin jerga, para que \
+alguien que no sabe qué es un CPV pueda juzgar si le sirve.
+6. Añade un aviso cuando un prefijo vaya a traer bastante ruido ajeno.
+
+Devuelve EXCLUSIVAMENTE JSON:
+{"prefijos":[{"prefijo":"18","que_trae":"...","aviso":"..."}],"resumen":"..."}`;
+
+async function llamarModelo(mensajes: unknown[], maxTokens = 900) {
+  const clave = Deno.env.get("OPENAI_API_KEY");
+  if (!clave) throw new Error("Falta OPENAI_API_KEY en la función.");
+
+  const respuesta = await fetch(OPENAI, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${clave}`,
+      "Content-Type": "application/json",
+      "User-Agent": "StateScraper/1.0",
+    },
+    body: JSON.stringify({
+      model: MODELO,
+      messages: mensajes,
+      response_format: { type: "json_object" },
+      temperature: 0,
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!respuesta.ok) {
+    throw new Error(`El modelo respondió ${respuesta.status}: ${(await respuesta.text()).slice(0, 300)}`);
+  }
+  const datos = await respuesta.json();
+  return JSON.parse(datos.choices[0].message.content);
+}
+
+async function proponerCpv(descripcion: string) {
+  const salida = await llamarModelo([
+    { role: "system", content: INSTRUCCIONES_CPV },
+    { role: "user", content: descripcion },
+  ]);
+
+  // Se validan los prefijos: uno de un dígito abarcaría media
+  // clasificación y uno de más de seis deja de ser un prefijo.
+  const prefijos = (salida.prefijos ?? [])
+    .map((p: Record<string, unknown>) => ({
+      prefijo: String(p.prefijo ?? "").replace(/\D/g, ""),
+      que_trae: String(p.que_trae ?? "").trim(),
+      aviso: String(p.aviso ?? "").trim(),
+    }))
+    .filter((p: { prefijo: string }) => p.prefijo.length >= 2 && p.prefijo.length <= 6);
+
+  if (!prefijos.length) throw new Error("No se ha obtenido ningún prefijo válido.");
+  return { prefijos, resumen: String(salida.resumen ?? "").trim() };
+}
+
+// ------------------------------------------------------------
+// Catálogo
+// ------------------------------------------------------------
+
+async function leerCatalogo(admin: ReturnType<typeof createClient>, prefijos: string[]) {
+  const encontradas: Record<string, string>[] = [];
+
+  for (let mes = 1; mes <= 12; mes++) {
+    const ruta = `643/${ANIO_CATALOGO}-${String(mes).padStart(2, "0")}.csv.gz`;
+    const { data, error } = await admin.storage.from("historico").download(ruta);
+    if (error || !data) continue;
+
+    // Se descomprime al vuelo, mes a mes: el año entero en memoria no
+    // haría falta y el catálogo existe para que esto sea barato.
+    const flujo = data.stream().pipeThrough(new DecompressionStream("gzip"));
+    const texto = await new Response(flujo).text();
+
+    const lineas = texto.split("\n");
+    const cabecera = lineas[0].split(",");
+    const iCpvs = cabecera.indexOf("cpvs");
+
+    for (let i = 1; i < lineas.length; i++) {
+      if (!lineas[i]) continue;
+      const campos = partirCsv(lineas[i]);
+      const cpvs = (campos[iCpvs] ?? "").split(",").filter(Boolean);
+      if (!cpvs.some((c) => prefijos.some((p) => c.startsWith(p)))) continue;
+
+      const fila: Record<string, string> = {};
+      cabecera.forEach((nombre, n) => fila[nombre] = campos[n] ?? "");
+      fila._cpvs = cpvs.join("|");
+      encontradas.push(fila);
+    }
+  }
+  return encontradas;
+}
+
+/** Partir una línea CSV respetando las comillas: los títulos llevan comas. */
+function partirCsv(linea: string): string[] {
+  const campos: string[] = [];
+  let actual = "", dentro = false;
+  for (let i = 0; i < linea.length; i++) {
+    const c = linea[i];
+    if (c === '"') {
+      if (dentro && linea[i + 1] === '"') { actual += '"'; i++; }
+      else dentro = !dentro;
+    } else if (c === "," && !dentro) {
+      campos.push(actual); actual = "";
+    } else actual += c;
+  }
+  campos.push(actual);
+  return campos;
+}
+
+// ------------------------------------------------------------
+// Selección de la muestra
+// ------------------------------------------------------------
+
+function elegirMuestra(candidatas: Record<string, string>[], cuantas: number) {
+  const grupos: Record<string, Record<string, string>[]> = {};
+  for (const fila of candidatas) {
+    const familia = (fila._cpvs.split("|")[0] ?? "otros").slice(0, 4);
+    (grupos[familia] ??= []).push(fila);
+  }
+  for (const familia of Object.keys(grupos)) barajar(grupos[familia]);
+
+  const porTamano = Object.keys(grupos).sort((a, b) => grupos[b].length - grupos[a].length);
+  const nNucleo = Math.max(1, Math.round(cuantas * PROPORCION_NUCLEO));
+
+  const repartir = (orden: string[], tope: number) => {
+    const sacadas: Record<string, string>[] = [];
+    let movido = true;
+    while (sacadas.length < tope && movido) {
+      movido = false;
+      for (const familia of orden) {
+        if (grupos[familia]?.length) {
+          sacadas.push(grupos[familia].pop()!);
+          movido = true;
+          if (sacadas.length >= tope) break;
+        }
+      }
+    }
+    return sacadas;
+  };
+
+  // Núcleo de las familias grandes; frontera de las raras. Y el núcleo
+  // primero: las preguntas fáciles enseñan la mecánica, y si se empieza
+  // por las dudosas esas respuestas son ruido.
+  const nucleo = repartir(porTamano.slice(0, Math.max(1, Math.ceil(porTamano.length / 2))), nNucleo);
+  const frontera = repartir([...porTamano].reverse(), cuantas - nucleo.length);
+  barajar(nucleo); barajar(frontera);
+  return [...nucleo, ...frontera];
+}
+
+function barajar<T>(lista: T[]) {
+  for (let i = lista.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [lista[i], lista[j]] = [lista[j], lista[i]];
+  }
+}
+
+// ------------------------------------------------------------
+// Generación del criterio
+// ------------------------------------------------------------
+
+const INSTRUCCIONES_CRITERIO = `\
+Eres un analista de contratación pública. Te dan la descripción de un \
+negocio y una lista de contratos que su responsable ha marcado como "me \
+interesa" o "no me interesa".
+
+Escribe el CRITERIO que usará un clasificador automático para decidir, \
+sobre contratos futuros, si le interesan a esta persona.
+
+REGLAS:
+1. Escribe en español, en segunda persona ("responde sí cuando...").
+2. Estructura: qué es "sí", qué es "quizás", qué es "no".
+3. Deduce el PRINCIPIO que separa los casos, no enumeres los ejemplos. Si \
+marcó "no" a ropa de bomberos y "sí" a uniformidad policial, el principio \
+es el destinatario, no la prenda.
+4. Incluye la prueba decisiva: ¿podría esta empresa ser el proveedor \
+principal de este contrato?
+5. Ante duda razonable entre "quizás" y "no", elige "quizás". Perder una \
+oportunidad es mucho más grave que mostrar una de más.
+6. Máximo 400 palabras. Un criterio largo se aplica peor.
+
+Devuelve EXCLUSIVAMENTE JSON:
+{"criterio":"el texto del criterio","resumen":"una frase para el cliente"}`;
+
+async function generarCriterio(descripcion: string, ejemplos: {
+  titulo: string; organo: string; cpvs: string; interesa: boolean;
+}[]) {
+  const si = ejemplos.filter((e) => e.interesa);
+  const no = ejemplos.filter((e) => !e.interesa);
+  const lista = (xs: typeof ejemplos) =>
+    xs.map((e) => `- ${e.titulo}${e.organo ? ` (${e.organo})` : ""} [CPV ${e.cpvs}]`).join("\n");
+
+  return await llamarModelo([
+    { role: "system", content: INSTRUCCIONES_CRITERIO },
+    {
+      role: "user",
+      content: `NEGOCIO:\n${descripcion}\n\n` +
+        `LE INTERESAN (${si.length}):\n${lista(si)}\n\n` +
+        `NO LE INTERESAN (${no.length}):\n${lista(no)}`,
+    },
+  ], 1400);
+}
+
+// ------------------------------------------------------------
+// Punto de entrada
+// ------------------------------------------------------------
+
+Deno.serve(async (peticion) => {
+  if (peticion.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+  try {
+    const autorizacion = peticion.headers.get("Authorization");
+    if (!autorizacion) return responder({ error: "sin_sesion" }, 401);
+
+    // Cliente en nombre del usuario: las políticas de acceso se aplican,
+    // así que no puede tocar el perfil de otro aunque lo intente.
+    const comoUsuario = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: autorizacion } } },
+    );
+
+    const { data: { user } } = await comoUsuario.auth.getUser();
+    if (!user) return responder({ error: "sin_sesion" }, 401);
+
+    // Cliente de servidor: solo para leer el catálogo de Storage, que no
+    // pertenece a ningún usuario.
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { accion, descripcion, prefijos, respuestas } = await peticion.json();
+
+    const { data: perfiles } = await comoUsuario.from("perfiles")
+      .select("*").eq("usuario_id", user.id).limit(1);
+    const perfil = perfiles?.[0];
+    if (!perfil) return responder({ error: "sin_perfil" }, 403);
+
+    // --- Proponer CPV a partir de la descripción ---
+    if (accion === "proponer") {
+      if (!descripcion || descripcion.trim().length < 15) {
+        return responder({ error: "descripcion_corta" }, 400);
+      }
+      const propuesta = await proponerCpv(descripcion);
+
+      // Cuántas trae cada prefijo. Sin ese número, confirmar la
+      // propuesta sería a ciegas: uno que trae cero sobra y uno que
+      // trae diez mil es demasiado ancho.
+      const todas = await leerCatalogo(admin, propuesta.prefijos.map((p) => p.prefijo));
+      for (const p of propuesta.prefijos) {
+        p.volumen = todas.filter((f) =>
+          f._cpvs.split("|").some((c) => c.startsWith(p.prefijo))).length;
+      }
+
+      await comoUsuario.from("perfiles").update({
+        descripcion, paso_alta: "describiendo",
+      }).eq("id", perfil.id);
+
+      return responder({ ok: true, ...propuesta });
+    }
+
+    // --- Material de entrenamiento ---
+    if (accion === "material") {
+      const lista = (prefijos ?? []).map((p: string) => String(p).replace(/\D/g, ""))
+        .filter((p: string) => p.length >= 2 && p.length <= 6);
+      if (!lista.length) return responder({ error: "sin_prefijos" }, 400);
+
+      const candidatas = await leerCatalogo(admin, lista);
+      if (!candidatas.length) return responder({ error: "catalogo_vacio" }, 404);
+
+      const muestra = elegirMuestra(candidatas, CUANTAS);
+
+      await comoUsuario.from("perfiles").update({
+        cpv_prefijos: lista.join(","), paso_alta: "entrenando",
+      }).eq("id", perfil.id);
+
+      return responder({
+        ok: true,
+        total_disponibles: candidatas.length,
+        licitaciones: muestra.map((f) => ({
+          id_licitacion: f.id_licitacion,
+          titulo: f.titulo,
+          organo: f.organo,
+          presupuesto: f.presupuesto ? Number(f.presupuesto) : null,
+          cpvs: f._cpvs.split("|"),
+          adjudicatario: f.adjudicatario || "",
+          importe_adjudicacion: f.importe_adjudicacion ? Number(f.importe_adjudicacion) : null,
+        })),
+      });
+    }
+
+    // --- Guardar respuestas y generar el criterio ---
+    if (accion === "guardar") {
+      if (!Array.isArray(respuestas) || respuestas.length < 5) {
+        return responder({ error: "pocas_respuestas" }, 400);
+      }
+
+      await comoUsuario.from("ejemplos_entrenamiento").insert(
+        respuestas.map((r: Record<string, unknown>) => ({
+          perfil_id: perfil.id,
+          id_licitacion: String(r.id_licitacion),
+          titulo: String(r.titulo),
+          organo: String(r.organo ?? ""),
+          cpvs: String(r.cpvs ?? ""),
+          presupuesto: r.presupuesto ?? null,
+          interesa: Boolean(r.interesa),
+        })),
+      );
+
+      const criterio = await generarCriterio(perfil.descripcion ?? "", respuestas);
+
+      await comoUsuario.from("perfiles").update({
+        criterio: criterio.criterio,
+        criterio_version: (perfil.criterio_version ?? 0) + 1,
+        criterio_fecha: new Date().toISOString(),
+        paso_alta: "listo",
+      }).eq("id", perfil.id);
+
+      return responder({ ok: true, resumen: criterio.resumen });
+    }
+
+    return responder({ error: "accion_desconocida" }, 400);
+
+  } catch (error) {
+    // El detalle va al registro de la función, no al cliente: un mensaje
+    // de error puede revelar cómo está montado el sistema.
+    console.error("Error en la función de alta:", error);
+    return responder({ error: "error_interno" }, 500);
+  }
+});
