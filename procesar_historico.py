@@ -274,6 +274,134 @@ def subir(datos: bytes, ruta: str) -> bool:
         return False
 
 
+def volcar_vivas(filas: list[dict], etiqueta: str) -> int:
+    """
+    Guarda en la base TODAS las licitaciones que siguen abiertas.
+
+    Sin filtrar por sector: el catálogo sirve para cualquier cliente
+    futuro, y guardar solo lo de los sectores actuales obligaría a
+    recorrerlo otra vez cada vez que entrara alguien de un sector nuevo.
+
+    Es la pieza que hace instantánea el alta. La alternativa era que la
+    función leyera el catálogo en el momento del registro, y eso agota
+    su tiempo de cálculo: son cientos de miles de líneas de CSV.
+
+    El coste en espacio es pequeño porque lo vivo es una fracción: la
+    mayor parte del histórico está adjudicado o formalizado.
+    """
+    ahora = datetime.now(timezone.utc).isoformat()
+    vivas = [
+        f for f in filas
+        if f["estado_licitacion"] == "PUB"
+        and (not f["fecha_limite"] or f["fecha_limite"] >= ahora)
+    ]
+    if not vivas:
+        logging.info("Ninguna licitación sigue abierta en este mes.")
+        return 0
+
+    cliente = lector.obtener_cliente_supabase()
+    filas_bd = [
+        {
+            "id_licitacion": f["id_licitacion"],
+            "fuente": etiqueta,
+            "origen": "Estado",
+            "expediente": f["expediente"] or None,
+            "titulo": f["titulo"],
+            "organo": f["organo"],
+            "enlace": f["enlace"] or None,
+            "codigo_postal": f["codigo_postal"] or None,
+            "presupuesto": f["presupuesto"] if f["presupuesto"] != "" else None,
+            "cpvs": [c for c in f["cpvs"].split(",") if c],
+            "estado_licitacion": f["estado_licitacion"] or None,
+            "fecha_actualizacion": f["fecha_actualizacion"] or None,
+            "fecha_publicacion": f["fecha_publicacion"] or None,
+            "fecha_limite": f["fecha_limite"] or None,
+            "estado_pipeline": "pendiente_analisis",
+        }
+        for f in vivas
+    ]
+
+    guardadas = 0
+    for i in range(0, len(filas_bd), 200):
+        try:
+            # `ignore_duplicates`: lo que ya capturó el scraper en vivo
+            # conserva sus datos y su veredicto. Esto solo añade.
+            (cliente.table("licitaciones").upsert(
+                filas_bd[i:i + 200], on_conflict="id_licitacion",
+                ignore_duplicates=True).execute())
+            guardadas += len(filas_bd[i:i + 200])
+        except Exception as error:
+            logging.error("Fallo al volcar un lote: %s", error)
+
+    logging.info("Volcadas %d licitaciones abiertas de %d procesadas.",
+                 guardadas, len(filas))
+    return guardadas
+
+
+def actualizar_resumen(filas: list[dict]) -> None:
+    """
+    Guarda cuántas licitaciones hay por familia CPV.
+
+    Se calcula aquí, mientras el mes ya está en memoria, y no cuando un
+    cliente pregunta: recorrer el catálogo entero para contar agota el
+    tiempo de cálculo de una función y la mata.
+
+    Se cuentan todas las longitudes de prefijo, de 2 a 6 dígitos, para
+    poder responder tanto a "18" como a "1811" sin recalcular nada.
+    """
+    from collections import Counter
+
+    total, vivas = Counter(), Counter()
+    for fila in filas:
+        esta_viva = fila["estado_licitacion"] == "PUB"
+        prefijos = set()
+        for cpv in fila["cpvs"].split(","):
+            cpv = cpv.strip()
+            for largo in range(2, min(len(cpv), 6) + 1):
+                prefijos.add(cpv[:largo])
+        for p in prefijos:
+            total[p] += 1
+            if esta_viva:
+                vivas[p] += 1
+
+    if not total:
+        return
+
+    cliente = lector.obtener_cliente_supabase()
+    ahora = datetime.now(timezone.utc).isoformat()
+
+    # Se suma a lo que ya haya: cada mes aporta su parte y los doce
+    # juntos dan el año. Por eso se lee antes de escribir.
+    try:
+        previos = {f["prefijo"]: f for f in
+                   (cliente.table("resumen_cpv").select("*")
+                    .in_("prefijo", list(total)[:500]).execute().data or [])}
+    except Exception as error:
+        logging.warning("No se pudo leer el resumen previo: %s", error)
+        previos = {}
+
+    filas_resumen = [
+        {
+            "prefijo": p,
+            "licitaciones": total[p] + (previos.get(p, {}).get("licitaciones") or 0),
+            "vivas": vivas[p] + (previos.get(p, {}).get("vivas") or 0),
+            "actualizado": ahora,
+        }
+        for p in total
+    ]
+
+    guardados = 0
+    for i in range(0, len(filas_resumen), 200):
+        try:
+            (cliente.table("resumen_cpv")
+             .upsert(filas_resumen[i:i + 200], on_conflict="prefijo").execute())
+            guardados += len(filas_resumen[i:i + 200])
+        except Exception as error:
+            logging.error("Fallo al guardar el resumen: %s", error)
+
+    logging.info("Resumen de CPV actualizado: %d familias.", guardados)
+
+
 # ==============================================================
 # 5. ORQUESTACIÓN
 # ==============================================================
@@ -320,6 +448,10 @@ def main() -> int:
 
     reparto = Counter(f["estado_licitacion"] or "(vacío)" for f in filas)
     logging.info("  Estados: %s", ", ".join(f"{k}={v}" for k, v in reparto.most_common(6)))
+
+    if not opciones.local:
+        actualizar_resumen(filas)
+        volcar_vivas(filas, etiqueta)
 
     if opciones.local:
         destino = ruta.replace("/", "_")
