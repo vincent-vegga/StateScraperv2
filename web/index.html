@@ -111,7 +111,6 @@ button{font:inherit;cursor:pointer}
 .carta .ganador{margin-top:auto;padding-top:14px;border-top:1px solid var(--linea);
                 color:var(--tenue);font-size:.88rem}
 .carta .ganador strong{color:var(--texto);font-weight:500}
-.carta .codigos{margin-top:10px;color:var(--tenue);font-size:.8rem}
 
 .botones{display:flex;gap:12px;margin-top:22px}
 .botones button{
@@ -510,7 +509,6 @@ async function pantallaEntrenar(perfil, prefijos, session, items) {
       <p class="datos">${datos.map(d => `<span>${esc(d)}</span>`).join('')}</p>
       ${o.adjudicatario ? `<p class="ganador">Lo ganó <strong>${esc(o.adjudicatario)}</strong>${
         o.importe_adjudicacion ? ` por ${euros(o.importe_adjudicacion)}` : ''}</p>` : ''}
-      <p class="codigos">CPV ${esc((o.cpvs || []).join(', '))}</p>
     </article>`;
   };
 
