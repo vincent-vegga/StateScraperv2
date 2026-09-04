@@ -295,7 +295,10 @@ def main() -> int:
     opciones = p.parse_args()
 
     configurar_logging()
-    prefijos = tuple(x.strip() for x in opciones.cpv.split(",") if x.strip())
+    # Se toleran espacios y separadores variados: quien escribe "18, 35"
+    # o "18 35" quiere lo mismo que quien escribe "18,35".
+    bruto = opciones.cpv.replace(";", ",").replace(" ", ",")
+    prefijos = tuple(x.strip() for x in bruto.split(",") if x.strip())
     if not prefijos:
         logging.error("Hay que indicar al menos un prefijo CPV.")
         return 1
