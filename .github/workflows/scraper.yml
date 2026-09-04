@@ -61,8 +61,13 @@ on:
         required: false
         default: ''
         type: string
-      historico_periodo:
-        description: 'Histórico: año o año-mes. Ej: 2026 o 2026-08'
+      historico_anio:
+        description: 'Histórico: año. Ej: 2026'
+        required: false
+        default: '2026'
+        type: string
+      historico_mes:
+        description: 'Histórico: mes 1-12. Vacío = el fichero anual entero'
         required: false
         default: ''
         type: string
@@ -197,19 +202,24 @@ jobs:
         # para tener material con el que entrenar un criterio nuevo sin
         # esperar días a que el scraper diario lo acumule.
         if: inputs.modo == 'importar_historico'
+        env:
+          CPV: ${{ inputs.historico_cpv }}
+          ANIO: ${{ inputs.historico_anio }}
+          MES: ${{ inputs.historico_mes }}
+          SIMULACRO: ${{ inputs.historico_simulacro }}
         run: |
-          if [ -z "${{ inputs.historico_cpv }}" ]; then
-            echo "::error::Falta historico_cpv. Ej: 3581,1883"
+          set -e
+          if [ -z "$CPV" ]; then
+            echo "::error::Falta historico_cpv. Ejemplo: 18,35"
             exit 1
           fi
-          PERIODO="${{ inputs.historico_periodo }}"
-          ANIO="${PERIODO%%-*}"
-          MES="${PERIODO#*-}"
-          ARGS="--cpv ${{ inputs.historico_cpv }} --anio ${ANIO:-2026}"
-          if [ "$MES" != "$PERIODO" ] && [ -n "$MES" ]; then
-            ARGS="$ARGS --mes ${MES#0}"
+          # Los argumentos se construyen sin trocear cadenas: cada dato
+          # llega ya separado desde el formulario.
+          ARGS="--cpv $CPV --anio ${ANIO:-2026}"
+          if [ -n "$MES" ]; then
+            ARGS="$ARGS --mes $MES"
           fi
-          if [ "${{ inputs.historico_simulacro }}" = "true" ]; then
+          if [ "$SIMULACRO" = "true" ]; then
             ARGS="$ARGS --simulacro"
           fi
           echo "Ejecutando: python importar_historico.py $ARGS"
@@ -260,6 +270,7 @@ jobs:
           echo "### Interfaz publicada" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.despliegue.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.despliegue.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
