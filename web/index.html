@@ -215,6 +215,10 @@ const SUPABASE_ANON = 'sb_publishable_asxZq0hsC7OjJ7_F5hcefA_QngjLLQk';
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 const raiz = document.getElementById('raiz');
 
+// Usuario cuya sesión ya se ha atendido. Evita reiniciar la pantalla
+// cada vez que Supabase renueva el token.
+let sesionActual = null;
+
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const euros = n => n == null ? null : new Intl.NumberFormat('es-ES',
@@ -258,6 +262,7 @@ async function llamar(accion, cuerpo = {}) {
 async function arrancar() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return pantallaEntrar();
+  sesionActual = session.user.id;
 
   const { data: perfiles } = await sb.from('perfiles')
     .select('*').eq('usuario_id', session.user.id).limit(1);
@@ -271,8 +276,26 @@ async function arrancar() {
   return pantallaDescribir(perfil, session);
 }
 
-sb.auth.onAuthStateChange((evento) => {
-  if (evento === 'SIGNED_IN' || evento === 'SIGNED_OUT') arrancar();
+// Supabase renueva el token cada pocos minutos y eso dispara un evento
+// SIGNED_IN. Reaccionar a él reiniciaba la pantalla en mitad del alta:
+// alguien con veinte tarjetas deslizadas volvía al principio y perdía
+// sus respuestas.
+//
+// Solo importa cuando la sesión aparece por primera vez o desaparece.
+sb.auth.onAuthStateChange((evento, sesion) => {
+  const usuario = sesion?.user?.id ?? null;
+
+  if (evento === 'SIGNED_OUT') {
+    sesionActual = null;
+    arrancar();
+    return;
+  }
+  // Una renovación de token trae el mismo usuario: no hay nada que
+  // volver a decidir.
+  if (usuario && usuario !== sesionActual) {
+    sesionActual = usuario;
+    arrancar();
+  }
 });
 
 // ============================================================
