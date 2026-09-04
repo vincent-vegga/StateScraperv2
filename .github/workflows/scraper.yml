@@ -152,13 +152,11 @@ jobs:
           echo "Credenciales presentes."
 
       - name: Ejecutar el scraper
-        if: inputs.modo != 'importar_historico'
         id: scraper
         if: inputs.modo != 'solo_cribado' && inputs.modo != 'cribado_prueba' && inputs.modo != 'importar_historico'
         run: python lector_atom.py ${{ inputs.modo == 'diagnostico' && '--diagnostico' || '' }}
 
       - name: Cribado semántico (paso 4a)
-        if: inputs.modo != 'importar_historico'
         id: cribado
         # No se ejecuta en diagnóstico: ese modo no toca nada ni gasta saldo.
         if: inputs.modo != 'diagnostico' && inputs.modo != 'importar_historico'
@@ -166,7 +164,6 @@ jobs:
           python cribador.py ${{ inputs.modo == 'cribado_prueba' && '--muestra 20' || '' }}
 
       - name: Generar la interfaz
-        if: inputs.modo != 'importar_historico'
         # No se ejecuta en diagnóstico: ese modo no toca ni lee resultados.
         if: inputs.modo != 'diagnostico' && inputs.modo != 'importar_historico'
         run: python generar_interfaz.py
