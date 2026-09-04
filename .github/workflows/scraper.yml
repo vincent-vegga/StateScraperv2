@@ -41,6 +41,7 @@ on:
           - solo_cribado
           - cribado_prueba
           - importar_historico
+          - catalogar_historico
       cpv_prefijos:
         description: 'Prefijos CPV solo para esta ejecución (vacío = los de siempre)'
         required: false
@@ -71,6 +72,11 @@ on:
         required: false
         default: ''
         type: string
+      catalogo_anio:
+        description: 'Catálogo: año a procesar entero, mes a mes. Ej: 2025'
+        required: false
+        default: '2025'
+        type: string
       historico_simulacro:
         description: 'Histórico: procesar sin guardar nada'
         required: false
@@ -90,6 +96,7 @@ concurrency:
 jobs:
   buscar-licitaciones:
     name: Leer feeds y registrar novedades en Supabase
+    if: inputs.modo != 'catalogar_historico'
     runs-on: ubuntu-latest
     # 30 min sobran en operación normal (2-3 min). El margen es para las
     # pasadas profundas puntuales, que recorren cien páginas por feed.
@@ -244,6 +251,48 @@ jobs:
           fi
 
   # ------------------------------------------------------------
+  # Procesado de histórico a catálogo.
+  #
+  # Doce meses en PARALELO, uno por máquina. El fichero anual pesa
+  # más de 1,1 GB: no cabe en memoria y agota el tiempo del job.
+  # Cada mes ronda los 100 MB y tarda unos minutos, así que en
+  # paralelo el conjunto tarda lo que el más lento. Y si un mes
+  # falla, los otros once terminan igual.
+  #
+  # El resultado es un CSV comprimido por mes en Supabase Storage.
+  # A partir de ahí, filtrar por cualquier sector son segundos: el
+  # trabajo caro —leer el XML— se paga una sola vez.
+  # ------------------------------------------------------------
+  catalogar:
+    name: Catálogo ${{ matrix.mes }}/${{ inputs.catalogo_anio }}
+    if: inputs.modo == 'catalogar_historico'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false          # un mes malo no cancela los demás
+      max-parallel: 4           # sin saturar la subida a Supabase
+      matrix:
+        mes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Procesar el mes
+        run: |
+          python procesar_historico.py \
+            --anio "${{ inputs.catalogo_anio }}" \
+            --mes "${{ matrix.mes }}"
+
+  # ------------------------------------------------------------
   # Publicación en GitHub Pages.
   #
   # Va en un job aparte porque el despliegue necesita permisos que
@@ -254,7 +303,7 @@ jobs:
   publicar:
     name: Publicar la interfaz en GitHub Pages
     needs: buscar-licitaciones
-    if: inputs.modo != 'diagnostico' && inputs.modo != 'importar_historico'
+    if: inputs.modo != 'diagnostico' && inputs.modo != 'importar_historico' && inputs.modo != 'catalogar_historico'
     runs-on: ubuntu-latest
 
     permissions:
@@ -273,8 +322,5 @@ jobs:
       - name: Enlace a la web
         run: |
           echo "### Interfaz publicada" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.despliegue.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
-
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.despliegue.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
