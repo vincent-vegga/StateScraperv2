@@ -1,0 +1,78 @@
+# ============================================================
+# DESPLIEGUE DE LA FUNCIÓN DE ALTA
+# ============================================================
+# Las funciones de Supabase no se pueden desplegar desde la web:
+# hacen falta herramientas de línea de comandos. Este workflow las
+# ejecuta por ti, así que basta con subir el fichero.
+#
+# Se dispara solo cuando cambia algo dentro de `supabase/`, para no
+# desplegar en cada commit del scraper.
+# ============================================================
+
+name: Desplegar función de alta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+  # Botón manual, para redesplegar sin tocar el código.
+  workflow_dispatch:
+
+# Solo lectura del repositorio: el despliegue va contra Supabase,
+# no contra GitHub.
+permissions:
+  contents: read
+
+# Dos despliegues a la vez dejarían la función en un estado
+# indeterminado. El último gana y el anterior se cancela.
+concurrency:
+  group: desplegar-funciones
+  cancel-in-progress: true
+
+jobs:
+  desplegar:
+    name: Desplegar en Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar las herramientas de Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Comprobar que los secrets están configurados
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROYECTO: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$PROYECTO" ]; then
+            echo "::error::Faltan SUPABASE_ACCESS_TOKEN o SUPABASE_PROJECT_REF."
+            echo "::error::Créalos en Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "Credenciales presentes. Proyecto: ${PROYECTO:0:6}..."
+
+      - name: Desplegar
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          # --no-verify-jwt NO se usa: la función debe exigir sesión.
+          # Sin esa comprobación, cualquiera podría llamarla y gastar
+          # el saldo de OpenAI.
+          supabase functions deploy alta \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      - name: Resumen
+        if: always()
+        run: |
+          echo "### Función de alta" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Resultado: \`${{ job.status }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Recuerda que la clave de OpenAI se configura en Supabase" >> $GITHUB_STEP_SUMMARY
+          echo "(Edge Functions → Secrets), no en los secrets de GitHub." >> $GITHUB_STEP_SUMMARY
