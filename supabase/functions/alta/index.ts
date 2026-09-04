@@ -188,9 +188,14 @@ function elegirMuestra(
 
   const muestra: Record<string, string>[] = [];
   for (const familia of orden) {
+    // El tope global manda sobre el cupo por familia: sin esta
+    // comprobación, nueve familias con cupo de tres devolvían más
+    // tarjetas de las pedidas.
     for (let n = 0; n < cupo && grupos[familia].length; n++) {
+      if (muestra.length >= cuantas) break;
       muestra.push(grupos[familia].pop()!);
     }
+    if (muestra.length >= cuantas) break;
   }
 
   // Lo que falte, por turnos entre las que queden.
@@ -218,7 +223,9 @@ function elegirMuestra(
   const nucleo = muestra.filter(esGrande).slice(0, nNucleo);
   const resto = muestra.filter((f) => !nucleo.includes(f));
   barajar(nucleo); barajar(resto);
-  return [...nucleo, ...resto];
+  // Recorte final: el tope es una promesa hecha al cliente —"son
+  // treinta y se tarda cinco minutos"— y no puede incumplirse.
+  return [...nucleo, ...resto].slice(0, cuantas);
 }
 
 function barajar<T>(lista: T[]) {
