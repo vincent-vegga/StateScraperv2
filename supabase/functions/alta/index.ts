@@ -34,6 +34,14 @@ const ANIO_CATALOGO = Number(Deno.env.get("ANIO_CATALOGO") ?? "2025");
 const CUANTAS = 30;
 const PROPORCION_NUCLEO = 0.4;
 
+// Cribado por lotes. Una función de Supabase no puede tardar minutos, y
+// un cliente nuevo puede tener cientos de licitaciones vivas que
+// clasificar. Se procesa un lote por llamada y la página va pidiendo el
+// siguiente: así hay progreso visible y, si se corta, se retoma donde
+// iba en vez de empezar de cero.
+const LOTE = 25;
+const SIMULTANEAS = 5;
+
 const cors = {
   "Access-Control-Allow-Origin": Deno.env.get("ORIGEN_PERMITIDO") ?? "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
@@ -267,6 +275,98 @@ async function generarCriterio(descripcion: string, ejemplos: {
 }
 
 // ------------------------------------------------------------
+// Volcado de lo vivo
+// ------------------------------------------------------------
+
+/**
+ * Trae al sistema las licitaciones del catálogo que encajan con los CPV
+ * del cliente y siguen abiertas.
+ *
+ * Hace falta porque el scraper diario solo captura los sectores que
+ * tiene configurados: cuando entra alguien de un sector nuevo, la tabla
+ * no tiene nada suyo. Sin este paso, "todo lo vivo" estaría vacío.
+ *
+ * No pisa lo que ya existe: una licitación capturada en vivo conserva
+ * sus datos y su estado.
+ */
+async function volcarVivas(
+  admin: ReturnType<typeof createClient>,
+  candidatas: Record<string, string>[],
+  fuente: string,
+) {
+  const ahora = new Date().toISOString();
+
+  const vivas = candidatas.filter((f) =>
+    f.estado_licitacion === "PUB" &&
+    (!f.fecha_limite || f.fecha_limite >= ahora)
+  );
+  if (!vivas.length) return 0;
+
+  const filas = vivas.map((f) => ({
+    id_licitacion: f.id_licitacion,
+    fuente,
+    origen: "Estado",
+    expediente: f.expediente || null,
+    titulo: f.titulo,
+    organo: f.organo,
+    enlace: f.enlace || null,
+    codigo_postal: f.codigo_postal || null,
+    presupuesto: f.presupuesto ? Number(f.presupuesto) : null,
+    cpvs: f._cpvs.split("|"),
+    estado_licitacion: f.estado_licitacion,
+    fecha_actualizacion: f.fecha_actualizacion || null,
+    fecha_publicacion: f.fecha_publicacion || null,
+    fecha_limite: f.fecha_limite || null,
+    estado_pipeline: "pendiente_analisis",
+  }));
+
+  let metidas = 0;
+  for (let i = 0; i < filas.length; i += 200) {
+    const { error } = await admin.from("licitaciones")
+      .upsert(filas.slice(i, i + 200), {
+        onConflict: "id_licitacion", ignoreDuplicates: true,
+      });
+    if (!error) metidas += Math.min(200, filas.length - i);
+  }
+  return metidas;
+}
+
+// ------------------------------------------------------------
+// Cribado con el criterio del cliente
+// ------------------------------------------------------------
+
+function instruccionesCribado(criterio: string) {
+  return `${criterio}
+
+Devuelve EXCLUSIVAMENTE un objeto JSON, sin texto alrededor:
+{"veredicto":"si|quizas|no","motivo":"una frase breve en español"}`;
+}
+
+async function clasificar(criterio: string, licitacion: {
+  titulo: string; organo: string; presupuesto: number | null; cpvs: string[];
+}) {
+  const ficha = [
+    `Título: ${licitacion.titulo}`,
+    licitacion.organo ? `Órgano: ${licitacion.organo}` : "",
+    licitacion.presupuesto ? `Presupuesto: ${licitacion.presupuesto} EUR` : "",
+    licitacion.cpvs.length ? `CPV: ${licitacion.cpvs.slice(0, 8).join(", ")}` : "",
+  ].filter(Boolean).join("\n");
+
+  try {
+    const salida = await llamarModelo([
+      { role: "system", content: instruccionesCribado(criterio) },
+      { role: "user", content: ficha },
+    ], 150);
+    const veredicto = String(salida.veredicto ?? "").toLowerCase();
+    if (!["si", "quizas", "no"].includes(veredicto)) return null;
+    return { veredicto, motivo: String(salida.motivo ?? "").slice(0, 300) };
+  } catch (error) {
+    console.error("Fallo al clasificar:", error);
+    return null;
+  }
+}
+
+// ------------------------------------------------------------
 // Punto de entrada
 // ------------------------------------------------------------
 
@@ -375,14 +475,91 @@ Deno.serve(async (peticion) => {
 
       const criterio = await generarCriterio(perfil.descripcion ?? "", respuestas);
 
+      // Se trae al sistema todo lo vivo de su sector antes de cribar. Sin
+      // esto, un cliente de un sector que el scraper no vigilaba todavía
+      // no tendría absolutamente nada que ver.
+      const prefijosPerfil = (perfil.cpv_prefijos ?? "").split(",")
+        .map((x: string) => x.trim()).filter(Boolean);
+      let volcadas = 0;
+      if (prefijosPerfil.length) {
+        const candidatas = await leerCatalogo(admin, prefijosPerfil);
+        volcadas = await volcarVivas(admin, candidatas,
+          `Catálogo ${ANIO_CATALOGO} · alta de perfil`);
+      }
+
       await comoUsuario.from("perfiles").update({
         criterio: criterio.criterio,
         criterio_version: (perfil.criterio_version ?? 0) + 1,
         criterio_fecha: new Date().toISOString(),
-        paso_alta: "listo",
+        paso_alta: "cribando",
       }).eq("id", perfil.id);
 
-      return responder({ ok: true, resumen: criterio.resumen });
+      return responder({ ok: true, resumen: criterio.resumen, volcadas });
+    }
+
+    // --- Cribar un lote de lo pendiente ---
+    if (accion === "cribar") {
+      if (!perfil.criterio) return responder({ error: "sin_criterio" }, 400);
+
+      // Cuánto queda en total, para poder enseñar progreso real en lugar
+      // de un mensaje fijo que no dice nada.
+      const { count: total } = await comoUsuario
+        .from("pendientes_por_perfil")
+        .select("id_licitacion", { count: "exact", head: true })
+        .eq("perfil_id", perfil.id);
+
+      if (!total) {
+        await comoUsuario.from("perfiles").update({ paso_alta: "listo" })
+          .eq("id", perfil.id);
+        return responder({ ok: true, terminado: true, quedan: 0 });
+      }
+
+      const { data: pendientes } = await comoUsuario
+        .from("pendientes_por_perfil")
+        .select("id_licitacion, titulo, organo, presupuesto, cpvs")
+        .eq("perfil_id", perfil.id).limit(LOTE);
+
+      // En tandas pequeñas y no todas a la vez: el proveedor limita las
+      // peticiones simultáneas, y saturarlo haría fallar el lote entero.
+      const resultados: Record<string, unknown>[] = [];
+      for (let i = 0; i < (pendientes ?? []).length; i += SIMULTANEAS) {
+        const tanda = (pendientes ?? []).slice(i, i + SIMULTANEAS);
+        const veredictos = await Promise.all(tanda.map((l) =>
+          clasificar(perfil.criterio, {
+            titulo: l.titulo, organo: l.organo ?? "",
+            presupuesto: l.presupuesto, cpvs: l.cpvs ?? [],
+          })
+        ));
+        tanda.forEach((l, n) => {
+          const v = veredictos[n];
+          if (v) {
+            resultados.push({
+              id_licitacion: l.id_licitacion, perfil_id: perfil.id,
+              veredicto: v.veredicto, motivo: v.motivo,
+              criterio_version: perfil.criterio_version, modelo: MODELO,
+            });
+          }
+        });
+      }
+
+      if (resultados.length) {
+        await admin.from("veredictos").upsert(resultados,
+          { onConflict: "id_licitacion,perfil_id" });
+      }
+
+      const quedan = Math.max(0, total - resultados.length);
+      if (quedan === 0) {
+        await comoUsuario.from("perfiles").update({ paso_alta: "listo" })
+          .eq("id", perfil.id);
+      }
+
+      return responder({
+        ok: true,
+        terminado: quedan === 0,
+        hechas: resultados.length,
+        quedan,
+        total,
+      });
     }
 
     return responder({ error: "accion_desconocida" }, 400);
@@ -393,4 +570,6 @@ Deno.serve(async (peticion) => {
     console.error("Error en la función de alta:", error);
     return responder({ error: "error_interno" }, 500);
   }
+});
+
 });
