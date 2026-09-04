@@ -1,0 +1,125 @@
+-- ============================================================
+-- MIGRACIÓN · Estados del alta y acceso desde la web
+-- ============================================================
+-- Ejecutar en el SQL Editor de Supabase. Idempotente.
+--
+-- Cierra el flujo de alta: añade el estado intermedio de cribado,
+-- deja que el cliente lea su cola y sus resultados desde el
+-- navegador, y crea la vista que alimenta su página.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. ESTADOS DEL ALTA
+--
+--   sin_empezar -> acaba de registrarse
+--   describiendo-> ha escrito a qué se dedica
+--   entrenando  -> está marcando licitaciones
+--   cribando    -> se están clasificando las suyas
+--   listo       -> ya puede ver sus oportunidades
+--
+-- El estado `cribando` existe porque ese paso tarda minutos: sin él,
+-- alguien que recarga la página a mitad no sabría en qué punto está.
+-- ------------------------------------------------------------
+
+comment on column public.perfiles.paso_alta is
+    'sin_empezar -> describiendo -> entrenando -> cribando -> listo';
+
+
+-- ------------------------------------------------------------
+-- 2. LO QUE PUEDE LEER EL CLIENTE
+--
+-- Las vistas de PostgreSQL se ejecutan por defecto con los
+-- privilegios de quien las creó y SE SALTAN las políticas de las
+-- tablas de debajo. Con `security_invoker = true` se ejecutan como
+-- quien consulta, así que las políticas sí se aplican.
+--
+-- Es la diferencia entre una política que protege y una que decora.
+-- Todas las vistas de este proyecto lo llevan.
+-- ------------------------------------------------------------
+
+drop view if exists public.mis_oportunidades;
+
+create view public.mis_oportunidades
+with (security_invoker = true) as
+select v.perfil_id,
+       l.id_licitacion, l.titulo, l.organo, l.origen, l.codigo_postal,
+       l.presupuesto, l.cpvs, l.enlace,
+       l.fecha_limite, l.fecha_publicacion, l.fecha_deteccion,
+       v.veredicto, v.motivo as veredicto_motivo
+from public.licitaciones l
+join public.veredictos v on v.id_licitacion = l.id_licitacion
+join public.perfiles p on p.id = v.perfil_id
+where p.usuario_id = auth.uid()
+  and v.veredicto in ('si', 'quizas')
+  and coalesce(l.estado_licitacion, '') = 'PUB'
+  -- Misma regla de vigencia que el resto del sistema: solo se enseña
+  -- lo que se puede respaldar. No saber si algo sigue abierto no es
+  -- lo mismo que suponer que sí.
+  and (
+        (l.fecha_limite is not null and l.fecha_limite >= now())
+     or (l.fecha_limite is null
+         and l.fecha_actualizacion >= now() - interval '14 days')
+      )
+order by coalesce(l.fecha_limite, l.fecha_deteccion);
+
+
+-- ------------------------------------------------------------
+-- 3. PERMISOS DE LECTURA SOBRE LAS VISTAS
+--
+-- Las políticas de las tablas ya limitan qué filas ve cada uno. Esto
+-- solo permite que un usuario autenticado consulte las vistas; sin
+-- ello recibiría un error de permisos aunque las políticas le
+-- dieran acceso a las filas.
+-- ------------------------------------------------------------
+
+grant select on public.mis_oportunidades to authenticated;
+grant select on public.pendientes_por_perfil to authenticated;
+
+-- Las licitaciones son contratos públicos y el cliente necesita
+-- leerlas para ver las suyas a través de las vistas.
+grant select on public.licitaciones to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 4. LICITACIONES: LECTURA PARA USUARIOS AUTENTICADOS
+--
+-- La tabla tiene RLS activado y hasta ahora no tenía ninguna
+-- política, así que solo la clave de servidor podía leerla. Para que
+-- las vistas funcionen desde el navegador hace falta permitir la
+-- lectura.
+--
+-- Es información pública —contratación del Estado— así que no hay
+-- nada que proteger en las licitaciones mismas. Lo que sí es privado
+-- son los VEREDICTOS, que son el resultado del criterio de cada
+-- cliente, y esos siguen restringidos por su propia política.
+-- ------------------------------------------------------------
+
+drop policy if exists "licitaciones: lectura autenticada" on public.licitaciones;
+create policy "licitaciones: lectura autenticada" on public.licitaciones
+    for select to authenticated using (true);
+
+
+-- ============================================================
+-- COMPROBACIÓN
+-- ============================================================
+--
+-- Que las vistas se ejecutan como quien consulta y no como su
+-- creador. Si alguna dijera `false`, sus políticas no se aplicarían:
+--
+--   select c.relname as vista,
+--          coalesce((
+--            select true from pg_options_to_table(c.reloptions) o
+--            where o.option_name = 'security_invoker'
+--              and o.option_value = 'true'
+--          ), false) as protegida
+--   from pg_class c
+--   join pg_namespace n on n.oid = c.relnamespace
+--   where n.nspname = 'public' and c.relkind = 'v'
+--   order by 1;
+
+-- En qué punto está cada cliente:
+--
+--   select email, paso_alta, cpv_prefijos,
+--          criterio is not null as tiene_criterio
+--   from public.perfiles where usuario_id is not null;
