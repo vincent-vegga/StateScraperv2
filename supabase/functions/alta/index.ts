@@ -132,16 +132,25 @@ async function proponerCpv(descripcion: string) {
 // Catálogo
 // ------------------------------------------------------------
 
-async function leerCatalogo(admin: ReturnType<typeof createClient>, prefijos: string[]) {
-  const encontradas: Record<string, string>[] = [];
-
+/**
+ * Recorre el catálogo mes a mes y entrega cada coincidencia a `atender`.
+ *
+ * NO devuelve la lista completa: un año de un sector amplio son miles de
+ * filas y la memoria de una función es pequeña. Quien llama decide qué
+ * guardar —una cuenta, una muestra— y el resto se descarta al vuelo.
+ * Acumularlo todo para filtrarlo después agotaba la memoria y la función
+ * moría sin llegar a responder.
+ */
+async function recorrerCatalogo(
+  admin: ReturnType<typeof createClient>,
+  prefijos: string[],
+  atender: (fila: Record<string, string>) => void,
+) {
   for (let mes = 1; mes <= 12; mes++) {
     const ruta = `643/${ANIO_CATALOGO}-${String(mes).padStart(2, "0")}.csv.gz`;
     const { data, error } = await admin.storage.from("historico").download(ruta);
     if (error || !data) continue;
 
-    // Se descomprime al vuelo, mes a mes: el año entero en memoria no
-    // haría falta y el catálogo existe para que esto sea barato.
     const flujo = data.stream().pipeThrough(new DecompressionStream("gzip"));
     const texto = await new Response(flujo).text();
 
@@ -158,10 +167,33 @@ async function leerCatalogo(admin: ReturnType<typeof createClient>, prefijos: st
       const fila: Record<string, string> = {};
       cabecera.forEach((nombre, n) => fila[nombre] = campos[n] ?? "");
       fila._cpvs = cpvs.join("|");
-      encontradas.push(fila);
+      atender(fila);
     }
   }
-  return encontradas;
+}
+
+/**
+ * Muestra aleatoria de tamaño fijo sin guardar el conjunto entero.
+ *
+ * Se queda con las primeras `tope` y, a partir de ahí, cada nueva fila
+ * tiene una probabilidad decreciente de sustituir a una ya elegida. El
+ * resultado es una muestra uniforme del total usando solo la memoria de
+ * `tope` elementos.
+ */
+class Reservorio {
+  vistas = 0;
+  elegidas: Record<string, string>[] = [];
+  constructor(private tope: number) {}
+
+  ofrecer(fila: Record<string, string>) {
+    this.vistas++;
+    if (this.elegidas.length < this.tope) {
+      this.elegidas.push(fila);
+      return;
+    }
+    const j = Math.floor(Math.random() * this.vistas);
+    if (j < this.tope) this.elegidas[j] = fila;
+  }
 }
 
 /** Partir una línea CSV respetando las comillas: los títulos llevan comas. */
@@ -185,15 +217,21 @@ function partirCsv(linea: string): string[] {
 // Selección de la muestra
 // ------------------------------------------------------------
 
-function elegirMuestra(candidatas: Record<string, string>[], cuantas: number) {
+function elegirMuestra(
+  porFamilia: Record<string, Reservorio>,
+  totales: Record<string, number>,
+  cuantas: number,
+) {
   const grupos: Record<string, Record<string, string>[]> = {};
-  for (const fila of candidatas) {
-    const familia = (fila._cpvs.split("|")[0] ?? "otros").slice(0, 4);
-    (grupos[familia] ??= []).push(fila);
+  for (const familia of Object.keys(porFamilia)) {
+    grupos[familia] = [...porFamilia[familia].elegidas];
+    barajar(grupos[familia]);
   }
-  for (const familia of Object.keys(grupos)) barajar(grupos[familia]);
 
-  const porTamano = Object.keys(grupos).sort((a, b) => grupos[b].length - grupos[a].length);
+  // El orden depende de cuántas hay EN TOTAL de cada familia, no de
+  // cuántas se guardaron en el reservorio: lo que define el núcleo es
+  // el peso real en su negocio.
+  const porTamano = Object.keys(grupos).sort((a, b) => totales[b] - totales[a]);
   const nNucleo = Math.max(1, Math.round(cuantas * PROPORCION_NUCLEO));
 
   const repartir = (orden: string[], tope: number) => {
@@ -289,20 +327,8 @@ async function generarCriterio(descripcion: string, ejemplos: {
  * No pisa lo que ya existe: una licitación capturada en vivo conserva
  * sus datos y su estado.
  */
-async function volcarVivas(
-  admin: ReturnType<typeof createClient>,
-  candidatas: Record<string, string>[],
-  fuente: string,
-) {
-  const ahora = new Date().toISOString();
-
-  const vivas = candidatas.filter((f) =>
-    f.estado_licitacion === "PUB" &&
-    (!f.fecha_limite || f.fecha_limite >= ahora)
-  );
-  if (!vivas.length) return 0;
-
-  const filas = vivas.map((f) => ({
+function filaLicitacion(f: Record<string, string>, fuente: string) {
+  return {
     id_licitacion: f.id_licitacion,
     fuente,
     origen: "Estado",
@@ -318,17 +344,7 @@ async function volcarVivas(
     fecha_publicacion: f.fecha_publicacion || null,
     fecha_limite: f.fecha_limite || null,
     estado_pipeline: "pendiente_analisis",
-  }));
-
-  let metidas = 0;
-  for (let i = 0; i < filas.length; i += 200) {
-    const { error } = await admin.from("licitaciones")
-      .upsert(filas.slice(i, i + 200), {
-        onConflict: "id_licitacion", ignoreDuplicates: true,
-      });
-    if (!error) metidas += Math.min(200, filas.length - i);
-  }
-  return metidas;
+  };
 }
 
 // ------------------------------------------------------------
@@ -412,11 +428,19 @@ Deno.serve(async (peticion) => {
       // Cuántas trae cada prefijo. Sin ese número, confirmar la
       // propuesta sería a ciegas: uno que trae cero sobra y uno que
       // trae diez mil es demasiado ancho.
-      const todas = await leerCatalogo(admin, propuesta.prefijos.map((p) => p.prefijo));
-      for (const p of propuesta.prefijos) {
-        p.volumen = todas.filter((f) =>
-          f._cpvs.split("|").some((c) => c.startsWith(p.prefijo))).length;
-      }
+      //
+      // Se cuenta al vuelo y no se guarda ninguna fila: son miles y la
+      // memoria de la función es pequeña.
+      const cuenta: Record<string, number> = {};
+      for (const p of propuesta.prefijos) cuenta[p.prefijo] = 0;
+
+      await recorrerCatalogo(admin, propuesta.prefijos.map((p) => p.prefijo), (f) => {
+        const cpvs = f._cpvs.split("|");
+        for (const p of propuesta.prefijos) {
+          if (cpvs.some((c) => c.startsWith(p.prefijo))) cuenta[p.prefijo]++;
+        }
+      });
+      for (const p of propuesta.prefijos) p.volumen = cuenta[p.prefijo];
 
       await comoUsuario.from("perfiles").update({
         descripcion, paso_alta: "describiendo",
@@ -431,10 +455,23 @@ Deno.serve(async (peticion) => {
         .filter((p: string) => p.length >= 2 && p.length <= 6);
       if (!lista.length) return responder({ error: "sin_prefijos" }, 400);
 
-      const candidatas = await leerCatalogo(admin, lista);
-      if (!candidatas.length) return responder({ error: "catalogo_vacio" }, 404);
+      // Un reservorio por familia CPV: así se puede repartir la muestra
+      // entre núcleo y frontera sin haber guardado el año entero. Cada
+      // familia conserva como mucho unas pocas filas.
+      const porFamilia: Record<string, Reservorio> = {};
+      const totales: Record<string, number> = {};
+      let disponibles = 0;
 
-      const muestra = elegirMuestra(candidatas, CUANTAS);
+      await recorrerCatalogo(admin, lista, (f) => {
+        const familia = (f._cpvs.split("|")[0] ?? "otros").slice(0, 4);
+        (porFamilia[familia] ??= new Reservorio(CUANTAS)).ofrecer(f);
+        totales[familia] = (totales[familia] ?? 0) + 1;
+        disponibles++;
+      });
+
+      if (!disponibles) return responder({ error: "catalogo_vacio" }, 404);
+
+      const muestra = elegirMuestra(porFamilia, totales, CUANTAS);
 
       await comoUsuario.from("perfiles").update({
         cpv_prefijos: lista.join(","), paso_alta: "entrenando",
@@ -482,9 +519,34 @@ Deno.serve(async (peticion) => {
         .map((x: string) => x.trim()).filter(Boolean);
       let volcadas = 0;
       if (prefijosPerfil.length) {
-        const candidatas = await leerCatalogo(admin, prefijosPerfil);
-        volcadas = await volcarVivas(admin, candidatas,
-          `Catálogo ${ANIO_CATALOGO} · alta de perfil`);
+        // Se vuelca por tandas según se recorre: guardar todas las vivas
+        // en memoria antes de escribirlas sería el mismo problema.
+        const ahora = new Date().toISOString();
+        const fuente = `Catálogo ${ANIO_CATALOGO} · alta de perfil`;
+        let tanda: Record<string, unknown>[] = [];
+
+        const soltar = async () => {
+          if (!tanda.length) return;
+          const { error } = await admin.from("licitaciones").upsert(tanda, {
+            onConflict: "id_licitacion", ignoreDuplicates: true,
+          });
+          if (!error) volcadas += tanda.length;
+          tanda = [];
+        };
+
+        await recorrerCatalogo(admin, prefijosPerfil, (f) => {
+          if (f.estado_licitacion !== "PUB") return;
+          if (f.fecha_limite && f.fecha_limite < ahora) return;
+          tanda.push(filaLicitacion(f, fuente));
+        });
+        // El recorrido es síncrono, así que se escribe al terminar en
+        // lotes de 200.
+        const todas = tanda;
+        tanda = [];
+        for (let i = 0; i < todas.length; i += 200) {
+          tanda = todas.slice(i, i + 200);
+          await soltar();
+        }
       }
 
       await comoUsuario.from("perfiles").update({
