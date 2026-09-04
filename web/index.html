@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contratos públicos para tu negocio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Una sola página que cambia de pantalla según en qué punto esté el
+   perfil: registro, código, descripción, entrenamiento, espera o
+   resultados. Sin saltos ni recargas. */
+:root{
+  --fondo:#17171A; --superficie:#1F1F23; --texto:#E9E8E5; --tenue:#8B8B92;
+  --linea:rgba(233,232,229,.11); --fuerte:rgba(233,232,229,.28);
+  --si:#8FB89A; --no:#D98A72; --urge:#D98A72;
+  --alto:44px;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--fondo);color:var(--texto);
+  font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+.envoltorio{max-width:640px;margin:0 auto;padding:0 20px 72px}
+.ancho{max-width:940px}
+
+h1{font-weight:600;font-size:clamp(1.6rem,4.5vw,2.2rem);line-height:1.25;
+   letter-spacing:-.02em;margin:0 0 14px}
+h2{font-weight:600;font-size:1.4rem;margin:0 0 12px}
+p.guia{color:var(--tenue);margin:0 0 20px;max-width:52ch}
+.centro{text-align:center;padding:56px 0}
+.centro p.guia{margin-left:auto;margin-right:auto}
+
+input[type=email],input[type=text],textarea{
+  width:100%;background:var(--superficie);color:var(--texto);
+  border:1px solid var(--linea);border-radius:3px;padding:12px 14px;
+  font:inherit;font-size:1rem;transition:border-color .15s;
+}
+input:focus,textarea:focus{border-color:var(--fuerte);outline:0}
+textarea{min-height:130px;resize:vertical;line-height:1.55}
+label{display:block;font-size:.9rem;color:var(--tenue);margin:0 0 7px}
+.campo{margin-bottom:18px;text-align:left}
+
+button{font:inherit;cursor:pointer}
+.principal{
+  background:var(--texto);color:var(--fondo);border:0;border-radius:3px;
+  padding:13px 26px;font-weight:600;font-size:1rem;
+}
+.principal:disabled{opacity:.45;cursor:default}
+.secundario{
+  background:none;color:var(--texto);border:1px solid var(--fuerte);
+  border-radius:3px;padding:12px 22px;font-weight:500;
+}
+.enlace{background:none;border:0;color:var(--tenue);text-decoration:underline;
+        font-size:.88rem;padding:6px}
+.enlace:hover{color:var(--texto)}
+
+.aviso{
+  padding:12px 14px;border-radius:3px;margin:16px 0;font-size:.92rem;
+  border:1px solid var(--linea);background:var(--superficie);
+}
+.aviso.mal{border-color:rgba(217,138,114,.5);color:var(--no)}
+.aviso.bien{border-color:rgba(143,184,154,.5);color:var(--si)}
+
+/* ---------- Propuesta de CPV ---------- */
+.propuesta{margin:22px 0}
+.familia{
+  display:flex;gap:14px;align-items:flex-start;padding:16px 0;
+  border-bottom:1px solid var(--linea);text-align:left;
+}
+.familia input{margin-top:5px;width:16px;height:16px;flex:0 0 16px;accent-color:var(--texto)}
+.familia .cuerpo{flex:1}
+.familia .que{font-size:.96rem;margin:0}
+.familia .aviso-corto{color:var(--no);font-size:.85rem;margin:5px 0 0}
+.familia .volumen{color:var(--tenue);font-size:.85rem;white-space:nowrap}
+
+/* ---------- Baraja de entrenamiento ---------- */
+.avance{margin:20px 0 0}
+.barra{height:3px;background:var(--linea);border-radius:2px;overflow:hidden}
+.relleno{height:100%;background:var(--texto);width:0;transition:width .3s ease}
+.cuenta{display:flex;justify-content:space-between;margin-top:9px;
+        color:var(--tenue);font-size:.86rem}
+
+.baraja{position:relative;height:390px;margin-top:22px;touch-action:pan-y}
+.carta{
+  position:absolute;inset:0;background:var(--superficie);
+  border:1px solid var(--linea);border-radius:8px;padding:24px;
+  display:flex;flex-direction:column;overflow:hidden;
+  will-change:transform;user-select:none;-webkit-user-select:none;
+}
+.carta.detras-1{transform:scale(.96) translateY(10px);opacity:.55;pointer-events:none}
+.carta.detras-2{transform:scale(.92) translateY(20px);opacity:.3;pointer-events:none}
+.carta.encima{cursor:grab}
+.carta.arrastrando{cursor:grabbing}
+.carta.volando{transition:transform .32s ease-out,opacity .32s ease-out}
+/* Franja reservada: si el sello fuera sobre el texto, taparía justo lo
+   que hay que leer para decidir. */
+.franja{height:32px;margin:-4px 0 10px;position:relative}
+.sello{
+  position:absolute;top:0;padding:5px 13px;border-radius:3px;
+  font-weight:700;font-size:.82rem;letter-spacing:.05em;opacity:0;
+  border:2px solid;pointer-events:none;transition:opacity .1s;
+}
+.sello.si{right:0;color:var(--si);border-color:var(--si)}
+.sello.no{left:0;color:var(--no);border-color:var(--no)}
+.carta .titulo{font-weight:500;font-size:1.05rem;line-height:1.45;margin:0 0 12px}
+.carta .datos{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--tenue);
+              font-size:.88rem;margin:0}
+.carta .ganador{margin-top:auto;padding-top:14px;border-top:1px solid var(--linea);
+                color:var(--tenue);font-size:.88rem}
+.carta .ganador strong{color:var(--texto);font-weight:500}
+.carta .codigos{margin-top:10px;color:var(--tenue);font-size:.8rem}
+
+.botones{display:flex;gap:12px;margin-top:22px}
+.botones button{
+  flex:1;padding:14px;border-radius:3px;border:1px solid var(--fuerte);
+  background:none;color:var(--texto);font-size:1rem;font-weight:500;
+  transition:background .15s,border-color .15s;
+}
+.botones .si:hover{background:rgba(143,184,154,.15);border-color:var(--si)}
+.botones .no:hover{background:rgba(217,138,114,.15);border-color:var(--no)}
+.atajos{margin-top:13px;color:var(--tenue);font-size:.82rem;text-align:center}
+kbd{background:var(--superficie);border:1px solid var(--linea);border-radius:3px;
+    padding:1px 6px;font-size:.8rem}
+.gestos{display:flex;gap:14px;justify-content:center;margin:28px 0 6px}
+.gesto{flex:1;max-width:180px;padding:16px 12px;border-radius:4px;
+       border:1px solid var(--linea);background:var(--superficie)}
+.gesto .flecha{font-size:1.6rem;line-height:1;display:block;margin-bottom:6px}
+.gesto.no .flecha{color:var(--no)}
+.gesto.si .flecha{color:var(--si)}
+.gesto strong{display:block;font-weight:600;font-size:.93rem}
+.gesto span{color:var(--tenue);font-size:.83rem}
+
+/* ---------- Resultados ---------- */
+.cabecera-app{display:flex;justify-content:space-between;align-items:center;
+              padding:22px 0;border-bottom:1px solid var(--linea);gap:14px}
+.cabecera-app .quien{color:var(--tenue);font-size:.86rem}
+.marcador{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin:26px 0 0}
+.marcador div{padding:16px 16px 16px 0}
+.marcador span{display:block;font-size:1.6rem;font-weight:600;line-height:1.1;
+               font-variant-numeric:tabular-nums;transition:opacity .18s}
+.marcador small{display:block;margin-top:5px;color:var(--tenue);font-size:.82rem}
+.marcador.cambiando span{opacity:.25}
+
+.filtros{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;
+         padding:18px 0;border-bottom:1px solid var(--linea);
+         position:sticky;top:0;background:var(--fondo);z-index:10}
+select,input[type=search]{
+  font:inherit;font-size:.94rem;color:var(--texto);line-height:1.2;
+  background:var(--superficie);border:1px solid var(--linea);border-radius:3px;
+  padding:0 12px;height:var(--alto);flex:1 1 240px;min-width:0;
+  transition:border-color .15s;
+}
+input[type=search]:focus,select:focus{border-color:var(--fuerte);outline:0}
+
+#lista{transition:opacity .16s ease}
+#lista.cambiando{opacity:0}
+.fila{
+  display:grid;grid-template-columns:78px 1fr auto;gap:24px;align-items:start;
+  padding:22px 0;border-bottom:1px solid var(--linea);width:100%;
+  text-align:left;background:none;border-left:0;border-right:0;border-top:0;
+  color:inherit;font:inherit;animation:entrar .3s ease both;
+}
+@keyframes entrar{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.fila:hover .t{text-decoration:underline;text-underline-offset:3px}
+.fecha{border-top:1px solid var(--fuerte);padding-top:8px}
+.fecha .dia{display:block;font-size:1.35rem;font-weight:600;line-height:1.15;
+            font-variant-numeric:tabular-nums}
+.fecha .cuenta-dias{display:block;margin-top:2px;font-size:.78rem;color:var(--tenue)}
+.fecha.apura{border-top-color:var(--urge)}
+.fecha.apura .cuenta-dias{color:var(--urge)}
+.fecha.sinplazo .dia{font-size:.88rem;font-weight:400;color:var(--tenue)}
+.t{font-weight:500;margin:0 0 5px;font-size:1rem;line-height:1.45;max-width:60ch}
+.meta{color:var(--tenue);font-size:.88rem;margin:0}
+.derecha{text-align:right;white-space:nowrap}
+.importe{font-weight:600;font-variant-numeric:tabular-nums}
+.marca{display:block;margin-top:5px;font-size:.78rem;color:var(--tenue)}
+.marca.si{color:var(--si)}
+.detalle{display:none;padding:2px 0 28px 102px;border-bottom:1px solid var(--linea)}
+.detalle.abierto{display:block}
+.detalle dl{display:grid;grid-template-columns:150px 1fr;gap:10px 22px;margin:0 0 20px}
+.detalle dt{color:var(--tenue);font-size:.88rem}
+.detalle dd{margin:0;font-size:.94rem}
+.cita{border-left:1px solid var(--fuerte);padding-left:16px;margin:0 0 20px;max-width:64ch}
+.ver{display:inline-block;border:1px solid var(--fuerte);color:var(--texto);
+     padding:9px 18px;border-radius:3px;text-decoration:none;font-size:.92rem}
+.vacio{padding:64px 0;text-align:center;color:var(--tenue)}
+
+@media(max-width:720px){
+  .fila{grid-template-columns:68px 1fr;gap:16px}
+  .derecha{grid-column:2;text-align:left}
+  .detalle{padding-left:0}
+  .detalle dl{grid-template-columns:1fr}
+  .marcador{grid-template-columns:repeat(2,1fr)}
+}
+@media(prefers-reduced-motion:reduce){
+  .carta,.relleno,#lista,.marcador span{transition:none}
+  .fila{animation:none}
+}
+</style>
+</head>
+<body>
+<div class="envoltorio" id="raiz"></div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// La clave pública está pensada para ir aquí: no otorga nada por sí
+// sola. Quien decide qué puede ver cada uno son las políticas de acceso
+// de la base de datos.
+const SUPABASE_URL = 'https://swgrbzqxagrqdyddmvfy.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_asxZq0hsC7OjJ7_F5hcefA_QngjLLQk';
+
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+const raiz = document.getElementById('raiz');
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const euros = n => n == null ? null : new Intl.NumberFormat('es-ES',
+  {style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n);
+const ZONA = 'Europe/Madrid';
+const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+// Todas las fechas en hora peninsular, sea cual sea la del visitante: un
+// plazo que vence a las 23:59 aparecería un día después para quien lo
+// consulte desde otro huso, y alguien podría presentarse tarde.
+const partes = iso => {
+  const v = {};
+  new Intl.DateTimeFormat('es-ES', {timeZone:ZONA, day:'numeric', month:'numeric',
+    year:'numeric', hour:'2-digit', minute:'2-digit'})
+    .formatToParts(new Date(iso)).forEach(p => v[p.type] = p.value);
+  return v;
+};
+const diasHasta = iso => iso
+  ? Math.floor((new Date(iso) - new Date()) / 86400000) : null;
+
+async function llamar(accion, cuerpo = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('sin_sesion');
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/alta`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ accion, ...cuerpo }),
+  });
+  const datos = await r.json();
+  if (!r.ok || datos.error) throw new Error(datos.error || 'error');
+  return datos;
+}
+
+// ============================================================
+// Enrutado: la pantalla depende del punto en que esté el perfil
+// ============================================================
+
+async function arrancar() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return pantallaEntrar();
+
+  const { data: perfiles } = await sb.from('perfiles')
+    .select('*').eq('usuario_id', session.user.id).limit(1);
+  const perfil = perfiles?.[0];
+
+  if (!perfil) return pantallaCodigo(session);
+  if (perfil.paso_alta === 'listo') return pantallaOportunidades(perfil, session);
+  if (perfil.paso_alta === 'cribando') return pantallaCribando(perfil, session);
+  if (perfil.paso_alta === 'entrenando' && perfil.cpv_prefijos)
+    return pantallaEntrenar(perfil, perfil.cpv_prefijos.split(','), session);
+  return pantallaDescribir(perfil, session);
+}
+
+sb.auth.onAuthStateChange((evento) => {
+  if (evento === 'SIGNED_IN' || evento === 'SIGNED_OUT') arrancar();
+});
+
+// ============================================================
+// 1 · Entrar
+// ============================================================
+
+function pantallaEntrar() {
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div class="centro">
+      <h1>Los contratos públicos que te interesan, sin buscarlos</h1>
+      <p class="guia">Te enviamos cada mañana solo las licitaciones que encajan
+      con tu negocio. Nada de listas de mil contratos entre los que rebuscar.</p>
+      <div class="campo" style="max-width:380px;margin:28px auto 0">
+        <label for="correo">Tu correo</label>
+        <input type="email" id="correo" placeholder="nombre@empresa.es" autocomplete="email">
+      </div>
+      <button class="principal" id="enviar">Entrar</button>
+      <p class="guia" style="margin-top:16px;font-size:.88rem">
+      Te mandamos un enlace para entrar. Sin contraseñas que recordar.</p>
+      <div id="resultado"></div>
+    </div>`;
+
+  const boton = document.getElementById('enviar');
+  const correo = document.getElementById('correo');
+  correo.addEventListener('keydown', e => { if (e.key === 'Enter') boton.click(); });
+
+  boton.onclick = async () => {
+    const email = correo.value.trim();
+    if (!email.includes('@')) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">Ese correo no parece válido.</div>`;
+      return;
+    }
+    boton.disabled = true;
+    boton.textContent = 'Enviando...';
+    const { error } = await sb.auth.signInWithOtp({
+      email, options: { emailRedirectTo: window.location.origin },
+    });
+    document.getElementById('resultado').innerHTML = error
+      ? `<div class="aviso mal">No se ha podido enviar: ${esc(error.message)}</div>`
+      : `<div class="aviso bien">Te hemos enviado un enlace a ${esc(email)}.
+         Ábrelo desde este mismo dispositivo.</div>`;
+    boton.disabled = false;
+    boton.textContent = 'Entrar';
+  };
+}
+
+// ============================================================
+// 2 · Código de acceso
+// ============================================================
+
+function pantallaCodigo(session) {
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div class="centro">
+      <h1>Introduce tu código de acceso</h1>
+      <p class="guia">Es el código que te hemos facilitado al contratar el
+      servicio. Solo hace falta esta vez.</p>
+      <div class="campo" style="max-width:340px;margin:26px auto 0">
+        <input type="text" id="codigo" placeholder="CÓDIGO" autocomplete="off"
+               style="text-align:center;letter-spacing:.08em">
+      </div>
+      <button class="principal" id="canjear">Continuar</button>
+      <div id="resultado"></div>
+      <button class="enlace" id="salir" style="margin-top:26px">Salir</button>
+    </div>`;
+
+  const boton = document.getElementById('canjear');
+  const campo = document.getElementById('codigo');
+  campo.addEventListener('keydown', e => { if (e.key === 'Enter') boton.click(); });
+  document.getElementById('salir').onclick = () => sb.auth.signOut();
+
+  const mensajes = {
+    codigo_no_valido: 'Ese código no existe. Revísalo.',
+    codigo_caducado: 'Ese código ha caducado.',
+    codigo_agotado: 'Ese código ya se ha usado.',
+    sin_sesion: 'La sesión ha expirado. Vuelve a entrar.',
+  };
+
+  boton.onclick = async () => {
+    boton.disabled = true;
+    const { data, error } = await sb.rpc('canjear_codigo',
+      { codigo_entrada: campo.value.trim() });
+    if (error || !data?.ok) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">${esc(mensajes[data?.error] ?? 'No se ha podido validar el código.')}</div>`;
+      boton.disabled = false;
+      return;
+    }
+    arrancar();
+  };
+}
+
+// ============================================================
+// 3 · Describir el negocio y elegir familias
+// ============================================================
+
+function pantallaDescribir(perfil, session) {
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div style="padding:52px 0">
+      <h1>¿A qué se dedica tu empresa?</h1>
+      <p class="guia">Escríbelo con tus palabras, como se lo contarías a
+      alguien. No hace falta que uses términos técnicos ni que conozcas los
+      códigos de la contratación pública: de eso nos encargamos nosotros.</p>
+      <div class="campo">
+        <textarea id="descripcion" placeholder="Por ejemplo: vendemos equipamiento para policías locales. Uniformidad, calzado, chalecos, material de defensa, linternas y accesorios.">${esc(perfil.descripcion ?? '')}</textarea>
+      </div>
+      <button class="principal" id="analizar">Continuar</button>
+      <div id="resultado"></div>
+    </div>`;
+
+  const boton = document.getElementById('analizar');
+  boton.onclick = async () => {
+    const descripcion = document.getElementById('descripcion').value.trim();
+    if (descripcion.length < 15) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">Cuéntanos un poco más, con una frase basta.</div>`;
+      return;
+    }
+    boton.disabled = true;
+    boton.textContent = 'Analizando...';
+    try {
+      const r = await llamar('proponer', { descripcion });
+      pantallaFamilias(perfil, r, session);
+    } catch (error) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">No hemos podido analizarlo. Inténtalo de nuevo.</div>`;
+      boton.disabled = false;
+      boton.textContent = 'Continuar';
+    }
+  };
+}
+
+function pantallaFamilias(perfil, propuesta, session) {
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div style="padding:52px 0">
+      <h1>Esto es lo que vamos a buscar por ti</h1>
+      <p class="guia">${esc(propuesta.resumen)} Desmarca lo que no encaje.
+      Es preferible dejar de más: el siguiente paso afina el resultado.</p>
+      <div class="propuesta">
+        ${propuesta.prefijos.map((p, i) => `
+          <label class="familia">
+            <input type="checkbox" checked data-prefijo="${esc(p.prefijo)}">
+            <span class="cuerpo">
+              <span class="que">${esc(p.que_trae)}</span>
+              ${p.aviso ? `<span class="aviso-corto">${esc(p.aviso)}</span>` : ''}
+            </span>
+            <span class="volumen">${p.volumen ?? '—'} al año</span>
+          </label>`).join('')}
+      </div>
+      <button class="principal" id="seguir">Ver ejemplos</button>
+      <button class="enlace" id="atras">Cambiar la descripción</button>
+      <div id="resultado"></div>
+    </div>`;
+
+  document.getElementById('atras').onclick = () => pantallaDescribir(perfil, session);
+
+  const boton = document.getElementById('seguir');
+  boton.onclick = async () => {
+    const prefijos = [...raiz.querySelectorAll('.familia input:checked')]
+      .map(c => c.dataset.prefijo);
+    if (!prefijos.length) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">Deja marcada al menos una.</div>`;
+      return;
+    }
+    boton.disabled = true;
+    boton.textContent = 'Buscando ejemplos...';
+    try {
+      const r = await llamar('material', { prefijos });
+      pantallaEntrenar(perfil, prefijos, session, r.licitaciones);
+    } catch (error) {
+      document.getElementById('resultado').innerHTML = error.message === 'catalogo_vacio'
+        ? `<div class="aviso mal">No hemos encontrado contratos con esas
+           categorías. Prueba a describir tu negocio de otra forma.</div>`
+        : `<div class="aviso mal">Algo ha fallado. Inténtalo de nuevo.</div>`;
+      boton.disabled = false;
+      boton.textContent = 'Ver ejemplos';
+    }
+  };
+}
+
+// ============================================================
+// 4 · Entrenamiento
+// ============================================================
+
+async function pantallaEntrenar(perfil, prefijos, session, items) {
+  if (!items) {
+    raiz.innerHTML = `<div class="centro"><p class="guia">Preparando ejemplos...</p></div>`;
+    try {
+      items = (await llamar('material', { prefijos })).licitaciones;
+    } catch {
+      raiz.innerHTML = `<div class="centro"><div class="aviso mal">
+        No hemos podido cargar los ejemplos.</div></div>`;
+      return;
+    }
+  }
+
+  const respuestas = [];
+  let i = 0;
+
+  const intro = () => {
+    raiz.className = 'envoltorio';
+    raiz.innerHTML = `
+      <div class="centro">
+        <h1>¿Cuáles de estos contratos te interesan?</h1>
+        <p class="guia">Son licitaciones reales de tu sector. Con tus respuestas
+        construimos tu filtro: a partir de ahí solo verás lo que encaje.</p>
+        <p class="guia">No hay respuestas correctas, solo las tuyas. Son
+        ${items.length} y se tarda unos cinco minutos.</p>
+        <div class="gestos">
+          <div class="gesto no"><span class="flecha">←</span>
+            <strong>Izquierda</strong><span>No me interesa</span></div>
+          <div class="gesto si"><span class="flecha">→</span>
+            <strong>Derecha</strong><span>Sí me interesa</span></div>
+        </div>
+        <p class="atajos">También valen las flechas del teclado o los botones.</p>
+        <button class="principal" id="empezar" style="margin-top:18px">Empezar</button>
+      </div>`;
+    document.getElementById('empezar').onclick = pintar;
+  };
+
+  const tarjeta = (o, clase) => {
+    const datos = [o.organo, euros(o.presupuesto)].filter(Boolean);
+    return `<article class="carta ${clase}">
+      <div class="franja">
+        <div class="sello no">NO ME INTERESA</div>
+        <div class="sello si">SÍ ME INTERESA</div>
+      </div>
+      <p class="titulo">${esc(o.titulo)}</p>
+      <p class="datos">${datos.map(d => `<span>${esc(d)}</span>`).join('')}</p>
+      ${o.adjudicatario ? `<p class="ganador">Lo ganó <strong>${esc(o.adjudicatario)}</strong>${
+        o.importe_adjudicacion ? ` por ${euros(o.importe_adjudicacion)}` : ''}</p>` : ''}
+      <p class="codigos">CPV ${esc((o.cpvs || []).join(', '))}</p>
+    </article>`;
+  };
+
+  function pintar() {
+    if (i >= items.length) return finalizar();
+
+    const pila = [items[i+2], items[i+1], items[i]].filter(Boolean);
+    const clases = pila.length === 3 ? ['detras-2','detras-1','encima']
+                 : pila.length === 2 ? ['detras-1','encima'] : ['encima'];
+    const si = respuestas.filter(r => r.interesa).length;
+
+    raiz.className = 'envoltorio';
+    raiz.innerHTML = `
+      <div class="avance">
+        <div class="barra"><div class="relleno" style="width:${i/items.length*100}%"></div></div>
+        <div class="cuenta"><span>${i} de ${items.length}</span>
+        <span>${respuestas.length ? `${si} sí · ${respuestas.length-si} no` : ''}</span></div>
+      </div>
+      <div class="baraja">${pila.map((o,n) => tarjeta(o, clases[n])).join('')}</div>
+      <div class="botones">
+        <button class="no" id="b-no">No me interesa</button>
+        <button class="si" id="b-si">Sí me interesa</button>
+      </div>
+      <p class="atajos">Desliza la tarjeta, usa <kbd>←</kbd> <kbd>→</kbd> o pulsa los botones</p>`;
+
+    document.getElementById('b-si').onclick = () => volar(true);
+    document.getElementById('b-no').onclick = () => volar(false);
+    arrastrable(raiz.querySelector('.carta.encima'));
+  }
+
+  const UMBRAL = 110;
+  function arrastrable(carta) {
+    if (!carta) return;
+    let x0 = 0, dx = 0, activo = false;
+    const empezar = ev => {
+      activo = true; dx = 0;
+      x0 = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      carta.classList.add('arrastrando');
+    };
+    const mover = ev => {
+      if (!activo) return;
+      dx = (ev.touches ? ev.touches[0].clientX : ev.clientX) - x0;
+      carta.style.transform = `translateX(${dx}px) rotate(${dx*0.05}deg)`;
+      const fuerza = Math.min(Math.abs(dx)/UMBRAL, 1);
+      carta.querySelector('.sello.si').style.opacity = dx > 0 ? fuerza : 0;
+      carta.querySelector('.sello.no').style.opacity = dx < 0 ? fuerza : 0;
+    };
+    const soltar = () => {
+      if (!activo) return;
+      activo = false;
+      carta.classList.remove('arrastrando');
+      if (Math.abs(dx) >= UMBRAL) return volar(dx > 0);
+      // Soltar a medias no decide nada: arrastrar sin querer sería el
+      // peor fallo posible aquí.
+      carta.classList.add('volando');
+      carta.style.transform = '';
+      carta.querySelectorAll('.sello').forEach(s => s.style.opacity = 0);
+    };
+    carta.addEventListener('mousedown', empezar);
+    carta.addEventListener('touchstart', empezar, {passive:true});
+    document.addEventListener('mousemove', mover);
+    document.addEventListener('touchmove', mover, {passive:true});
+    document.addEventListener('mouseup', soltar);
+    document.addEventListener('touchend', soltar);
+  }
+
+  function volar(interesa) {
+    const carta = raiz.querySelector('.carta.encima');
+    if (carta) {
+      carta.classList.add('volando');
+      carta.style.transform = `translateX(${interesa?700:-700}px) rotate(${interesa?28:-28}deg)`;
+      carta.style.opacity = '0';
+    }
+    const o = items[i];
+    respuestas.push({
+      id_licitacion: o.id_licitacion, titulo: o.titulo, organo: o.organo ?? '',
+      cpvs: (o.cpvs || []).join(','), presupuesto: o.presupuesto ?? null, interesa,
+    });
+    i++;
+    setTimeout(pintar, carta ? 200 : 0);
+  }
+
+  document.addEventListener('keydown', ev => {
+    if (!raiz.querySelector('.carta.encima')) return;
+    if (ev.key === 'ArrowRight') { ev.preventDefault(); volar(true); }
+    if (ev.key === 'ArrowLeft') { ev.preventDefault(); volar(false); }
+  });
+
+  async function finalizar() {
+    raiz.innerHTML = `<div class="centro">
+      <h2>Construyendo tu filtro</h2>
+      <p class="guia">Un momento...</p></div>`;
+    try {
+      await llamar('guardar', { respuestas });
+      const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
+      pantallaCribando(data?.[0] ?? perfil, session);
+    } catch {
+      raiz.innerHTML = `<div class="centro"><div class="aviso mal">
+        No hemos podido guardar tus respuestas. Recarga e inténtalo de nuevo.</div></div>`;
+    }
+  }
+
+  intro();
+}
+
+// ============================================================
+// 5 · Cribado inicial, con progreso real
+// ============================================================
+
+async function pantallaCribando(perfil, session) {
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div class="centro">
+      <h2>Estamos revisando los contratos abiertos</h2>
+      <p class="guia">Aplicamos tu filtro a todas las licitaciones que siguen
+      abiertas ahora mismo. Puede tardar unos minutos; no cierres esta página.</p>
+      <div class="avance" style="max-width:340px;margin:30px auto 0">
+        <div class="barra"><div class="relleno" id="relleno"></div></div>
+        <div class="cuenta"><span id="progreso">Empezando...</span><span></span></div>
+      </div>
+    </div>`;
+
+  // Se piden lotes seguidos hasta terminar. Cada llamada devuelve
+  // cuánto queda, así que el progreso es real y no una animación.
+  let total = 0;
+  while (true) {
+    let r;
+    try {
+      r = await llamar('cribar');
+    } catch {
+      raiz.innerHTML = `<div class="centro"><div class="aviso mal">
+        Se ha interrumpido. Recarga la página y continuará donde iba.</div></div>`;
+      return;
+    }
+    total = total || r.total || 0;
+    if (r.terminado) break;
+    const hechas = total - r.quedan;
+    document.getElementById('relleno').style.width = `${total ? hechas/total*100 : 0}%`;
+    document.getElementById('progreso').textContent = `${hechas} de ${total} contratos`;
+  }
+
+  const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
+  pantallaOportunidades(data?.[0] ?? perfil, session);
+}
+
+// ============================================================
+// 6 · Sus oportunidades
+// ============================================================
+
+async function pantallaOportunidades(perfil, session) {
+  raiz.className = 'envoltorio ancho';
+  raiz.innerHTML = `<div class="centro"><p class="guia">Cargando tus contratos...</p></div>`;
+
+  const { data, error } = await sb.from('mis_oportunidades')
+    .select('*').eq('perfil_id', perfil.id);
+  if (error) {
+    raiz.innerHTML = `<div class="centro"><div class="aviso mal">
+      No hemos podido cargar tus contratos.</div></div>`;
+    return;
+  }
+
+  const DATOS = (data ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
+    .sort((a,b) => (a.dias ?? 9e9) - (b.dias ?? 9e9));
+
+  raiz.innerHTML = `
+    <div class="cabecera-app">
+      <div><strong>Tus contratos</strong>
+        <div class="quien">${esc(perfil.email ?? '')}</div></div>
+      <button class="enlace" id="salir">Salir</button>
+    </div>
+    <h1 id="titular" style="margin-top:30px"></h1>
+    <div class="marcador" id="marcador">
+      <div><span id="m-total">—</span><small>abiertos</small></div>
+      <div><span id="m-si">—</span><small>encaje claro</small></div>
+      <div><span id="m-importe">—</span><small>en juego</small></div>
+      <div><span id="m-urge">—</span><small>vencen esta semana</small></div>
+    </div>
+    <div class="filtros">
+      <select id="f-veredicto">
+        <option value="">Cualquier encaje</option>
+        <option value="si">Para mí</option>
+        <option value="quizas">Puede ser para mí</option>
+      </select>
+      <input type="search" id="f-texto" placeholder="Buscar por título u órgano">
+    </div>
+    <main id="lista"></main>`;
+
+  document.getElementById('salir').onclick = () => sb.auth.signOut();
+
+  const bloqueFecha = o => {
+    if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo publicado</span></div>`;
+    const p = partes(o.fecha_limite);
+    const c = o.dias < 0 ? 'vencido' : o.dias === 0 ? 'vence hoy'
+            : o.dias === 1 ? 'queda 1 día' : `quedan ${o.dias} días`;
+    return `<div class="fecha ${o.dias <= 7 ? 'apura' : ''}">
+      <span class="dia">${p.day} ${MESES[+p.month-1]}</span>
+      <span class="cuenta-dias">${c}</span></div>`;
+  };
+
+  const fechaLarga = s => s ? new Date(s).toLocaleDateString('es-ES',
+    {timeZone:ZONA, day:'numeric', month:'long', year:'numeric'}) : '—';
+  const plazoLargo = s => {
+    if (!s) return 'sin plazo publicado';
+    const p = partes(s);
+    return `${fechaLarga(s)}, a las ${p.hour}:${p.minute} (hora peninsular)`;
+  };
+
+  function marcador(lista) {
+    const total = lista.reduce((s,o) => s + (o.presupuesto || 0), 0);
+    const n = lista.length;
+    document.getElementById('titular').textContent = n === 0
+      ? 'Ahora mismo no hay contratos abiertos para ti'
+      : `Hay ${n} ${n === 1 ? 'contrato abierto' : 'contratos abiertos'} para ti`;
+    document.getElementById('m-total').textContent = n;
+    document.getElementById('m-si').textContent = lista.filter(o => o.veredicto === 'si').length;
+    document.getElementById('m-importe').textContent = new Intl.NumberFormat('es-ES',
+      {notation:'compact',style:'currency',currency:'EUR',maximumFractionDigits:1}).format(total);
+    document.getElementById('m-urge').textContent =
+      lista.filter(o => o.dias != null && o.dias >= 0 && o.dias <= 7).length;
+  }
+
+  function pintar() {
+    const ver = document.getElementById('f-veredicto').value;
+    const txt = document.getElementById('f-texto').value.toLowerCase().trim();
+    const vistos = DATOS.filter(o =>
+      (!ver || o.veredicto === ver) &&
+      (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
+
+    marcador(vistos);
+    document.getElementById('lista').innerHTML = vistos.length ? vistos.map((o,i) => `
+      <button class="fila" data-i="${i}">
+        ${bloqueFecha(o)}
+        <div><p class="t">${esc(o.titulo)}</p>
+          <p class="meta">${esc(o.organo ?? '')}</p></div>
+        <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
+          <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
+      </button>
+      <section class="detalle" id="d${i}">
+        ${o.veredicto_motivo ? `<p class="cita">${esc(o.veredicto_motivo)}</p>` : ''}
+        <dl>
+          <dt>Órgano</dt><dd>${esc(o.organo ?? '—')}</dd>
+          <dt>Presupuesto</dt><dd>${euros(o.presupuesto) ?? 'sin importe publicado'}</dd>
+          <dt>Plazo</dt><dd>${plazoLargo(o.fecha_limite)}</dd>
+          <dt>Códigos CPV</dt><dd>${esc((o.cpvs || []).join(', ')) || '—'}</dd>
+        </dl>
+        ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
+      </section>`).join('')
+      : `<p class="vacio">Ningún contrato encaja con estos filtros.</p>`;
+
+    raiz.querySelectorAll('.fila').forEach(f => f.onclick = () =>
+      document.getElementById('d' + f.dataset.i).classList.toggle('abierto'));
+  }
+
+  let temporizador;
+  const repintar = () => {
+    const lista = document.getElementById('lista');
+    const marca = document.getElementById('marcador');
+    lista.classList.add('cambiando');
+    marca.classList.add('cambiando');
+    clearTimeout(temporizador);
+    temporizador = setTimeout(() => {
+      pintar();
+      lista.classList.remove('cambiando');
+      marca.classList.remove('cambiando');
+    }, 160);
+  };
+
+  ['f-veredicto','f-texto'].forEach(id =>
+    document.getElementById(id).addEventListener('input', repintar));
+  pintar();
+}
+
+arrancar();
+</script>
+</body>
+</html>
