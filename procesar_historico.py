@@ -339,81 +339,22 @@ def volcar_todo(filas: list[dict], etiqueta: str) -> int:
     return guardadas
 
 
-def actualizar_resumen(filas: list[dict], periodo: str) -> None:
+def refrescar_resumen() -> None:
     """
-    Guarda cuántas licitaciones hay por familia CPV.
+    Pide a la base que recalcule el resumen por familia CPV.
 
-    Se calcula aquí, mientras el mes ya está en memoria, y no cuando un
-    cliente pregunta: recorrer el catálogo entero para contar agota el
-    tiempo de cálculo de una función y la mata.
-
-    Se cuentan todas las longitudes de prefijo, de 2 a 6 dígitos, para
-    poder responder tanto a "18" como a "1811" sin recalcular nada.
+    Se hace en SQL y no aquí por una razón de corrección: un expediente
+    aparece en varios meses del catálogo, uno por cada cambio de estado,
+    así que contarlo mes a mes en Python lo sumaba tantas veces como
+    meses en los que se hubiera movido. En la tabla `licitaciones` cada
+    expediente es una única fila, y la cuenta sale exacta.
     """
-    from collections import Counter
-
-    total, vivas = Counter(), Counter()
-    for fila in filas:
-        esta_viva = fila["estado_licitacion"] == "PUB"
-        prefijos = set()
-        for cpv in fila["cpvs"].split(","):
-            cpv = cpv.strip()
-            for largo in range(2, min(len(cpv), 6) + 1):
-                prefijos.add(cpv[:largo])
-        for p in prefijos:
-            total[p] += 1
-            if esta_viva:
-                vivas[p] += 1
-
-    if not total:
-        return
-
-    cliente = lector.obtener_cliente_supabase()
-    ahora = datetime.now(timezone.utc).isoformat()
-
-    # El recuento se guarda POR MES y no acumulado. Sumar sobre lo que
-    # hubiera hacía que el resultado dependiera de cuántas veces se
-    # hubiese lanzado el proceso: al relanzarlo, los números se
-    # duplicaban y el cliente elegía familias con datos inventados.
-    #
-    # El total del año se obtiene sumando los doce meses al consultar,
-    # que es una operación barata y siempre correcta.
-    filas_resumen = [
-        {
-            "prefijo": p,
-            "periodo": periodo,
-            "licitaciones": total[p],
-            "vivas": vivas[p],
-            "actualizado": ahora,
-        }
-        for p in total
-    ]
-
-    guardados = 0
-    fallos = 0
-    for i in range(0, len(filas_resumen), 200):
-        try:
-            # La clave de la tabla es (prefijo, periodo): así reprocesar un
-            # mes lo reemplaza en vez de duplicarlo. Indicar solo "prefijo"
-            # hacía fallar la escritura entera, y en silencio.
-            (cliente.table("resumen_cpv")
-             .upsert(filas_resumen[i:i + 200], on_conflict="prefijo,periodo")
-             .execute())
-            guardados += len(filas_resumen[i:i + 200])
-        except Exception as error:
-            fallos += 1
-            if fallos <= 2:
-                logging.error("Fallo al guardar el resumen: %s", error)
-
-    logging.info("Resumen de CPV actualizado: %d familias.", guardados)
-
-    # Si se calculó y no se guardó nada, hay que enterarse: un resumen
-    # vacío hace que el cliente elija sus familias viendo ceros.
-    if filas_resumen and guardados == 0:
-        raise RuntimeError(
-            f"El resumen no se ha podido guardar ({len(filas_resumen)} familias "
-            "calculadas, 0 escritas). Revisa el esquema de `resumen_cpv`."
-        )
+    try:
+        cliente = lector.obtener_cliente_supabase()
+        respuesta = cliente.rpc("refrescar_resumen_cpv", {}).execute()
+        logging.info("Resumen de CPV recalculado: %s familias.", respuesta.data)
+    except Exception as error:
+        logging.error("No se pudo recalcular el resumen: %s", error)
 
 
 # ==============================================================
@@ -464,8 +405,10 @@ def main() -> int:
     logging.info("  Estados: %s", ", ".join(f"{k}={v}" for k, v in reparto.most_common(6)))
 
     if not opciones.local:
-        actualizar_resumen(filas, f"{opciones.anio}-{opciones.mes:02d}")
         volcar_todo(filas, etiqueta)
+        # El resumen se recalcula al final, sobre lo ya volcado: contarlo
+        # mes a mes duplicaba los expedientes que se mueven varias veces.
+        refrescar_resumen()
 
     if opciones.local:
         destino = ruta.replace("/", "_")
