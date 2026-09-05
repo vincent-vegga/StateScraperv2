@@ -211,18 +211,14 @@ function elegirMuestra(
     }
   }
 
-  // Las familias grandes primero: son el núcleo del negocio y las
-  // preguntas fáciles enseñan la mecánica. Si se empieza por los casos
-  // raros, esas respuestas son ruido porque la persona aún está
-  // calibrando qué se le pregunta.
-  const nNucleo = Math.max(1, Math.round(muestra.length * PROPORCION_NUCLEO));
-  const grandes = new Set(orden.slice(0, Math.max(1, Math.ceil(orden.length / 2))));
-  const esGrande = (f: Record<string, string>) =>
-    grandes.has((f._cpvs.split("|")[0] ?? "").slice(0, 4));
-
-  const nucleo = muestra.filter(esGrande).slice(0, nNucleo);
-  const resto = muestra.filter((f) => !nucleo.includes(f));
-  barajar(nucleo); barajar(resto);
+  // Se barajan y ya: con un reparto equitativo entre los prefijos que
+  // el cliente eligió, todos son igual de relevantes para él. Separar
+  // "núcleo" y "frontera" tenía sentido cuando los grupos eran familias
+  // CPV de tamaños muy distintos; aquí solo añadiría un orden que no
+  // significa nada.
+  const nucleo = muestra;
+  const resto: Record<string, string>[] = [];
+  barajar(nucleo);
   // Recorte final: el tope es una promesa hecha al cliente —"son
   // treinta y se tarda cinco minutos"— y no puede incumplirse.
   return [...nucleo, ...resto].slice(0, cuantas);
@@ -428,21 +424,39 @@ Deno.serve(async (peticion) => {
       }
       if (!encajan?.length) return responder({ error: "catalogo_vacio" }, 404);
 
-      const porFamilia: Record<string, Reservorio> = {};
+      // Se agrupa por el PREFIJO QUE ELIGIÓ EL CLIENTE, no por familia
+      // CPV de cuatro dígitos.
+      //
+      // Agrupar por familia fue un error caro: un sector amplio genera
+      // más de cien familias, el cupo salía a una por familia, y el
+      // reparto se llevaba las treinta MÁS GRANDES. Las del cliente
+      // —uniformidad, protección— son pequeñas al lado de mantenimiento
+      // u obras, así que no entraba ninguna: de treinta tarjetas
+      // rechazó veintiocho.
+      //
+      // Con este agrupado, cada prefijo que él marcó tiene su cuota.
+      const porGrupo: Record<string, Reservorio> = {};
       const totales: Record<string, number> = {};
       for (const f of encajan) {
+        const cpvs = (f.cpvs ?? []) as string[];
+        // Al primero que encaje: si una licitación cae en dos prefijos
+        // suyos, cuenta para el más específico.
+        const suyo = [...lista].sort((a, b) => b.length - a.length)
+          .find((p) => cpvs.some((c) => c.startsWith(p)));
+        if (!suyo) continue;
+
         const fila = {
           id_licitacion: f.id_licitacion, titulo: f.titulo,
           organo: f.organo ?? "", presupuesto: String(f.presupuesto ?? ""),
           adjudicatario: "", importe_adjudicacion: "",
-          _cpvs: (f.cpvs ?? []).join("|"),
+          _cpvs: cpvs.join("|"),
         } as Record<string, string>;
-        const familia = (fila._cpvs.split("|")[0] ?? "otros").slice(0, 4);
-        (porFamilia[familia] ??= new Reservorio(CUANTAS)).ofrecer(fila);
-        totales[familia] = (totales[familia] ?? 0) + 1;
+
+        (porGrupo[suyo] ??= new Reservorio(CUANTAS)).ofrecer(fila);
+        totales[suyo] = (totales[suyo] ?? 0) + 1;
       }
 
-      const muestra = elegirMuestra(porFamilia, totales, CUANTAS);
+      const muestra = elegirMuestra(porGrupo, totales, CUANTAS);
 
       await comoUsuario.from("perfiles").update({
         cpv_prefijos: lista.join(","), paso_alta: "entrenando",
