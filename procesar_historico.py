@@ -70,7 +70,7 @@ TIMEOUT = 900
 CAMPOS = [
     "id_licitacion", "expediente", "titulo", "organo", "enlace",
     "codigo_postal", "presupuesto", "cpvs", "estado_licitacion",
-    "adjudicatario", "importe_adjudicacion",
+    "adjudicatario", "adjudicatario_cif", "importe_adjudicacion",
     "fecha_actualizacion", "fecha_publicacion", "fecha_limite",
 ]
 
@@ -87,25 +87,50 @@ def configurar_logging() -> None:
 # 2. EL ADJUDICATARIO
 # ==============================================================
 
-def extraer_adjudicacion(entrada) -> tuple[str, float | None]:
+def normalizar_cif(valor: str) -> str:
     """
-    Quién ganó el contrato y por cuánto.
+    Deja el identificador fiscal en su forma comparable.
+
+    Llega escrito de mil maneras —con guiones, espacios, minúsculas o
+    con el prefijo "ES"— y sin normalizar no se puede buscar por él.
+    """
+    limpio = "".join(c for c in (valor or "").upper() if c.isalnum())
+    if limpio.startswith("ES") and len(limpio) > 9:
+        limpio = limpio[2:]
+    return limpio
+
+
+def extraer_adjudicacion(entrada) -> tuple[str, str, float | None]:
+    """
+    Quién ganó el contrato, con qué CIF y por cuánto.
 
     Es el dato que convierte un archivo de licitaciones en inteligencia
-    de mercado: permite responder "quién ganó el último contrato de este
-    ayuntamiento y a qué precio", que para un proveedor vale más que
-    saber que existe una licitación.
+    de mercado, y sobre todo es lo que permite que un cliente nuevo se
+    identifique y el sistema sepa al instante a qué se presenta: nada
+    que él pueda contarnos es tan fiable como lo que ya ha ganado.
 
-    En CODICE vive dentro de <cac:TenderResult>, con el adjudicatario en
-    <cac:WinningParty> y el importe en <cac:AwardedTenderedProject>.
+    El CIF importa más que el nombre. Una misma empresa aparece como
+    "CONFECCIONES IBERICAS, S.L.", "Confecciones Ibéricas SL" o con el
+    identificador pegado al nombre; el CIF es lo único que no cambia.
+
+    En CODICE vive dentro de <cac:TenderResult>: el adjudicatario en
+    <cac:WinningParty>, su identificación en <cac:PartyIdentification>
+    y el importe en <cac:AwardedTenderedProject>.
     """
-    nombre, importe = "", None
+    nombre, cif, importe = "", "", None
 
     for resultado in lector.buscar_todos(entrada, "TenderResult"):
         for parte in lector.buscar_todos(resultado, "WinningParty"):
-            nombre = lector.primer_texto(parte, "Name")
-            if nombre:
+            if not nombre:
+                nombre = lector.primer_texto(parte, "Name")
+            if not cif:
+                for identificacion in lector.buscar_todos(parte, "PartyIdentification"):
+                    cif = normalizar_cif(lector.primer_texto(identificacion, "ID"))
+                    if cif:
+                        break
+            if nombre and cif:
                 break
+
         for proyecto in lector.buscar_todos(resultado, "AwardedTenderedProject"):
             for etiqueta in ("PayableAmount", "TotalAmount", "TaxExclusiveAmount"):
                 importe = lector.a_numero(lector.primer_texto(proyecto, etiqueta))
@@ -113,10 +138,10 @@ def extraer_adjudicacion(entrada) -> tuple[str, float | None]:
                     break
             if importe is not None:
                 break
-        if nombre or importe is not None:
+        if nombre or cif or importe is not None:
             break
 
-    return nombre, importe
+    return nombre, cif, importe
 
 
 def a_fila(entrada, etiqueta: str) -> dict | None:
@@ -125,7 +150,7 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
     if datos is None:
         return None
 
-    adjudicatario, importe = extraer_adjudicacion(entrada)
+    adjudicatario, cif, importe = extraer_adjudicacion(entrada)
     fecha_act = lector.a_fecha(datos["fecha_actualizacion"])
 
     return {
@@ -142,6 +167,7 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
         "cpvs": ",".join(datos["cpvs"]),
         "estado_licitacion": datos["estado_licitacion"] or "",
         "adjudicatario": adjudicatario,
+        "adjudicatario_cif": cif,
         "importe_adjudicacion": importe if importe is not None else "",
         "fecha_actualizacion": fecha_act.isoformat() if fecha_act else "",
         "fecha_publicacion": datos.get("fecha_publicacion") or "",
@@ -316,6 +342,15 @@ def volcar_todo(filas: list[dict], etiqueta: str) -> int:
             "fecha_actualizacion": f["fecha_actualizacion"] or None,
             "fecha_publicacion": f["fecha_publicacion"] or None,
             "fecha_limite": f["fecha_limite"] or None,
+            # Sin esto el histórico de adjudicaciones se quedaba en los
+            # ficheros del catálogo y no se podía consultar. Es lo que
+            # permite que un cliente se identifique y el sistema sepa al
+            # instante a qué contratos se presenta.
+            "adjudicatario": f.get("adjudicatario") or None,
+            "adjudicatario_cif": f.get("adjudicatario_cif") or None,
+            "importe_adjudicacion": (f["importe_adjudicacion"]
+                                     if f.get("importe_adjudicacion") not in ("", None)
+                                     else None),
             "estado_pipeline": "pendiente_analisis",
         }
         for f in vivas
