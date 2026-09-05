@@ -24,6 +24,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const MODELO = Deno.env.get("MODELO_ALTA") ?? "gpt-4o-mini";
+// La lectura del historial define el producto de cada cliente y ocurre
+// una sola vez en su vida. Compensa un modelo mejor que el del cribado
+// diario: unos céntimos por cliente frente a un criterio mediocre para
+// siempre.
+const MODELO_HISTORIAL = Deno.env.get("MODELO_HISTORIAL") ?? "gpt-4o";
 const OPENAI = "https://api.openai.com/v1/chat/completions";
 
 // Cuántas licitaciones se le enseñan y cómo se reparten. El núcleo fija
@@ -118,7 +123,8 @@ Devuelve EXCLUSIVAMENTE JSON:
 "producto":["uniform","chalec"],"destinatario":["polic","agente"],\
 "resumen":"..."}`;
 
-async function llamarModelo(mensajes: unknown[], maxTokens = 900) {
+async function llamarModelo(mensajes: unknown[], maxTokens = 900,
+                            modelo = MODELO) {
   const clave = Deno.env.get("OPENAI_API_KEY");
   if (!clave) throw new Error("Falta OPENAI_API_KEY en la función.");
 
@@ -130,7 +136,7 @@ async function llamarModelo(mensajes: unknown[], maxTokens = 900) {
       "User-Agent": "StateScraper/1.0",
     },
     body: JSON.stringify({
-      model: MODELO,
+      model: modelo,
       messages: mensajes,
       response_format: { type: "json_object" },
       temperature: 0,
@@ -196,6 +202,66 @@ function barajar<T>(lista: T[]) {
     const j = Math.floor(Math.random() * (i + 1));
     [lista[i], lista[j]] = [lista[j], lista[i]];
   }
+}
+
+// ------------------------------------------------------------
+// Lectura del historial
+// ------------------------------------------------------------
+
+const INSTRUCCIONES_HISTORIAL = `\
+Eres un analista de contratación pública española. Te dan los títulos de \
+los contratos públicos que una empresa ha GANADO. Son hechos, no \
+opiniones: describen exactamente a qué se dedica.
+
+Tu tarea es doble.
+
+1. ESCRIBIR SU CRITERIO. El texto que usará un clasificador automático \
+para decidir, sobre contratos futuros, si le interesan a esta empresa.
+
+   · En español y en segunda persona: "responde sí cuando...".
+   · Estructura: qué es "sí", qué es "quizás", qué es "no".
+   · Deduce el PRINCIPIO que une sus contratos, no los enumeres. Si ha \
+ganado vestuario para policía local, el principio es equipar a cuerpos de \
+seguridad, no "vestuario de Valdemorillo".
+   · Incluye la prueba decisiva: ¿podría esta empresa ser el proveedor \
+principal de este contrato?
+   · Ante duda razonable entre "quizás" y "no", elige "quizás". Perder una \
+oportunidad es mucho más grave que mostrar una de más.
+   · Máximo 350 palabras.
+
+2. VALIDAR SUS CÓDIGOS CPV. Se te dan los prefijos que aparecen en sus \
+contratos, con su frecuencia. Algunos están MAL PUESTOS por el organismo \
+que publicó el anuncio: es habitual. Un contrato titulado "Vestuario \
+Policía Local" con el código de software lleva un error evidente.
+
+   Devuelve solo los prefijos que encajan de verdad con lo que hace la \
+empresa, según los títulos que has leído. Descarta los que solo pueden \
+explicarse como un error de etiquetado.
+
+Devuelve EXCLUSIVAMENTE JSON:
+{"criterio":"...","prefijos_validos":["3581","1810"],\
+"descartados":[{"prefijo":"4800","motivo":"..."}],\
+"actividad":"una frase sobre a qué se dedica","resumen":"una frase para el cliente"}`;
+
+async function leerHistorial(
+  contratos: { titulo: string; organo: string; importe: number | null }[],
+  prefijos: { prefijo: string; contratos: number }[],
+) {
+  const lista = contratos
+    .map((c) => `- ${c.titulo}${c.organo ? ` (${c.organo})` : ""}`)
+    .join("\n");
+  const codigos = prefijos
+    .map((p) => `${p.prefijo}: ${p.contratos} contratos`)
+    .join("\n");
+
+  return await llamarModelo([
+    { role: "system", content: INSTRUCCIONES_HISTORIAL },
+    {
+      role: "user",
+      content: `CONTRATOS GANADOS (${contratos.length}):\n${lista}\n\n` +
+               `PREFIJOS CPV QUE APARECEN:\n${codigos}`,
+    },
+  ], 1600, MODELO_HISTORIAL);
 }
 
 // ------------------------------------------------------------
@@ -402,7 +468,18 @@ Deno.serve(async (peticion) => {
       return responder({ ok: true, empresas: encontradas, ultimos: ultimos ?? [] });
     }
 
-    // --- Confirmar la empresa y quedarse con sus sectores ---
+    // --- Confirmar la empresa: se lee su historial y se genera todo ---
+    //
+    // Aquí desaparecen las tarjetas. No hacen falta: los contratos que ha
+    // ganado dicen a qué se dedica mejor que treinta respuestas suyas, y
+    // sin pedirle cinco minutos de trabajo.
+    //
+    // Además resuelve un problema que las tarjetas no podían: los códigos
+    // CPV vienen a veces MAL PUESTOS por el organismo que publica. Una
+    // empresa de uniformidad tenía dos contratos etiquetados como
+    // software —"Vestuario Policía Local" con el código 48000000— y eso
+    // le metía 6.071 licitaciones ajenas en el perfil. Leyendo los
+    // títulos, el error salta a la vista.
     if (accion === "confirmar_empresa") {
       if (!cif) return responder({ error: "sin_cif" }, 400);
 
@@ -411,34 +488,66 @@ Deno.serve(async (peticion) => {
       const suya = (empresas ?? [])[0] as Record<string, unknown> | undefined;
       if (!suya) return responder({ error: "empresa_no_encontrada" }, 404);
 
-      // Los prefijos salen de lo que ha ganado, no de lo que dice que
-      // vende. Se cogen TODOS los que tengan al menos dos contratos: uno
-      // solo puede ser casualidad, dos ya es una línea de trabajo.
-      //
-      // Y se capturan todos sin pedirle que elija: pecar de amplio al
-      // capturar, afinar al mirar. En su página filtrará por sector.
-      const { data: cpvs } = await admin.rpc("cpvs_de_empresa",
-        { cif_buscado: cif, nombre_buscado: null, largo: 2 });
+      const [{ data: ganados }, { data: prefijosCrudos }] = await Promise.all([
+        admin.rpc("ultimos_ganados", { cif_buscado: cif, tope: 40 }),
+        admin.rpc("prefijos_de_empresa", { cif_buscado: cif, minimo: 1 }),
+      ]);
 
-      const suyos = ((cpvs ?? []) as { prefijo: string; contratos: number }[])
-        .filter((c) => c.contratos >= 2)
-        .map((c) => c.prefijo);
-      if (!suyos.length) return responder({ error: "sin_historial" }, 404);
+      const contratos = ((ganados ?? []) as Record<string, unknown>[]).map((g) => ({
+        titulo: String(g.titulo ?? ""),
+        organo: String(g.organo ?? ""),
+        importe: g.importe ? Number(g.importe) : null,
+      }));
+      const prefijos = (prefijosCrudos ?? []) as { prefijo: string; contratos: number }[];
+
+      if (!contratos.length || !prefijos.length) {
+        return responder({ error: "sin_historial" }, 404);
+      }
+
+      const lectura = await leerHistorial(contratos, prefijos);
+
+      // Los prefijos que valida el modelo. Si no valida ninguno —cosa que
+      // no debería pasar— se usan los que tengan al menos dos contratos,
+      // que es el criterio anterior.
+      const validos = (Array.isArray(lectura.prefijos_validos)
+        ? lectura.prefijos_validos : [])
+        .map((p: unknown) => String(p).replace(/\D/g, ""))
+        .filter((p: string) => p.length >= 2 && p.length <= 6);
+      const finales = validos.length
+        ? validos
+        : prefijos.filter((p) => p.contratos >= 2).map((p) => p.prefijo);
+
+      const descartados = Array.isArray(lectura.descartados) ? lectura.descartados : [];
+      if (descartados.length) {
+        console.log("CPV descartados:", descartados
+          .map((d: Record<string, unknown>) => `${d.prefijo} (${d.motivo})`).join(" · "));
+      }
 
       await comoUsuario.from("perfiles").update({
         empresa: String(suya.nombre ?? ""),
         cif: String(suya.cif ?? ""),
         contratos_ganados: Number(suya.contratos ?? 0),
-        cpv_prefijos: suyos.join(","),
+        cpv_prefijos: finales.join(","),
         nombre: String(suya.nombre ?? perfil.nombre),
-        paso_alta: "entrenando",
+        descripcion: String(lectura.actividad ?? ""),
+        criterio: String(lectura.criterio ?? ""),
+        criterio_version: (perfil.criterio_version ?? 0) + 1,
+        criterio_fecha: new Date().toISOString(),
+        // Directo a cribar: no hay tarjetas que deslizar.
+        paso_alta: "cribando",
       }).eq("id", perfil.id);
 
       console.log(`Empresa ${suya.cif}: ${suya.contratos} contratos, ` +
-                  `sectores ${suyos.join(",")}`);
+                  `prefijos ${finales.join(",")}`);
 
-      return responder({ ok: true, prefijos: suyos,
-                         contratos: Number(suya.contratos ?? 0) });
+      return responder({
+        ok: true,
+        prefijos: finales,
+        descartados,
+        actividad: String(lectura.actividad ?? ""),
+        resumen: String(lectura.resumen ?? ""),
+        contratos: Number(suya.contratos ?? 0),
+      });
     }
 
     // --- Proponer CPV a partir de la descripción ---
@@ -534,17 +643,21 @@ Deno.serve(async (peticion) => {
       // no le interesa— o que perdiera, y entonces sí. Esa distinción es
       // la que el historial no da y solo él sabe.
       if (perfil.cif) {
+        // El reparto lo hace la base, en proporción a cuántos contratos
+        // ha ganado en cada prefijo: si el 90% de su historial es
+        // protección y ropa, el 90% de las tarjetas lo son.
         const { data: candidatas, error: falloEmpresa } = await admin
           .rpc("material_de_empresa",
-               { cif_buscado: perfil.cif, prefijos: lista, tope: 300 });
+               { cif_buscado: perfil.cif, prefijos: lista, tope: CUANTAS });
 
         if (falloEmpresa) {
           console.error("Fallo al buscar material de empresa:", falloEmpresa);
           return responder({ error: "error_interno" }, 500);
         }
 
-        const escogidas = ((candidatas ?? []) as Record<string, unknown>[])
-          .slice(0, CUANTAS);
+        const todas = (candidatas ?? []) as Record<string, unknown>[];
+        barajar(todas);
+        const escogidas = todas.slice(0, CUANTAS);
         if (!escogidas.length) return responder({ error: "catalogo_vacio" }, 404);
 
         await comoUsuario.from("perfiles").update({
