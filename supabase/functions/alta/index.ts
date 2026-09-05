@@ -362,12 +362,84 @@ Deno.serve(async (peticion) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { accion, descripcion, prefijos, respuestas } = await peticion.json();
+    const { accion, descripcion, prefijos, respuestas, cif, empresa } =
+      await peticion.json();
 
     const { data: perfiles } = await comoUsuario.from("perfiles")
       .select("*").eq("usuario_id", user.id).limit(1);
     const perfil = perfiles?.[0];
     if (!perfil) return responder({ error: "sin_perfil" }, 403);
+
+    // --- Buscar la empresa por su CIF ---
+    //
+    // Adivinar a qué contratos se presenta un cliente, a partir de cómo
+    // describe su negocio, resultó poco fiable: hicieron falta cuatro
+    // rediseños y el mejor resultado fue que reconociera doce de treinta
+    // ejemplos.
+    //
+    // Ese dato no hay que adivinarlo: está publicado. Los contratos que
+    // ha ganado llevan su CIF, así que basta con que se identifique.
+    if (accion === "buscar_empresa") {
+      const { data, error: fallo } = await admin.rpc("buscar_empresa", {
+        cif_buscado: cif ?? null,
+        nombre_buscado: empresa ?? null,
+      });
+      if (fallo) {
+        console.error("Fallo al buscar empresa:", fallo);
+        return responder({ error: "error_interno" }, 500);
+      }
+
+      const encontradas = (data ?? []) as Record<string, unknown>[];
+      if (!encontradas.length) return responder({ ok: true, empresas: [] });
+
+      // De la primera se traen sus últimos contratos: enseñárselos es
+      // lo que demuestra que el sistema sabe de qué habla, antes de
+      // pedirle nada.
+      const { data: ultimos } = await admin.rpc("ultimos_ganados", {
+        cif_buscado: String(encontradas[0].cif), tope: 5,
+      });
+
+      return responder({ ok: true, empresas: encontradas, ultimos: ultimos ?? [] });
+    }
+
+    // --- Confirmar la empresa y quedarse con sus sectores ---
+    if (accion === "confirmar_empresa") {
+      if (!cif) return responder({ error: "sin_cif" }, 400);
+
+      const { data: empresas } = await admin.rpc("buscar_empresa",
+        { cif_buscado: cif, nombre_buscado: null });
+      const suya = (empresas ?? [])[0] as Record<string, unknown> | undefined;
+      if (!suya) return responder({ error: "empresa_no_encontrada" }, 404);
+
+      // Los prefijos salen de lo que ha ganado, no de lo que dice que
+      // vende. Se cogen TODOS los que tengan al menos dos contratos: uno
+      // solo puede ser casualidad, dos ya es una línea de trabajo.
+      //
+      // Y se capturan todos sin pedirle que elija: pecar de amplio al
+      // capturar, afinar al mirar. En su página filtrará por sector.
+      const { data: cpvs } = await admin.rpc("cpvs_de_empresa",
+        { cif_buscado: cif, nombre_buscado: null, largo: 2 });
+
+      const suyos = ((cpvs ?? []) as { prefijo: string; contratos: number }[])
+        .filter((c) => c.contratos >= 2)
+        .map((c) => c.prefijo);
+      if (!suyos.length) return responder({ error: "sin_historial" }, 404);
+
+      await comoUsuario.from("perfiles").update({
+        empresa: String(suya.nombre ?? ""),
+        cif: String(suya.cif ?? ""),
+        contratos_ganados: Number(suya.contratos ?? 0),
+        cpv_prefijos: suyos.join(","),
+        nombre: String(suya.nombre ?? perfil.nombre),
+        paso_alta: "entrenando",
+      }).eq("id", perfil.id);
+
+      console.log(`Empresa ${suya.cif}: ${suya.contratos} contratos, ` +
+                  `sectores ${suyos.join(",")}`);
+
+      return responder({ ok: true, prefijos: suyos,
+                         contratos: Number(suya.contratos ?? 0) });
+    }
 
     // --- Proponer CPV a partir de la descripción ---
     if (accion === "proponer") {
@@ -407,6 +479,8 @@ Deno.serve(async (peticion) => {
         p.vivas = porPrefijo[p.prefijo]?.vivas ?? 0;
       }
 
+      console.log("Palabras:", propuesta.producto.join(","), "|",
+                  propuesta.destinatario.join(","));
       console.log("Propuesta:", propuesta.prefijos
         .map((p) => `${p.prefijo}=${p.volumen}`).join(" "));
 
@@ -415,6 +489,29 @@ Deno.serve(async (peticion) => {
       // resultados es peor que no ofrecerla.
       const conVolumen = propuesta.prefijos.filter((p) => (p.volumen ?? 0) > 0);
       if (conVolumen.length) propuesta.prefijos = conVolumen;
+
+      // Se descartan las palabras que no discriminan. El modelo no puede
+      // saber cuáles son —depende de los datos— pero se mide en un
+      // segundo: una palabra que aparece en un tercio de los contratos
+      // no separa nada, y con "ayunt" como destinatario casi todo
+      // contaba como del sector del cliente.
+      const util = async (palabras: string[], tope: number) => {
+        if (!palabras.length) return [];
+        const { data } = await admin.rpc("utilidad_palabras", { palabras });
+        if (!data) return palabras;
+        const buenas = (data as { palabra: string; porcentaje: number }[])
+          .filter((d) => d.porcentaje <= tope)
+          .map((d) => d.palabra);
+        const fuera = palabras.filter((p) => !buenas.includes(p));
+        if (fuera.length) console.log("Palabras descartadas:", fuera.join(", "));
+        return buenas.length ? buenas : palabras;
+      };
+
+      // El destinatario se exige más estricto: es lo que separa lo claro
+      // de la frontera, y una palabra floja ahí arruina la muestra
+      // entera.
+      propuesta.producto = await util(propuesta.producto, 8);
+      propuesta.destinatario = await util(propuesta.destinatario, 4);
 
       await comoUsuario.from("perfiles").update({
         descripcion,
@@ -431,6 +528,46 @@ Deno.serve(async (peticion) => {
       const lista = (prefijos ?? []).map((p: string) => String(p).replace(/\D/g, ""))
         .filter((p: string) => p.length >= 2 && p.length <= 6);
       if (!lista.length) return responder({ error: "sin_prefijos" }, 400);
+
+      // Con historial, el material sale de sus sectores reales: lo que
+      // NO ganó dentro de ellos. Puede que ni se presentara —y entonces
+      // no le interesa— o que perdiera, y entonces sí. Esa distinción es
+      // la que el historial no da y solo él sabe.
+      if (perfil.cif) {
+        const { data: candidatas, error: falloEmpresa } = await admin
+          .rpc("material_de_empresa",
+               { cif_buscado: perfil.cif, prefijos: lista, tope: 300 });
+
+        if (falloEmpresa) {
+          console.error("Fallo al buscar material de empresa:", falloEmpresa);
+          return responder({ error: "error_interno" }, 500);
+        }
+
+        const escogidas = ((candidatas ?? []) as Record<string, unknown>[])
+          .slice(0, CUANTAS);
+        if (!escogidas.length) return responder({ error: "catalogo_vacio" }, 404);
+
+        await comoUsuario.from("perfiles").update({
+          cpv_prefijos: lista.join(","), paso_alta: "entrenando",
+        }).eq("id", perfil.id);
+
+        console.log(`Material de historial: ${escogidas.length} de ${(candidatas ?? []).length}`);
+
+        return responder({
+          ok: true,
+          total_disponibles: (candidatas ?? []).length,
+          licitaciones: escogidas.map((f) => ({
+            id_licitacion: f.id_licitacion,
+            titulo: f.titulo,
+            organo: f.organo ?? "",
+            presupuesto: f.presupuesto ? Number(f.presupuesto) : null,
+            cpvs: (f.cpvs ?? []) as string[],
+            adjudicatario: String(f.adjudicatario ?? ""),
+            importe_adjudicacion: f.importe_adjudicacion
+              ? Number(f.importe_adjudicacion) : null,
+          })),
+        });
+      }
 
       const producto = (perfil.palabras_producto ?? []) as string[];
       const destinatario = (perfil.palabras_destinatario ?? []) as string[];
@@ -548,7 +685,27 @@ Deno.serve(async (peticion) => {
         })),
       );
 
-      const criterio = await generarCriterio(perfil.descripcion ?? "", respuestas);
+      // Los contratos que ganó son ejemplos positivos seguros: no hay
+      // opinión más fiable que un contrato adjudicado. Se suman a lo que
+      // haya marcado, de forma que el criterio tenga base sólida aunque
+      // en las tarjetas diga que sí a pocas.
+      let ejemplos = respuestas;
+      if (perfil.cif) {
+        const { data: ganados } = await admin.rpc("ultimos_ganados",
+          { cif_buscado: perfil.cif, tope: 25 });
+        const positivos = ((ganados ?? []) as Record<string, unknown>[]).map((g) => ({
+          titulo: String(g.titulo ?? ""),
+          organo: String(g.organo ?? ""),
+          cpvs: "",
+          interesa: true,
+        }));
+        ejemplos = [...positivos, ...respuestas];
+        console.log(`Criterio con ${positivos.length} contratos ganados ` +
+                    `y ${respuestas.length} respuestas`);
+      }
+
+      const criterio = await generarCriterio(
+        perfil.descripcion || `Empresa: ${perfil.empresa ?? ""}`, ejemplos);
 
       // No hace falta traer nada: el procesado del histórico ya volcó a
       // la base todas las licitaciones abiertas, de cualquier sector.
