@@ -79,8 +79,24 @@ llegó. Traer de más cuesta céntimos.
 alguien que no sabe qué es un CPV pueda juzgar si le sirve.
 6. Añade un aviso cuando un prefijo vaya a traer bastante ruido ajeno.
 
+Devuelve además DOS LISTAS DE PALABRAS que sirven para reconocer sus \
+contratos en un título:
+
+- "producto": qué vende, en las palabras que aparecerían escritas en el \
+título de un contrato público. Usa RAÍCES sin terminación, para que valgan \
+en singular y plural: "uniform" cubre uniforme y uniformidad; "chalec" \
+cubre chaleco y chalecos. Entre 5 y 12 palabras. Sin tildes.
+
+- "destinatario": a quién se lo vende. Es lo que separa "uniformidad para \
+policía" de "uniformidad para jardineros municipales", que es la \
+distinción que de verdad importa. Entre 3 y 8 palabras, también en raíz y \
+sin tildes. Si el negocio no tiene un destinatario característico, \
+devuelve la lista vacía.
+
 Devuelve EXCLUSIVAMENTE JSON:
-{"prefijos":[{"prefijo":"18","que_trae":"...","aviso":"..."}],"resumen":"..."}`;
+{"prefijos":[{"prefijo":"18","que_trae":"...","aviso":"..."}],\
+"producto":["uniform","chalec"],"destinatario":["polic","agente"],\
+"resumen":"..."}`;
 
 async function llamarModelo(mensajes: unknown[], maxTokens = 900) {
   const clave = Deno.env.get("OPENAI_API_KEY");
@@ -126,7 +142,19 @@ async function proponerCpv(descripcion: string) {
     .filter((p: { prefijo: string }) => p.prefijo.length >= 2 && p.prefijo.length <= 6);
 
   if (!prefijos.length) throw new Error("No se ha obtenido ningún prefijo válido.");
-  return { prefijos, resumen: String(salida.resumen ?? "").trim() };
+
+  const limpiarPalabras = (xs: unknown) =>
+    (Array.isArray(xs) ? xs : [])
+      .map((p) => sinTildes(String(p)).replace(/[^a-z0-9ñ]/g, ""))
+      .filter((p) => p.length >= 4)
+      .slice(0, 12);
+
+  return {
+    prefijos,
+    producto: limpiarPalabras(salida.producto),
+    destinatario: limpiarPalabras(salida.destinatario),
+    resumen: String(salida.resumen ?? "").trim(),
+  };
 }
 
 // ------------------------------------------------------------
@@ -347,7 +375,10 @@ Deno.serve(async (peticion) => {
         .map((p) => `${p.prefijo}=${p.volumen}`).join(" "));
 
       await comoUsuario.from("perfiles").update({
-        descripcion, paso_alta: "describiendo",
+        descripcion,
+        palabras_producto: propuesta.producto,
+        palabras_destinatario: propuesta.destinatario,
+        paso_alta: "describiendo",
       }).eq("id", perfil.id);
 
       return responder({ ok: true, ...propuesta });
@@ -359,57 +390,84 @@ Deno.serve(async (peticion) => {
         .filter((p: string) => p.length >= 2 && p.length <= 6);
       if (!lista.length) return responder({ error: "sin_prefijos" }, 400);
 
-      // MUESTRA EQUILIBRADA, y el filtrado lo hace la base.
-      //
-      // Los prefijos son deliberadamente amplios —"18" es toda la ropa,
-      // incluida la de enfermería— así que la mayoría de lo que
-      // contienen no es del cliente. Con una muestra al azar rechazaba
-      // veintiséis de treinta, y un criterio no se construye con cuatro
-      // ejemplos positivos.
-      //
-      // Filtrarlo en la función no valía: un prefijo con 41.000
-      // licitaciones agotaba el cupo de la consulta antes de que
-      // llegaran las del sector del cliente.
-      const claves = palabrasClave(perfil.descripcion ?? "");
-      const mitad = Math.floor(CUANTAS / 2);
+      const producto = (perfil.palabras_producto ?? []) as string[];
+      const destinatario = (perfil.palabras_destinatario ?? []) as string[];
 
-      const [conPalabras, sinPalabras] = await Promise.all([
-        claves.length
-          ? admin.rpc("licitaciones_por_afinidad", {
-              prefijos: lista, palabras: claves,
-              con_palabras: true, solo_vivas: false, tope: 300,
-            })
+      // LA FRONTERA, DENTRO DEL VECINDARIO.
+      //
+      // Separar "menciona lo que vende" de "no lo menciona" llenaba la
+      // mitad de las tarjetas de formación, obras o instalaciones
+      // eléctricas: cosas que nadie confundiría con equipamiento
+      // policial. El cliente rechazaba veintiocho de treinta y esos
+      // rechazos no enseñaban nada.
+      //
+      // La frontera real está entre uniformidad PARA POLICÍA y
+      // uniformidad para jardineros municipales. Así que ambos grupos
+      // salen del vecindario —contratos que mencionan lo que vende— y
+      // lo que los separa es el destinatario.
+      const mitad = Math.floor(CUANTAS / 2);
+      const argumentos = {
+        prefijos: lista, producto, destinatario,
+        solo_vivas: false, tope: 200,
+      };
+
+      const [encajan, frontera] = await Promise.all([
+        producto.length
+          ? admin.rpc("licitaciones_del_vecindario",
+                      { ...argumentos, con_destinatario: true })
           : Promise.resolve({ data: [], error: null }),
-        admin.rpc("licitaciones_por_afinidad", {
-          prefijos: lista, palabras: claves.length ? claves : ["zzzz"],
-          con_palabras: false, solo_vivas: false, tope: 300,
-        }),
+        producto.length
+          ? admin.rpc("licitaciones_del_vecindario",
+                      { ...argumentos, con_destinatario: false })
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
-      if (conPalabras.error || sinPalabras.error) {
-        console.error("Fallo al buscar material:",
-                      conPalabras.error ?? sinPalabras.error);
+      if (encajan.error || frontera.error) {
+        console.error("Fallo al buscar material:", encajan.error ?? frontera.error);
         return responder({ error: "error_interno" }, 500);
       }
 
-      const parecidas = (conPalabras.data ?? []) as Record<string, unknown>[];
-      const otras = (sinPalabras.data ?? []) as Record<string, unknown>[];
-      if (!parecidas.length && !otras.length) {
+      let claras = (encajan.data ?? []) as Record<string, unknown>[];
+      let dudosas = (frontera.data ?? []) as Record<string, unknown>[];
+
+      // Si el negocio no tiene destinatario característico, o el
+      // vecindario se queda corto, se recurre al conjunto entero: mejor
+      // treinta tarjetas imperfectas que ninguna.
+      if (claras.length + dudosas.length < CUANTAS) {
+        const { data: sueltas } = await admin.rpc("licitaciones_por_prefijo",
+          { prefijos: lista, solo_vivas: false, tope: 300 });
+        dudosas = [...dudosas, ...((sueltas ?? []) as Record<string, unknown>[])];
+      }
+      if (!claras.length && !dudosas.length) {
         return responder({ error: "catalogo_vacio" }, 404);
       }
 
-      // Mitad y mitad. Si falta de un lado, el otro completa: mejor
-      // treinta tarjetas desequilibradas que quince.
-      const deParecidas = Math.min(mitad, parecidas.length);
+      barajar(claras);
+      barajar(dudosas);
+
+      const deClaras = Math.min(mitad, claras.length);
       const escogidas = [
-        ...parecidas.slice(0, deParecidas),
-        ...otras.slice(0, CUANTAS - deParecidas),
+        ...claras.slice(0, deClaras),
+        ...dudosas.slice(0, CUANTAS - deClaras),
       ];
-      // Si aún faltan, se rellena con lo que sobre de las parecidas.
       if (escogidas.length < CUANTAS) {
-        escogidas.push(...parecidas.slice(deParecidas, deParecidas + CUANTAS - escogidas.length));
+        escogidas.push(...claras.slice(deClaras, deClaras + CUANTAS - escogidas.length));
       }
-      barajar(escogidas);
+
+      // Sin repeticiones: una licitación puede aparecer en los dos
+      // conjuntos si el vecindario se completó con el conjunto suelto,
+      // y ver el mismo contrato dos veces desconcierta.
+      const vistas = new Set<string>();
+      const finales = escogidas.filter((f) => {
+        const id = String(f.id_licitacion);
+        if (vistas.has(id)) return false;
+        vistas.add(id);
+        return true;
+      }).slice(0, CUANTAS);
+
+      barajar(finales);
+      console.log(`Material: ${claras.length} claras, ${dudosas.length} frontera, ` +
+                  `${finales.length} enviadas`);
 
       await comoUsuario.from("perfiles").update({
         cpv_prefijos: lista.join(","), paso_alta: "entrenando",
@@ -417,8 +475,8 @@ Deno.serve(async (peticion) => {
 
       return responder({
         ok: true,
-        total_disponibles: parecidas.length + otras.length,
-        licitaciones: escogidas.slice(0, CUANTAS).map((f) => ({
+        total_disponibles: claras.length + dudosas.length,
+        licitaciones: finales.map((f) => ({
           id_licitacion: f.id_licitacion,
           titulo: f.titulo,
           organo: f.organo ?? "",
