@@ -73,6 +73,11 @@ entera; cuatro, un grupo. Elige la longitud según el alcance del negocio.
 segundo filtro semántico que decide qué es relevante. Dejar fuera una \
 familia es un error grave y silencioso: nadie se entera de lo que nunca \
 llegó. Traer de más cuesta céntimos.
+
+2b. ELIGE SOLO DE LA LISTA que se te da a continuación, y prefiere \
+divisiones de dos dígitos con volumen alto. Un prefijo que no esté en esa \
+lista no traerá NADA: no existe en los datos. Si dudas entre una división \
+concreta y otra más amplia que la contenga, elige la amplia.
 3. Máximo 8 prefijos. Si el negocio abarca más, usa prefijos más cortos.
 4. Ordena de más a menos central.
 5. Explica cada uno en UNA FRASE en lenguaje llano, sin jerga, para que \
@@ -125,9 +130,15 @@ async function llamarModelo(mensajes: unknown[], maxTokens = 900) {
   return JSON.parse(datos.choices[0].message.content);
 }
 
-async function proponerCpv(descripcion: string) {
+async function proponerCpv(descripcion: string, disponibles: string) {
   const salida = await llamarModelo([
     { role: "system", content: INSTRUCCIONES_CPV },
+    // Se le enseña qué divisiones tienen volumen real antes de que
+    // proponga. Sin este contexto elegía a ciegas: para "chalecos y
+    // guantes" llegó a proponer la división 25, que es caucho y
+    // plástico, y salía a cero en pantalla.
+    { role: "system", content: `Divisiones CPV con contenido en la base de datos, ` +
+      `con su número de licitaciones. Elige SOLO de esta lista:\n${disponibles}` },
     { role: "user", content: descripcion },
   ]);
 
@@ -348,7 +359,20 @@ Deno.serve(async (peticion) => {
       if (!descripcion || descripcion.trim().length < 15) {
         return responder({ error: "descripcion_corta" }, 400);
       }
-      const propuesta = await proponerCpv(descripcion);
+      // Las divisiones de dos dígitos con volumen. Es la lista de la
+      // que puede elegir el modelo.
+      const { data: divisiones } = await admin.from("resumen_cpv_total")
+        .select("prefijo, licitaciones")
+        .gt("licitaciones", 50)
+        .order("licitaciones", { ascending: false })
+        .limit(400);
+
+      const catalogoDivisiones = (divisiones ?? [])
+        .filter((d) => d.prefijo.length === 2)
+        .map((d) => `${d.prefijo}: ${d.licitaciones}`)
+        .join("\n");
+
+      const propuesta = await proponerCpv(descripcion, catalogoDivisiones);
 
       // Cuántas trae cada prefijo. Sin ese número, confirmar la
       // propuesta sería a ciegas: uno que trae cero sobra y uno que
@@ -368,11 +392,14 @@ Deno.serve(async (peticion) => {
         p.vivas = porPrefijo[p.prefijo]?.vivas ?? 0;
       }
 
-      // Queda registrado qué propuso el modelo y qué volumen se le
-      // encontró: cuando en pantalla sale un cero, es la única forma de
-      // saber si el prefijo no existe o si el fallo está aquí.
       console.log("Propuesta:", propuesta.prefijos
         .map((p) => `${p.prefijo}=${p.volumen}`).join(" "));
+
+      // Los que no traen nada no se enseñan. Un cero sin explicación
+      // desconcierta y no aporta: ofrecer una categoría que no va a dar
+      // resultados es peor que no ofrecerla.
+      const conVolumen = propuesta.prefijos.filter((p) => (p.volumen ?? 0) > 0);
+      if (conVolumen.length) propuesta.prefijos = conVolumen;
 
       await comoUsuario.from("perfiles").update({
         descripcion,
