@@ -371,6 +371,38 @@ def volcar_todo(filas: list[dict], etiqueta: str) -> int:
     abiertas = sum(1 for f in filas if f["estado_licitacion"] == "PUB")
     logging.info("Volcadas %d licitaciones (%d abiertas, %d cerradas).",
                  guardadas, abiertas, guardadas - abiertas)
+
+    # El upsert de arriba usa `ignore_duplicates`, así que una licitación
+    # que ya existía se salta ENTERA: sus columnas nuevas nunca se
+    # rellenan. Se extraían miles de adjudicatarios por mes y se
+    # descartaban todos.
+    #
+    # Esta segunda pasada completa solo esos tres campos, y solo donde
+    # faltan: no pisa el estado ni el plazo, que pueden venir de una
+    # captura más reciente del scraper.
+    con_adjudicatario = [f for f in filas if f.get("adjudicatario")]
+    if con_adjudicatario:
+        completadas = 0
+        for i in range(0, len(con_adjudicatario), 500):
+            lote = [
+                {
+                    "id": f["id_licitacion"],
+                    "adjudicatario": f["adjudicatario"],
+                    "cif": f.get("adjudicatario_cif") or "",
+                    "importe": (str(f["importe_adjudicacion"])
+                                if f.get("importe_adjudicacion") not in ("", None) else ""),
+                }
+                for f in con_adjudicatario[i:i + 500]
+            ]
+            try:
+                respuesta = cliente.rpc("completar_adjudicatarios",
+                                        {"datos": lote}).execute()
+                completadas += respuesta.data or 0
+            except Exception as error:
+                logging.error("Fallo al completar adjudicatarios: %s", error)
+        logging.info("Adjudicatarios completados en %d filas ya existentes.",
+                     completadas)
+
     return guardadas
 
 
