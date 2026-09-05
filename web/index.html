@@ -273,6 +273,10 @@ async function arrancar() {
   if (perfil.paso_alta === 'cribando') return pantallaCribando(perfil, session);
   if (perfil.paso_alta === 'entrenando' && perfil.cpv_prefijos)
     return pantallaEntrenar(perfil, perfil.cpv_prefijos.split(','), session);
+  // El CIF va primero: si la empresa tiene historial, no hace falta que
+  // describa nada. Lo que ha ganado dice mejor a qué se presenta que
+  // cualquier descripción.
+  if (!perfil.descripcion) return pantallaEmpresa(perfil, session);
   return pantallaDescribir(perfil, session);
 }
 
@@ -391,7 +395,167 @@ function pantallaCodigo(session) {
 }
 
 // ============================================================
-// 3 · Describir el negocio y elegir familias
+// 3 · Identificar la empresa por su CIF
+// ============================================================
+
+function pantallaEmpresa(perfil, session) {
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div style="padding:52px 0">
+      <h1>¿Cuál es el CIF de tu empresa?</h1>
+      <p class="guia">Con él encontramos los contratos públicos que ya has
+      ganado. De ahí sabemos a qué te presentas, sin que tengas que
+      explicárnoslo.</p>
+      <div class="campo" style="max-width:280px">
+        <input type="text" id="cif" placeholder="B12345678" autocomplete="off"
+               style="text-transform:uppercase;letter-spacing:.04em">
+      </div>
+      <button class="principal" id="buscar">Buscar</button>
+      <button class="enlace" id="sin-cif">No tengo contratos públicos todavía</button>
+      <div id="resultado"></div>
+    </div>`;
+
+  const boton = document.getElementById('buscar');
+  const campo = document.getElementById('cif');
+  campo.addEventListener('keydown', e => { if (e.key === 'Enter') boton.click(); });
+  document.getElementById('sin-cif').onclick = () => pantallaDescribir(perfil, session);
+
+  boton.onclick = async () => {
+    const cif = campo.value.trim();
+    if (cif.length < 8) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">Ese CIF no parece completo.</div>`;
+      return;
+    }
+    boton.disabled = true;
+    boton.textContent = 'Buscando...';
+    try {
+      const r = await llamar('buscar_empresa', { cif });
+      if (!r.empresas.length) {
+        document.getElementById('resultado').innerHTML = `
+          <div class="aviso">No encontramos contratos con ese CIF. Puede que
+          tu empresa aún no haya ganado ninguno, o que conste con otro
+          identificador.</div>
+          <button class="secundario" id="por-nombre" style="margin-top:14px">Buscar por nombre</button>`;
+        document.getElementById('por-nombre').onclick = () => pantallaPorNombre(perfil, session);
+      } else {
+        pantallaConfirmar(perfil, r.empresas[0], r.ultimos, session);
+      }
+    } catch {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">No hemos podido buscar. Inténtalo de nuevo.</div>`;
+    }
+    boton.disabled = false;
+    boton.textContent = 'Buscar';
+  };
+}
+
+function pantallaPorNombre(perfil, session) {
+  raiz.innerHTML = `
+    <div style="padding:52px 0">
+      <h1>¿Cómo se llama tu empresa?</h1>
+      <p class="guia">Tal como aparecería en un contrato público. No hace
+      falta que incluyas la forma societaria.</p>
+      <div class="campo"><input type="text" id="nombre" placeholder="Confecciones Ibéricas"></div>
+      <button class="principal" id="buscar">Buscar</button>
+      <button class="enlace" id="sin-historial">No encuentro mi empresa</button>
+      <div id="resultado"></div>
+    </div>`;
+
+  document.getElementById('sin-historial').onclick = () => pantallaDescribir(perfil, session);
+  const boton = document.getElementById('buscar');
+  boton.onclick = async () => {
+    const empresa = document.getElementById('nombre').value.trim();
+    if (empresa.length < 3) return;
+    boton.disabled = true;
+    boton.textContent = 'Buscando...';
+    try {
+      const r = await llamar('buscar_empresa', { empresa });
+      if (!r.empresas.length) {
+        document.getElementById('resultado').innerHTML = `
+          <div class="aviso">Sin resultados con ese nombre.</div>`;
+      } else if (r.empresas.length === 1) {
+        pantallaConfirmar(perfil, r.empresas[0], r.ultimos, session);
+      } else {
+        // Varias coincidencias: elige él, que sabe cuál es la suya.
+        document.getElementById('resultado').innerHTML = `
+          <p class="guia" style="margin-top:22px">Hemos encontrado varias. ¿Cuál es la tuya?</p>
+          ${r.empresas.map((e, i) => `
+            <button class="secundario" data-i="${i}"
+                    style="display:block;width:100%;text-align:left;margin-bottom:8px">
+              <strong>${esc(e.nombre)}</strong><br>
+              <span style="color:var(--tenue);font-size:.88rem">${esc(e.cif)} ·
+              ${e.contratos} contratos</span>
+            </button>`).join('')}`;
+        raiz.querySelectorAll('[data-i]').forEach(b => b.onclick = () =>
+          pantallaConfirmar(perfil, r.empresas[+b.dataset.i], [], session));
+      }
+    } catch {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">No hemos podido buscar.</div>`;
+    }
+    boton.disabled = false;
+    boton.textContent = 'Buscar';
+  };
+}
+
+function pantallaConfirmar(perfil, empresa, ultimos, session) {
+  const euro = n => n ? euros(n) : null;
+  const sectores = empresa.sectores ?? [];
+
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div style="padding:52px 0">
+      <h1>${esc(empresa.nombre)}</h1>
+      <p class="guia">Hemos encontrado <strong>${empresa.contratos}</strong>
+      contratos públicos adjudicados a tu empresa${
+        empresa.importe_total ? `, por un total de ${euro(empresa.importe_total)}` : ''}.</p>
+
+      ${sectores.length ? `
+        <div class="marcador" style="grid-template-columns:1fr;gap:0;margin:26px 0">
+          ${sectores.slice(0, 5).map(s => `
+            <div style="display:flex;justify-content:space-between;padding:11px 0;
+                        border-bottom:1px solid var(--linea)">
+              <span>${esc(s.sector ?? '—')}</span>
+              <span style="color:var(--tenue)">${s.contratos}</span>
+            </div>`).join('')}
+        </div>` : ''}
+
+      ${ultimos && ultimos.length ? `
+        <p class="guia" style="margin-top:26px">Los últimos:</p>
+        ${ultimos.slice(0, 4).map(u => `
+          <div style="padding:12px 0;border-bottom:1px solid var(--linea)">
+            <div style="font-size:.96rem;line-height:1.4">${esc(u.titulo)}</div>
+            <div style="color:var(--tenue);font-size:.86rem;margin-top:4px">
+              ${esc(u.organo ?? '')}${u.importe ? ` · ${euro(u.importe)}` : ''}</div>
+          </div>`).join('')}` : ''}
+
+      <button class="principal" id="seguir" style="margin-top:28px">Sí, es mi empresa</button>
+      <button class="enlace" id="no-es">No es mi empresa</button>
+      <div id="resultado"></div>
+    </div>`;
+
+  document.getElementById('no-es').onclick = () => pantallaEmpresa(perfil, session);
+
+  const boton = document.getElementById('seguir');
+  boton.onclick = async () => {
+    boton.disabled = true;
+    boton.textContent = 'Preparando...';
+    try {
+      const r = await llamar('confirmar_empresa', { cif: empresa.cif });
+      const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
+      pantallaEntrenar(data?.[0] ?? perfil, r.prefijos, session);
+    } catch {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">Algo ha fallado. Inténtalo de nuevo.</div>`;
+      boton.disabled = false;
+      boton.textContent = 'Sí, es mi empresa';
+    }
+  };
+}
+
+// ============================================================
+// 4 · Describir el negocio (sin historial)
 // ============================================================
 
 function pantallaDescribir(perfil, session) {
