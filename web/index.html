@@ -540,11 +540,13 @@ function pantallaConfirmar(perfil, empresa, ultimos, session) {
   const boton = document.getElementById('seguir');
   boton.onclick = async () => {
     boton.disabled = true;
-    boton.textContent = 'Preparando...';
+    boton.textContent = 'Analizando tu historial...';
     try {
+      // Sin tarjetas: de aquí sale directamente su criterio. Lo que ha
+      // ganado dice a qué se dedica mejor que treinta respuestas suyas.
       const r = await llamar('confirmar_empresa', { cif: empresa.cif });
       const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
-      pantallaEntrenar(data?.[0] ?? perfil, r.prefijos, session);
+      pantallaCribando(data?.[0] ?? perfil, session, r);
     } catch {
       document.getElementById('resultado').innerHTML =
         `<div class="aviso mal">Algo ha fallado. Inténtalo de nuevo.</div>`;
@@ -805,13 +807,17 @@ async function pantallaEntrenar(perfil, prefijos, session, items) {
 // 5 · Cribado inicial, con progreso real
 // ============================================================
 
-async function pantallaCribando(perfil, session) {
+async function pantallaCribando(perfil, session, lectura) {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
     <div class="centro">
       <h2>Estamos revisando los contratos abiertos</h2>
+      ${lectura?.actividad ? `<p class="guia">Hemos entendido que te dedicas a
+      <strong>${esc(lectura.actividad.toLowerCase())}</strong>. Estamos buscando
+      contratos abiertos que encajen.</p>` : `
       <p class="guia">Aplicamos tu filtro a todas las licitaciones que siguen
-      abiertas ahora mismo. Puede tardar unos minutos; no cierres esta página.</p>
+      abiertas ahora mismo.</p>`}
+      <p class="guia">Puede tardar unos minutos; no cierres esta página.</p>
       <div class="avance" style="max-width:340px;margin:30px auto 0">
         <div class="barra"><div class="relleno" id="relleno"></div></div>
         <div class="cuenta"><span id="progreso">Empezando...</span><span></span></div>
