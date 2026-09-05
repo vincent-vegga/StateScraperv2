@@ -162,66 +162,83 @@ class Reservorio {
 // ------------------------------------------------------------
 
 function elegirMuestra(
-  porFamilia: Record<string, Reservorio>,
+  porGrupo: Record<string, Reservorio>,
   totales: Record<string, number>,
   cuantas: number,
+  claves: string[] = [],
 ) {
   const grupos: Record<string, Record<string, string>[]> = {};
-  for (const familia of Object.keys(porFamilia)) {
-    grupos[familia] = [...porFamilia[familia].elegidas];
-    barajar(grupos[familia]);
+  for (const g of Object.keys(porGrupo)) {
+    grupos[g] = [...porGrupo[g].elegidas];
+    barajar(grupos[g]);
+  }
+  const nombres = Object.keys(grupos);
+  if (!nombres.length) return [];
+
+  // MUESTRA EQUILIBRADA. Los prefijos son deliberadamente amplios —"18"
+  // es toda la ropa, incluida la de enfermería o jardinería— así que la
+  // mayoría de lo que contienen no es del cliente. Con una muestra al
+  // azar rechazaba veintisiete de treinta, y un criterio no se puede
+  // construir con tres ejemplos positivos.
+  //
+  // Se busca que la mitad de las tarjetas tengan pinta de ser suyas
+  // —el título menciona lo que vende— y la otra mitad no. Así hay
+  // material de los dos lados, y los "no" siguen siendo informativos
+  // porque son casos cercanos, no contratos de obra que nadie
+  // confundiría.
+  const parecidas: Record<string, string>[] = [];
+  const otras: Record<string, string>[] = [];
+
+  if (claves.length) {
+    for (const g of nombres) {
+      for (const f of grupos[g]) {
+        (afinidad(f.titulo, claves) > 0 ? parecidas : otras).push(f);
+      }
+    }
+    barajar(parecidas);
+    barajar(otras);
+
+    const mitad = Math.floor(cuantas / 2);
+    // Si no hay bastantes de un lado, el otro completa: mejor treinta
+    // tarjetas desequilibradas que quince.
+    const escogidas = [
+      ...parecidas.slice(0, mitad),
+      ...otras.slice(0, cuantas - Math.min(mitad, parecidas.length)),
+    ].slice(0, cuantas);
+
+    if (escogidas.length >= Math.min(cuantas, parecidas.length + otras.length)) {
+      barajar(escogidas);
+      return escogidas;
+    }
   }
 
-  const familias = Object.keys(grupos);
-  if (!familias.length) return [];
-
-  // REPARTO EQUITATIVO, no proporcional al volumen. Un sector puede
-  // pedir a la vez "18" (uniformidad, 1.700 licitaciones) y "50"
-  // (mantenimiento, 33.000). Repartir en proporción llenaría la muestra
-  // de mantenimiento y el cliente no llegaría a ver su propio negocio:
-  // ocurrió, y rechazó las treinta.
-  //
-  // Se da a cada familia un cupo parecido y se reparte lo que sobre
-  // entre las que aún tengan material.
-  const orden = [...familias].sort((a, b) => totales[b] - totales[a]);
-  const cupo = Math.max(1, Math.floor(cuantas / familias.length));
-
+  // Sin palabras clave utilizables, reparto equitativo entre los
+  // prefijos que eligió el cliente.
+  const orden = [...nombres].sort((a, b) => totales[b] - totales[a]);
+  const cupo = Math.max(1, Math.floor(cuantas / nombres.length));
   const muestra: Record<string, string>[] = [];
-  for (const familia of orden) {
-    // El tope global manda sobre el cupo por familia: sin esta
-    // comprobación, nueve familias con cupo de tres devolvían más
-    // tarjetas de las pedidas.
-    for (let n = 0; n < cupo && grupos[familia].length; n++) {
+
+  for (const g of orden) {
+    for (let n = 0; n < cupo && grupos[g].length; n++) {
       if (muestra.length >= cuantas) break;
-      muestra.push(grupos[familia].pop()!);
+      muestra.push(grupos[g].pop()!);
     }
     if (muestra.length >= cuantas) break;
   }
-
-  // Lo que falte, por turnos entre las que queden.
   let movido = true;
   while (muestra.length < cuantas && movido) {
     movido = false;
-    for (const familia of orden) {
-      if (grupos[familia].length) {
-        muestra.push(grupos[familia].pop()!);
+    for (const g of orden) {
+      if (grupos[g].length) {
+        muestra.push(grupos[g].pop()!);
         movido = true;
         if (muestra.length >= cuantas) break;
       }
     }
   }
 
-  // Se barajan y ya: con un reparto equitativo entre los prefijos que
-  // el cliente eligió, todos son igual de relevantes para él. Separar
-  // "núcleo" y "frontera" tenía sentido cuando los grupos eran familias
-  // CPV de tamaños muy distintos; aquí solo añadiría un orden que no
-  // significa nada.
-  const nucleo = muestra;
-  const resto: Record<string, string>[] = [];
-  barajar(nucleo);
-  // Recorte final: el tope es una promesa hecha al cliente —"son
-  // treinta y se tarda cinco minutos"— y no puede incumplirse.
-  return [...nucleo, ...resto].slice(0, cuantas);
+  barajar(muestra);
+  return muestra.slice(0, cuantas);
 }
 
 function barajar<T>(lista: T[]) {
@@ -292,6 +309,45 @@ async function generarCriterio(descripcion: string, ejemplos: {
  * No pisa lo que ya existe: una licitación capturada en vivo conserva
  * sus datos y su estado.
  */
+// ------------------------------------------------------------
+// Equilibrio de la muestra
+// ------------------------------------------------------------
+
+// Palabras que no distinguen nada: aparecen en cualquier descripción de
+// negocio y en la mitad de los títulos de contrato.
+const VACIAS = new Set([
+  "para", "con", "los", "las", "del", "que", "por", "una", "uno", "sus",
+  "nuestro", "nuestra", "nuestros", "nuestras", "empresa", "vendemos",
+  "vender", "venta", "servicio", "servicios", "suministro", "suministros",
+  "todo", "tipo", "tipos", "otros", "otras", "sobre", "trabajamos",
+  "completa", "completo", "material", "materiales", "equipamiento",
+  "producto", "productos", "accesorios", "contrato", "contratos",
+]);
+
+const sinTildes = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * Palabras significativas de la descripción del cliente.
+ *
+ * Sirven para reconocer, sin llamar al modelo, qué contratos tienen
+ * pinta de ser suyos. No es una clasificación: es un indicio barato
+ * para equilibrar la muestra.
+ */
+function palabrasClave(descripcion: string): string[] {
+  const palabras = sinTildes(descripcion)
+    .replace(/[^a-z0-9ñ ]/g, " ")
+    .split(/\s+/)
+    .filter((p) => p.length >= 4 && !VACIAS.has(p));
+  return [...new Set(palabras)];
+}
+
+/** Cuántas palabras clave aparecen en el título de una licitación. */
+function afinidad(titulo: string, claves: string[]): number {
+  const t = sinTildes(titulo);
+  return claves.reduce((n, c) => n + (t.includes(c) ? 1 : 0), 0);
+}
+
 // ------------------------------------------------------------
 // Cribado con el criterio del cliente
 // ------------------------------------------------------------
@@ -452,11 +508,12 @@ Deno.serve(async (peticion) => {
           _cpvs: cpvs.join("|"),
         } as Record<string, string>;
 
-        (porGrupo[suyo] ??= new Reservorio(CUANTAS)).ofrecer(fila);
+        (porGrupo[suyo] ??= new Reservorio(CUANTAS * 4)).ofrecer(fila);
         totales[suyo] = (totales[suyo] ?? 0) + 1;
       }
 
-      const muestra = elegirMuestra(porGrupo, totales, CUANTAS);
+      const muestra = elegirMuestra(porGrupo, totales, CUANTAS,
+                                    palabrasClave(perfil.descripcion ?? ""));
 
       await comoUsuario.from("perfiles").update({
         cpv_prefijos: lista.join(","), paso_alta: "entrenando",
