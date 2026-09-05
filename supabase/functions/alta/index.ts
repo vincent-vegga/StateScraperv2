@@ -98,6 +98,21 @@ distinción que de verdad importa. Entre 3 y 8 palabras, también en raíz y \
 sin tildes. Si el negocio no tiene un destinatario característico, \
 devuelve la lista vacía.
 
+REGLA CRÍTICA SOBRE LAS PALABRAS: solo valen las que DISTINGUEN. Una \
+palabra que aparece en muchos contratos no sirve de nada, y estropea el \
+resultado más que ayudarlo.
+
+  · NUNCA uses "equip", "material", "suministr", "servici", "product", \
+"sistem", "element" ni parecidas: aparecen en todo tipo de contrato.
+  · NUNCA uses como destinatario "ayunt", "diput", "municip", "public", \
+"administr" ni parecidas: están en casi todos los contratos públicos, así \
+que no separan nada.
+  · El destinatario debe ser el COLECTIVO CONCRETO que usa lo que vende \
+—"polic", "bomber", "sanitari", "escolar"—, no el organismo que firma el \
+contrato.
+  · Prefiere palabras específicas del oficio aunque cubran menos casos: \
+más vale reconocer la mitad con precisión que todo sin criterio.
+
 Devuelve EXCLUSIVAMENTE JSON:
 {"prefijos":[{"prefijo":"18","que_trae":"...","aviso":"..."}],\
 "producto":["uniform","chalec"],"destinatario":["polic","agente"],\
