@@ -133,113 +133,9 @@ async function proponerCpv(descripcion: string) {
 // Catálogo
 // ------------------------------------------------------------
 
-/**
- * Muestra aleatoria de tamaño fijo sin guardar el conjunto entero.
- *
- * Se queda con las primeras `tope` y, a partir de ahí, cada nueva fila
- * tiene una probabilidad decreciente de sustituir a una ya elegida. El
- * resultado es una muestra uniforme del total usando solo la memoria de
- * `tope` elementos.
- */
-class Reservorio {
-  vistas = 0;
-  elegidas: Record<string, string>[] = [];
-  constructor(private tope: number) {}
-
-  ofrecer(fila: Record<string, string>) {
-    this.vistas++;
-    if (this.elegidas.length < this.tope) {
-      this.elegidas.push(fila);
-      return;
-    }
-    const j = Math.floor(Math.random() * this.vistas);
-    if (j < this.tope) this.elegidas[j] = fila;
-  }
-}
-
 // ------------------------------------------------------------
 // Selección de la muestra
 // ------------------------------------------------------------
-
-function elegirMuestra(
-  porGrupo: Record<string, Reservorio>,
-  totales: Record<string, number>,
-  cuantas: number,
-  claves: string[] = [],
-) {
-  const grupos: Record<string, Record<string, string>[]> = {};
-  for (const g of Object.keys(porGrupo)) {
-    grupos[g] = [...porGrupo[g].elegidas];
-    barajar(grupos[g]);
-  }
-  const nombres = Object.keys(grupos);
-  if (!nombres.length) return [];
-
-  // MUESTRA EQUILIBRADA. Los prefijos son deliberadamente amplios —"18"
-  // es toda la ropa, incluida la de enfermería o jardinería— así que la
-  // mayoría de lo que contienen no es del cliente. Con una muestra al
-  // azar rechazaba veintisiete de treinta, y un criterio no se puede
-  // construir con tres ejemplos positivos.
-  //
-  // Se busca que la mitad de las tarjetas tengan pinta de ser suyas
-  // —el título menciona lo que vende— y la otra mitad no. Así hay
-  // material de los dos lados, y los "no" siguen siendo informativos
-  // porque son casos cercanos, no contratos de obra que nadie
-  // confundiría.
-  const parecidas: Record<string, string>[] = [];
-  const otras: Record<string, string>[] = [];
-
-  if (claves.length) {
-    for (const g of nombres) {
-      for (const f of grupos[g]) {
-        (afinidad(f.titulo, claves) > 0 ? parecidas : otras).push(f);
-      }
-    }
-    barajar(parecidas);
-    barajar(otras);
-
-    const mitad = Math.floor(cuantas / 2);
-    // Si no hay bastantes de un lado, el otro completa: mejor treinta
-    // tarjetas desequilibradas que quince.
-    const escogidas = [
-      ...parecidas.slice(0, mitad),
-      ...otras.slice(0, cuantas - Math.min(mitad, parecidas.length)),
-    ].slice(0, cuantas);
-
-    if (escogidas.length >= Math.min(cuantas, parecidas.length + otras.length)) {
-      barajar(escogidas);
-      return escogidas;
-    }
-  }
-
-  // Sin palabras clave utilizables, reparto equitativo entre los
-  // prefijos que eligió el cliente.
-  const orden = [...nombres].sort((a, b) => totales[b] - totales[a]);
-  const cupo = Math.max(1, Math.floor(cuantas / nombres.length));
-  const muestra: Record<string, string>[] = [];
-
-  for (const g of orden) {
-    for (let n = 0; n < cupo && grupos[g].length; n++) {
-      if (muestra.length >= cuantas) break;
-      muestra.push(grupos[g].pop()!);
-    }
-    if (muestra.length >= cuantas) break;
-  }
-  let movido = true;
-  while (muestra.length < cuantas && movido) {
-    movido = false;
-    for (const g of orden) {
-      if (grupos[g].length) {
-        muestra.push(grupos[g].pop()!);
-        movido = true;
-        if (muestra.length >= cuantas) break;
-      }
-    }
-  }
-
-  barajar(muestra);
-  return muestra.slice(0, cuantas);
-}
 
 function barajar<T>(lista: T[]) {
   for (let i = lista.length - 1; i > 0; i--) {
@@ -444,6 +340,12 @@ Deno.serve(async (peticion) => {
         p.vivas = porPrefijo[p.prefijo]?.vivas ?? 0;
       }
 
+      // Queda registrado qué propuso el modelo y qué volumen se le
+      // encontró: cuando en pantalla sale un cero, es la única forma de
+      // saber si el prefijo no existe o si el fallo está aquí.
+      console.log("Propuesta:", propuesta.prefijos
+        .map((p) => `${p.prefijo}=${p.volumen}`).join(" "));
+
       await comoUsuario.from("perfiles").update({
         descripcion, paso_alta: "describiendo",
       }).eq("id", perfil.id);
@@ -457,63 +359,57 @@ Deno.serve(async (peticion) => {
         .filter((p: string) => p.length >= 2 && p.length <= 6);
       if (!lista.length) return responder({ error: "sin_prefijos" }, 400);
 
-      // Sale de la base, no del catálogo: el procesado del histórico ya
-      // volcó ahí todo lo vivo. Leer los ficheros del catálogo aquí
-      // agotaría el tiempo de cálculo de la función.
+      // MUESTRA EQUILIBRADA, y el filtrado lo hace la base.
       //
-      // La búsqueda por prefijo la hace PostgreSQL a través de una
-      // función: el operador de contención de PostgREST busca
-      // coincidencia exacta, así que pedir "18" no encontraría
-      // "18110000".
-      // `solo_vivas: false` a propósito: para entrenar un criterio, un
-      // contrato ya adjudicado sirve igual o mejor que uno abierto. De
-      // un sector concreto apenas hay unas decenas vivas, y con eso la
-      // muestra se llenaba de las familias con más volumen, que no son
-      // las suyas. Además lo cerrado lleva adjudicatario.
-      const { data: encajan, error: fallo } = await admin
-        .rpc("licitaciones_por_prefijo",
-             { prefijos: lista, solo_vivas: false, tope: 3000 });
+      // Los prefijos son deliberadamente amplios —"18" es toda la ropa,
+      // incluida la de enfermería— así que la mayoría de lo que
+      // contienen no es del cliente. Con una muestra al azar rechazaba
+      // veintiséis de treinta, y un criterio no se construye con cuatro
+      // ejemplos positivos.
+      //
+      // Filtrarlo en la función no valía: un prefijo con 41.000
+      // licitaciones agotaba el cupo de la consulta antes de que
+      // llegaran las del sector del cliente.
+      const claves = palabrasClave(perfil.descripcion ?? "");
+      const mitad = Math.floor(CUANTAS / 2);
 
-      if (fallo) {
-        console.error("Fallo al buscar por prefijo:", fallo);
+      const [conPalabras, sinPalabras] = await Promise.all([
+        claves.length
+          ? admin.rpc("licitaciones_por_afinidad", {
+              prefijos: lista, palabras: claves,
+              con_palabras: true, solo_vivas: false, tope: 300,
+            })
+          : Promise.resolve({ data: [], error: null }),
+        admin.rpc("licitaciones_por_afinidad", {
+          prefijos: lista, palabras: claves.length ? claves : ["zzzz"],
+          con_palabras: false, solo_vivas: false, tope: 300,
+        }),
+      ]);
+
+      if (conPalabras.error || sinPalabras.error) {
+        console.error("Fallo al buscar material:",
+                      conPalabras.error ?? sinPalabras.error);
         return responder({ error: "error_interno" }, 500);
       }
-      if (!encajan?.length) return responder({ error: "catalogo_vacio" }, 404);
 
-      // Se agrupa por el PREFIJO QUE ELIGIÓ EL CLIENTE, no por familia
-      // CPV de cuatro dígitos.
-      //
-      // Agrupar por familia fue un error caro: un sector amplio genera
-      // más de cien familias, el cupo salía a una por familia, y el
-      // reparto se llevaba las treinta MÁS GRANDES. Las del cliente
-      // —uniformidad, protección— son pequeñas al lado de mantenimiento
-      // u obras, así que no entraba ninguna: de treinta tarjetas
-      // rechazó veintiocho.
-      //
-      // Con este agrupado, cada prefijo que él marcó tiene su cuota.
-      const porGrupo: Record<string, Reservorio> = {};
-      const totales: Record<string, number> = {};
-      for (const f of encajan) {
-        const cpvs = (f.cpvs ?? []) as string[];
-        // Al primero que encaje: si una licitación cae en dos prefijos
-        // suyos, cuenta para el más específico.
-        const suyo = [...lista].sort((a, b) => b.length - a.length)
-          .find((p) => cpvs.some((c) => c.startsWith(p)));
-        if (!suyo) continue;
-
-        const fila = {
-          id_licitacion: f.id_licitacion, titulo: f.titulo,
-          organo: f.organo ?? "", presupuesto: String(f.presupuesto ?? ""),
-          adjudicatario: "", importe_adjudicacion: "",
-          _cpvs: cpvs.join("|"),
-        } as Record<string, string>;
-
-        (porGrupo[suyo] ??= new Reservorio(CUANTAS * 4)).ofrecer(fila);
-        totales[suyo] = (totales[suyo] ?? 0) + 1;
+      const parecidas = (conPalabras.data ?? []) as Record<string, unknown>[];
+      const otras = (sinPalabras.data ?? []) as Record<string, unknown>[];
+      if (!parecidas.length && !otras.length) {
+        return responder({ error: "catalogo_vacio" }, 404);
       }
 
-      const muestra = elegirMuestra(porGrupo, totales, CUANTAS,
-                                    palabrasClave(perfil.descripcion ?? ""));
+      // Mitad y mitad. Si falta de un lado, el otro completa: mejor
+      // treinta tarjetas desequilibradas que quince.
+      const deParecidas = Math.min(mitad, parecidas.length);
+      const escogidas = [
+        ...parecidas.slice(0, deParecidas),
+        ...otras.slice(0, CUANTAS - deParecidas),
+      ];
+      // Si aún faltan, se rellena con lo que sobre de las parecidas.
+      if (escogidas.length < CUANTAS) {
+        escogidas.push(...parecidas.slice(deParecidas, deParecidas + CUANTAS - escogidas.length));
+      }
+      barajar(escogidas);
 
       await comoUsuario.from("perfiles").update({
         cpv_prefijos: lista.join(","), paso_alta: "entrenando",
@@ -521,14 +417,14 @@ Deno.serve(async (peticion) => {
 
       return responder({
         ok: true,
-        total_disponibles: encajan.length,
-        licitaciones: muestra.map((f) => ({
+        total_disponibles: parecidas.length + otras.length,
+        licitaciones: escogidas.slice(0, CUANTAS).map((f) => ({
           id_licitacion: f.id_licitacion,
           titulo: f.titulo,
-          organo: f.organo,
+          organo: f.organo ?? "",
           presupuesto: f.presupuesto ? Number(f.presupuesto) : null,
-          cpvs: f._cpvs.split("|"),
-          adjudicatario: f.adjudicatario || "",
+          cpvs: (f.cpvs ?? []) as string[],
+          adjudicatario: "",
           importe_adjudicacion: null,
         })),
       });
