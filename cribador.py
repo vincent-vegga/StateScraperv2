@@ -220,10 +220,18 @@ def leer_perfiles(cliente, solo: str | None) -> list[dict]:
 
 
 def leer_pendientes(cliente, perfil_id: str, limite: int) -> list[dict]:
+    """
+    Lo que le falta clasificar a este perfil.
+
+    Va por función y no por vista: la vista calculaba la cola de TODOS
+    los perfiles y filtraba después, y con 220.000 licitaciones eso
+    agotaba el tiempo de consulta. La función acota por perfil antes de
+    recorrer nada.
+    """
     try:
-        return (cliente.table(VISTA_PENDIENTES)
-                .select("id_licitacion, titulo, organo, presupuesto, cpvs, enlace")
-                .eq("perfil_id", perfil_id).limit(limite).execute().data) or []
+        respuesta = cliente.rpc("pendientes_de_perfil",
+                                {"perfil": perfil_id, "tope": limite}).execute()
+        return respuesta.data or []
     except Exception as error:
         logging.error("No se pudo leer la cola del perfil: %s", error)
         return []
