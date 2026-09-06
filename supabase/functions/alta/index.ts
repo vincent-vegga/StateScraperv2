@@ -840,10 +840,11 @@ Deno.serve(async (peticion) => {
 
       // Cuánto queda en total, para poder enseñar progreso real en lugar
       // de un mensaje fijo que no dice nada.
-      const { count: total } = await comoUsuario
-        .from("pendientes_por_perfil")
-        .select("id_licitacion", { count: "exact", head: true })
-        .eq("perfil_id", perfil.id);
+      // Cuánto queda. Se pide un tope alto en lugar de contar: contar
+      // sobre 220.000 filas agotaba el tiempo de consulta.
+      const { data: cola } = await admin.rpc("pendientes_de_perfil",
+        { perfil: perfil.id, tope: 2000 });
+      const total = (cola ?? []).length;
 
       if (!total) {
         await comoUsuario.from("perfiles").update({ paso_alta: "listo" })
@@ -851,20 +852,18 @@ Deno.serve(async (peticion) => {
         return responder({ ok: true, terminado: true, quedan: 0 });
       }
 
-      const { data: pendientes } = await comoUsuario
-        .from("pendientes_por_perfil")
-        .select("id_licitacion, titulo, organo, presupuesto, cpvs")
-        .eq("perfil_id", perfil.id).limit(LOTE);
+      const pendientes = (cola ?? []).slice(0, LOTE) as Record<string, unknown>[];
 
       // En tandas pequeñas y no todas a la vez: el proveedor limita las
       // peticiones simultáneas, y saturarlo haría fallar el lote entero.
       const resultados: Record<string, unknown>[] = [];
-      for (let i = 0; i < (pendientes ?? []).length; i += SIMULTANEAS) {
-        const tanda = (pendientes ?? []).slice(i, i + SIMULTANEAS);
+      for (let i = 0; i < pendientes.length; i += SIMULTANEAS) {
+        const tanda = pendientes.slice(i, i + SIMULTANEAS);
         const veredictos = await Promise.all(tanda.map((l) =>
           clasificar(perfil.criterio, {
-            titulo: l.titulo, organo: l.organo ?? "",
-            presupuesto: l.presupuesto, cpvs: l.cpvs ?? [],
+            titulo: String(l.titulo ?? ""), organo: String(l.organo ?? ""),
+            presupuesto: l.presupuesto ? Number(l.presupuesto) : null,
+            cpvs: (l.cpvs ?? []) as string[],
           })
         ));
         tanda.forEach((l, n) => {
