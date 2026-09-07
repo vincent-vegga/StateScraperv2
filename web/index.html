@@ -154,6 +154,60 @@ select,input[type=search]{
 }
 input[type=search]:focus,select:focus{border-color:var(--fuerte);outline:0}
 
+/* Selector geográfico: campo con etiquetas y desplegable buscable.
+   Se usa esto y no una lista de botones porque hay 52 provincias, y
+   una fila de 52 botones es ruido visual que la vista se salta. */
+.selector{position:relative;flex:1 1 260px;min-width:0;align-self:stretch}
+.campo-geo{
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+  background:var(--superficie);border:1px solid var(--linea);
+  border-radius:3px;padding:6px 10px;min-height:var(--alto);cursor:text;
+  transition:border-color .15s;
+}
+.campo-geo:focus-within{border-color:var(--fuerte)}
+.campo-geo input{
+  flex:1 1 130px;min-width:130px;background:none;border:0;color:var(--texto);
+  font:inherit;font-size:.94rem;padding:4px 0;outline:0;
+}
+.campo-geo input::placeholder{color:var(--tenue)}
+.etiqueta{
+  display:inline-flex;align-items:center;gap:7px;background:none;
+  color:var(--texto);border:1px solid var(--fuerte);border-radius:100px;
+  padding:3px 5px 3px 12px;font-size:.83rem;font-weight:500;
+}
+.etiqueta button{
+  background:none;border:0;color:var(--tenue);cursor:pointer;
+  font-size:1.05rem;line-height:1;padding:0 4px;transition:color .15s;
+}
+.etiqueta button:hover{color:var(--texto)}
+.desplegable{
+  position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:30;
+  background:var(--superficie);border:1px solid var(--fuerte);
+  border-radius:3px;max-height:290px;overflow-y:auto;padding:5px;
+  box-shadow:0 12px 32px rgba(0,0,0,.45);
+}
+.desplegable[hidden]{display:none}
+.opcion{
+  display:flex;align-items:center;gap:11px;width:100%;min-height:36px;
+  background:none;border:0;color:var(--texto);font:inherit;font-size:.92rem;
+  padding:0 9px;cursor:pointer;text-align:left;border-radius:2px;
+}
+.opcion:hover,.opcion.destacada{background:rgba(233,232,229,.07)}
+.opcion.raiz{font-weight:600}
+.opcion.hija{padding-left:24px;font-weight:400}
+.casilla{
+  width:15px;height:15px;flex:0 0 15px;border:1px solid var(--fuerte);
+  border-radius:2px;position:relative;
+}
+.opcion[aria-selected="true"] .casilla{background:var(--texto);border-color:var(--texto)}
+.opcion[aria-selected="true"] .casilla::after{
+  content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;
+  border:solid var(--fondo);border-width:0 2px 2px 0;transform:rotate(43deg);
+}
+.opcion .cuantas{margin-left:auto;color:var(--tenue);font-size:.84rem}
+.opcion .abarca{color:var(--tenue);font-weight:400;font-size:.84rem}
+.sinresultado{padding:14px 10px;color:var(--tenue);font-size:.9rem}
+
 #lista{transition:opacity .16s ease}
 #lista.cambiando{opacity:0}
 .fila{
@@ -886,6 +940,15 @@ async function pantallaOportunidades(perfil, session) {
         <option value="quizas">Puede ser para mí</option>
       </select>
       <input type="search" id="f-texto" placeholder="Buscar por título u órgano">
+      <div class="selector">
+        <div class="campo-geo" id="campo-geo">
+          <input type="text" id="buscador-geo" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-controls="desplegable"
+                 aria-label="Filtrar por provincia" placeholder="Toda España">
+        </div>
+        <div class="desplegable" id="desplegable" role="listbox"
+             aria-multiselectable="true" hidden></div>
+      </div>
     </div>
     <main id="lista"></main>`;
 
@@ -923,10 +986,15 @@ async function pantallaOportunidades(perfil, session) {
       lista.filter(o => o.dias != null && o.dias >= 0 && o.dias <= 7).length;
   }
 
+  // Provincias elegidas. Vacío es "toda España", no "ninguna": es lo que
+  // espera quien todavía no ha elegido nada.
+  const elegidas = new Set();
+
   function pintar() {
     const ver = document.getElementById('f-veredicto').value;
     const txt = document.getElementById('f-texto').value.toLowerCase().trim();
     const vistos = DATOS.filter(o =>
+      (elegidas.size === 0 || elegidas.has(o.provincia)) &&
       (!ver || o.veredicto === ver) &&
       (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
 
@@ -935,7 +1003,7 @@ async function pantallaOportunidades(perfil, session) {
       <button class="fila" data-i="${i}">
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
-          <p class="meta">${esc(o.organo ?? '')}</p></div>
+          <p class="meta">${esc([o.organo, o.provincia].filter(Boolean).join(' · '))}</p></div>
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
       </button>
@@ -943,6 +1011,7 @@ async function pantallaOportunidades(perfil, session) {
         ${o.veredicto_motivo ? `<p class="cita">${esc(o.veredicto_motivo)}</p>` : ''}
         <dl>
           <dt>Órgano</dt><dd>${esc(o.organo ?? '—')}</dd>
+          <dt>Provincia</dt><dd>${esc(o.provincia ?? 'no informada')}</dd>
           <dt>Presupuesto</dt><dd>${euros(o.presupuesto) ?? 'sin importe publicado'}</dd>
           <dt>Plazo</dt><dd>${plazoLargo(o.fecha_limite)}</dd>
           <dt>Códigos CPV</dt><dd>${esc((o.cpvs || []).join(', ')) || '—'}</dd>
@@ -969,6 +1038,155 @@ async function pantallaOportunidades(perfil, session) {
     }, 160);
   };
 
+  // ---------- Selector de provincias y comunidades ----------
+  //
+  // Se agrupan por comunidad porque un profesional que trabaja en
+  // Cataluña quiere las cuatro provincias, no ir marcándolas de una en
+  // una. Y las uniprovinciales aparecen a nivel raíz: repetir "Madrid"
+  // como comunidad y como provincia solo confunde.
+  const porComunidad = {};
+  DATOS.forEach(o => {
+    if (!o.provincia) return;
+    const c = o.comunidad || 'Sin comunidad';
+    (porComunidad[c] ??= new Set()).add(o.provincia);
+  });
+  const cuantasPor = {};
+  DATOS.forEach(o => { if (o.provincia) cuantasPor[o.provincia] = (cuantasPor[o.provincia] ?? 0) + 1; });
+
+  const comunidades = Object.entries(porComunidad)
+    .map(([nombre, provs]) => ({ nombre, provs: [...provs].sort((a,b) => a.localeCompare(b,'es')) }))
+    .sort((a,b) => a.nombre.localeCompare(b.nombre,'es'));
+
+  const campo = document.getElementById('campo-geo');
+  const buscador = document.getElementById('buscador-geo');
+  const desplegable = document.getElementById('desplegable');
+  let destacada = -1;
+
+  // Sin tildes: quien escribe "avila" o "coruna" quiere lo mismo que
+  // quien escribe con acento.
+  const plano = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const completa = c => c.provs.every(p => elegidas.has(p));
+
+  function visibles() {
+    const q = plano(buscador.value.trim());
+    const lista = [];
+    comunidades.forEach(c => {
+      const coincide = !q || plano(c.nombre).includes(q);
+      const hijas = c.provs.filter(p => coincide || plano(p).includes(q));
+      if (!hijas.length) return;
+      // Uniprovincial: comunidad y provincia son lo mismo, y repetirlo
+      // solo confunde.
+      if (c.provs.length === 1 && plano(c.provs[0]) === plano(c.nombre)) {
+        lista.push({ tipo:'provincia', nivel:'raiz', clave:c.provs[0] });
+        return;
+      }
+      lista.push({ tipo:'comunidad', nivel:'raiz', clave:c.nombre, dato:c });
+      hijas.forEach(p => lista.push({ tipo:'provincia', nivel:'hija', clave:p }));
+    });
+    return lista;
+  }
+
+  function alternar(item) {
+    if (item.tipo === 'comunidad') {
+      const todas = completa(item.dato);
+      item.dato.provs.forEach(p => todas ? elegidas.delete(p) : elegidas.add(p));
+    } else {
+      elegidas.has(item.clave) ? elegidas.delete(item.clave) : elegidas.add(item.clave);
+    }
+  }
+
+  function pintarEtiquetas() {
+    // Van antes del campo de escritura, así el cursor queda a su derecha
+    // y se ve que se puede seguir escribiendo.
+    campo.querySelectorAll('.etiqueta').forEach(e => e.remove());
+    [...elegidas].forEach(p => {
+      const et = document.createElement('span');
+      et.className = 'etiqueta';
+      et.innerHTML = `${esc(p)}<button type="button" aria-label="Quitar ${esc(p)}">×</button>`;
+      et.querySelector('button').onclick = ev => {
+        ev.stopPropagation();
+        elegidas.delete(p);
+        pintarEtiquetas(); pintarOpciones(); repintar();
+      };
+      campo.insertBefore(et, buscador);
+    });
+    buscador.placeholder = elegidas.size ? '' : 'Toda España';
+  }
+
+  function pintarOpciones() {
+    const lista = visibles();
+    if (!lista.length) {
+      desplegable.innerHTML = '<p class="sinresultado">Ninguna coincidencia.</p>';
+      return;
+    }
+    desplegable.innerHTML = lista.map((item, i) => {
+      const esCom = item.tipo === 'comunidad';
+      const marcada = esCom ? completa(item.dato) : elegidas.has(item.clave);
+      const n = esCom
+        ? item.dato.provs.reduce((s,p) => s + (cuantasPor[p] ?? 0), 0)
+        : (cuantasPor[item.clave] ?? 0);
+      const extra = esCom
+        ? `<span class="abarca">${item.dato.provs.length} provincias</span>` : '';
+      return `<button type="button" role="option" data-i="${i}"
+                class="opcion ${item.nivel === 'raiz' ? 'raiz' : 'hija'} ${i === destacada ? 'destacada' : ''}"
+                aria-selected="${marcada}">
+        <span class="casilla"></span>${esc(item.clave)} ${extra}
+        <span class="cuantas">${n}</span></button>`;
+    }).join('');
+
+    desplegable.querySelectorAll('.opcion').forEach(b => b.onclick = () => {
+      alternar(lista[+b.dataset.i]);
+      // No se cierra: elegir varias es el caso normal.
+      buscador.value = '';
+      pintarEtiquetas(); pintarOpciones(); repintar();
+      buscador.focus();
+    });
+  }
+
+  const abrir = () => {
+    desplegable.hidden = false;
+    buscador.setAttribute('aria-expanded','true');
+    pintarOpciones();
+  };
+  const cerrar = () => {
+    desplegable.hidden = true;
+    buscador.setAttribute('aria-expanded','false');
+    destacada = -1;
+  };
+
+  campo.onclick = () => { buscador.focus(); abrir(); };
+  buscador.onfocus = abrir;
+  buscador.oninput = () => { destacada = -1; abrir(); };
+  buscador.onkeydown = ev => {
+    const lista = visibles();
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      if (desplegable.hidden) abrir();
+      destacada = ev.key === 'ArrowDown'
+        ? Math.min(destacada + 1, lista.length - 1)
+        : Math.max(destacada - 1, 0);
+      pintarOpciones();
+      desplegable.querySelector('.destacada')?.scrollIntoView({block:'nearest'});
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      const item = destacada >= 0 ? lista[destacada] : (lista.length === 1 ? lista[0] : null);
+      if (item) {
+        alternar(item);
+        buscador.value = ''; destacada = -1;
+        pintarEtiquetas(); pintarOpciones(); repintar();
+      }
+    } else if (ev.key === 'Backspace' && !buscador.value && elegidas.size) {
+      elegidas.delete([...elegidas].pop());
+      pintarEtiquetas(); pintarOpciones(); repintar();
+    } else if (ev.key === 'Escape') {
+      cerrar(); buscador.blur();
+    }
+  };
+  document.addEventListener('click', ev => {
+    if (!ev.target.closest('.selector')) cerrar();
+  });
+
+  pintarEtiquetas();
   ['f-veredicto','f-texto'].forEach(id =>
     document.getElementById(id).addEventListener('input', repintar));
   pintar();
