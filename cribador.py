@@ -77,11 +77,31 @@ VEREDICTOS_VALIDOS = {"si", "quizas", "no"}
 # perfil. Aquí solo se le añade el formato de respuesta: mezclar el
 # criterio con instrucciones técnicas al generarlo lo haría más difícil
 # de leer y de corregir a mano.
+# Cómo se aplica el criterio, no cuál es. El criterio lo pone cada
+# cliente; esto es la disciplina con la que se lee.
+#
+# La regla de citar evidencia corrige un fallo medido: con el criterio
+# "vestuario para cuerpos de seguridad", el modelo aceptaba contratos de
+# "vestuario para el personal del Ayuntamiento". No inferían nada de más:
+# se comían la segunda condición y clasificaban por la primera. Once de
+# veintiocho aciertos eran de ese tipo.
 FORMATO = """
+
+CÓMO APLICARLO
+
+El "sí" exige que TODAS las condiciones de su cláusula estén en el texto
+del contrato. En el motivo, cita la palabra o frase concreta que satisface
+cada una. Si alguna condición la estás infiriendo en lugar de leerla, el
+veredicto es "quizás", no "sí".
+
+Es el fallo habitual: ante un criterio como "vestuario para cuerpos de
+seguridad", un contrato de "vestuario para el personal del Ayuntamiento"
+cumple lo de vestuario pero NO lo de cuerpos de seguridad. Eso es "quizás".
 
 Devuelve EXCLUSIVAMENTE un objeto JSON, sin texto alrededor ni marcas de
 código, con esta forma:
-{"veredicto": "si|quizas|no", "motivo": "una frase breve en español"}"""
+{"veredicto": "si|quizas|no", "motivo": "una frase breve en español que
+cite lo que has leído"}"""
 
 
 def configurar_logging() -> None:
