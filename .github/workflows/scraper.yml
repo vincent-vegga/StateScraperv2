@@ -114,7 +114,7 @@ jobs:
       # Modelo del cribado. Cambiarlo es editar esta línea.
       MODELO_CRIBADO: 'gpt-4o-mini'
       # Tope de llamadas por ejecución: freno de gasto, no de calidad.
-      MAX_CRIBADO_POR_EJECUCION: '300'
+      MAX_CRIBADO_POR_EJECUCION: '5000'
       URL_INTERFAZ: 'https://vincent-vegga.github.io/state-scraper/'
       # Filtro geográfico del canal agregado. Ponlo a 'false' si algún
       # día quieres cubrir todas las comunidades autónomas.
