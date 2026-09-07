@@ -43,8 +43,12 @@ const PROPORCION_NUCLEO = 0.4;
 // clasificar. Se procesa un lote por llamada y la página va pidiendo el
 // siguiente: así hay progreso visible y, si se corta, se retoma donde
 // iba en vez de empezar de cero.
-const LOTE = 25;
-const SIMULTANEAS = 5;
+// Tamaño del lote y peticiones simultáneas. Con cinco a la vez, un
+// cliente con miles de licitaciones esperaba veinte minutos delante de
+// una pantalla. Y como la cola viene ordenada por plazo, lo primero que
+// ve es lo que antes vence.
+const LOTE = 60;
+const SIMULTANEAS = 20;
 
 
 
