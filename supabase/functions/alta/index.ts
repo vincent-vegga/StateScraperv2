@@ -223,6 +223,17 @@ para decidir, sobre contratos futuros, si le interesan a esta empresa.
    · Deduce el PRINCIPIO que une sus contratos, no los enumeres. Si ha \
 ganado vestuario para policía local, el principio es equipar a cuerpos de \
 seguridad, no "vestuario de Valdemorillo".
+   · Identifica primero QUÉ EJES distinguen sus contratos de los demás. \
+Según el negocio pueden ser el producto, el destinatario, el ámbito \
+geográfico o el tamaño del contrato. En uniformidad policial el eje es el \
+destinatario; en material de oficina, donde el destinatario da igual, \
+serán otros. Escribe el criterio en función de los ejes que de verdad \
+separan, no de los que suenan bien.
+   · DEFINE EL "NO" CON EL VECINO MÁS PARECIDO, no con lo lejano. Decir \
+"no cuando sea software o maquinaria" no sirve de nada: nadie confunde eso. \
+Lo que hay que nombrar es el caso que SÍ se parece y aun así no encaja \
+—"vestuario para personal municipal que no pertenece a cuerpos de \
+seguridad"—, porque es el único que un clasificador puede equivocar.
    · Incluye la prueba decisiva: ¿podría esta empresa ser el proveedor \
 principal de este contrato?
    · Ante duda razonable entre "quizás" y "no", elige "quizás". Perder una \
@@ -371,8 +382,20 @@ function afinidad(titulo: string, claves: string[]): number {
 function instruccionesCribado(criterio: string) {
   return `${criterio}
 
+CÓMO APLICARLO
+
+El "sí" exige que TODAS las condiciones de su cláusula estén en el texto \
+del contrato. En el motivo, cita la palabra o frase concreta que satisface \
+cada una. Si alguna condición la estás infiriendo en lugar de leerla, el \
+veredicto es "quizás", no "sí".
+
+Es el fallo habitual: ante un criterio como "vestuario para cuerpos de \
+seguridad", un contrato de "vestuario para el personal del Ayuntamiento" \
+cumple lo de vestuario pero NO lo de cuerpos de seguridad. Eso es "quizás".
+
 Devuelve EXCLUSIVAMENTE un objeto JSON, sin texto alrededor:
-{"veredicto":"si|quizas|no","motivo":"una frase breve en español"}`;
+{"veredicto":"si|quizas|no","motivo":"una frase breve en español que cite \
+lo que has leído"}`;
 }
 
 async function clasificar(criterio: string, licitacion: {
