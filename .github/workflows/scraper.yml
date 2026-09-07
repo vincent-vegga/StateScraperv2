@@ -113,8 +113,13 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       # Modelo del cribado. Cambiarlo es editar esta línea.
       MODELO_CRIBADO: 'gpt-4o-mini'
-      # Tope de llamadas por ejecución: freno de gasto, no de calidad.
-      MAX_CRIBADO_POR_EJECUCION: '5000'
+      # Tope de clasificaciones POR PERFIL y ejecución: freno de gasto,
+      # no de calidad. Con 5.000 se criba de una vez el sector entero de
+      # un cliente nuevo.
+      MAX_CRIBADO_POR_PERFIL: '5000'
+      # Clasificaciones simultáneas. De una en una, mil licitaciones son
+      # veinte minutos.
+      CRIBADO_SIMULTANEAS: '20'
       URL_INTERFAZ: 'https://vincent-vegga.github.io/state-scraper/'
       # Filtro geográfico del canal agregado. Ponlo a 'false' si algún
       # día quieres cubrir todas las comunidades autónomas.
