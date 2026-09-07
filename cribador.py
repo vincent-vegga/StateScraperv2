@@ -54,6 +54,7 @@ import os
 import sys
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
@@ -66,8 +67,19 @@ MODELO = os.environ.get("MODELO_CRIBADO", "gpt-4o-mini")
 TABLA_VEREDICTOS = "veredictos"
 VISTA_PENDIENTES = "pendientes_por_perfil"
 
-MAX_POR_PERFIL = int(os.environ.get("MAX_CRIBADO_POR_PERFIL", "300"))
+# Se aceptan los dos nombres: el workflow usaba MAX_CRIBADO_POR_EJECUCION
+# desde la versión anterior, y al reescribir el cribador por perfiles se
+# cambió a MAX_CRIBADO_POR_PERFIL sin actualizar el workflow. El valor
+# configurado se ignoraba en silencio y el cribado se quedaba en 300.
+MAX_POR_PERFIL = int(
+    os.environ.get("MAX_CRIBADO_POR_PERFIL")
+    or os.environ.get("MAX_CRIBADO_POR_EJECUCION")
+    or "300"
+)
 TAMANO_LOTE = 50
+# Clasificaciones simultáneas. Con una sola, mil licitaciones tardan
+# veinte minutos; con veinte, poco más de uno.
+SIMULTANEAS = int(os.environ.get("CRIBADO_SIMULTANEAS", "20"))
 REINTENTOS = 3
 ESPERA_REINTENTO = 4
 
@@ -377,24 +389,37 @@ def main() -> int:
         resultados: list[dict] = []
         reparto = Counter()
 
-        for indice, licitacion in enumerate(pendientes, 1):
-            veredicto = clasificar(cliente_ia, perfil["criterio"], licitacion)
-            if veredicto is None:
-                fallos += 1
-                continue
+        # En paralelo. De una en una, mil licitaciones son veinte minutos
+        # y el cliente espera delante de una pantalla. El proveedor
+        # aguanta bastantes más peticiones simultáneas de las que se
+        # piden aquí.
+        with ThreadPoolExecutor(max_workers=SIMULTANEAS) as ejecutor:
+            tareas = {
+                ejecutor.submit(clasificar, cliente_ia, perfil["criterio"], lic): lic
+                for lic in pendientes
+            }
+            hechas = 0
+            for tarea in as_completed(tareas):
+                licitacion = tareas[tarea]
+                hechas += 1
+                veredicto = tarea.result()
+                if veredicto is None:
+                    fallos += 1
+                    continue
 
-            reparto[veredicto["veredicto"]] += 1
-            resultados.append({
-                "id_licitacion": licitacion["id_licitacion"],
-                "perfil_id": perfil["id"],
-                "criterio_version": perfil.get("criterio_version"),
-                **veredicto,
-            })
+                reparto[veredicto["veredicto"]] += 1
+                resultados.append({
+                    "id_licitacion": licitacion["id_licitacion"],
+                    "perfil_id": perfil["id"],
+                    "criterio_version": perfil.get("criterio_version"),
+                    **veredicto,
+                })
 
-            if es_prueba or indice % 50 == 0:
-                logging.info("  [%3d/%d] %-6s · %s", indice, len(pendientes),
-                             veredicto["veredicto"],
-                             licitacion.get("titulo", "")[:70])
+                if es_prueba:
+                    logging.info("  %-6s · %s", veredicto["veredicto"],
+                                 licitacion.get("titulo", "")[:70])
+                elif hechas % 100 == 0:
+                    logging.info("  %d/%d clasificadas...", hechas, len(pendientes))
 
         por_perfil[perfil["nombre"]] = reparto
 
