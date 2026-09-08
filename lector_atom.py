@@ -77,6 +77,40 @@ from lxml import etree
 CPV_PREFIJOS_POR_DEFECTO: tuple[str, ...] = ("7995", "923", "925")
 
 
+def prefijos_de_los_perfiles(cliente) -> tuple[str, ...]:
+    """
+    Unión de los prefijos CPV de todos los perfiles activos.
+
+    Es lo que convierte el scraper en multicliente: en vez de vigilar una
+    lista fija escrita en la configuración, captura lo que necesita cada
+    cliente que hay dado de alta. Un cliente nuevo de un sector nuevo
+    empieza a recibir novedades al día siguiente sin tocar nada.
+
+    Se DEDUPLICAN y se quedan solo los más cortos: si un perfil pide
+    "18" y otro "1811", basta con capturar "18" — el segundo está
+    contenido en el primero y filtrar dos veces sería trabajo repetido.
+    """
+    try:
+        filas = (cliente.table("perfiles").select("cpv_prefijos")
+                 .eq("activo", True).not_.is_("cpv_prefijos", "null")
+                 .execute().data) or []
+    except Exception as error:
+        logging.warning("No se pudieron leer los prefijos de los perfiles: %s", error)
+        return ()
+
+    todos: set[str] = set()
+    for fila in filas:
+        for p in (fila.get("cpv_prefijos") or "").split(","):
+            p = "".join(c for c in p if c.isdigit())
+            if 2 <= len(p) <= 6:
+                todos.add(p)
+
+    # Quitar los que ya están cubiertos por otro más corto.
+    minimos = {p for p in todos
+               if not any(p != otro and p.startswith(otro) for otro in todos)}
+    return tuple(sorted(minimos))
+
+
 def _leer_prefijos_cpv() -> tuple[str, ...]:
     """Lee los prefijos de la variable de entorno; si no hay, usa los de serie."""
     bruto = os.environ.get("CPV_PREFIJOS", "").strip()
@@ -1655,6 +1689,11 @@ def main() -> int:
     )
     opciones = argumentos.parse_args()
 
+    # Se declara aquí porque los prefijos se resuelven más abajo, contra
+    # los perfiles activos, y Python exige la declaración antes de
+    # cualquier uso de la variable en la función.
+    global CPV_PREFIJOS
+
     configurar_logging()
     logging.info("=" * 62)
     logging.info("STATE SCRAPER v2 · Pasos 1 y 2")
@@ -1669,6 +1708,19 @@ def main() -> int:
     # La conexión se abre ANTES de descargar nada: el marcador temporal de
     # Supabase es lo que decide cuánto hay que retroceder en cada feed.
     cliente = None if opciones.diagnostico else obtener_cliente_supabase()
+
+    # Los prefijos salen de los perfiles dados de alta, no de una lista
+    # fija. Así el scraper captura lo que necesita cada cliente y uno
+    # nuevo empieza a recibir novedades sin tocar la configuración.
+    if cliente is not None and not os.environ.get("CPV_PREFIJOS", "").strip():
+        de_perfiles = prefijos_de_los_perfiles(cliente)
+        if de_perfiles:
+            CPV_PREFIJOS = de_perfiles
+            logging.info("Prefijos tomados de los perfiles activos: %s",
+                         ", ".join(CPV_PREFIJOS))
+        else:
+            logging.warning("Ningún perfil activo tiene prefijos. Se usan los "
+                            "de serie: %s", ", ".join(CPV_PREFIJOS))
 
     resultados, fuentes_fallidas = procesar_fuentes(cliente, opciones.diagnostico)
 
