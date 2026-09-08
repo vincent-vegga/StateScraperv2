@@ -348,6 +348,39 @@ const raiz = document.getElementById('raiz');
 // cada vez que Supabase renueva el token.
 let sesionActual = null;
 
+// ---------- Historial del navegador ----------
+//
+// Sin esto, "atrás" saca al cliente de la web entera. En el móvil, donde
+// deslizar hacia atrás es un gesto reflejo, eso rompe la confianza: se
+// pierde lo que estaba mirando sin haber pedido salir.
+//
+// Cada pantalla y cada pestaña dejan una entrada en el historial, así que
+// atrás devuelve al punto anterior en lugar de al buscador.
+
+function irA(vista, datos = {}, reemplazar = false) {
+  const estado = { vista, ...datos };
+  if (reemplazar) history.replaceState(estado, '');
+  else history.pushState(estado, '');
+}
+
+// Al pulsar atrás se recompone lo que corresponda. Sin estado guardado
+// —primera carga, o alguien que llegó por un enlace— se decide como
+// siempre, mirando en qué punto está su perfil.
+window.addEventListener('popstate', async (ev) => {
+  const estado = ev.state;
+  if (!estado) return arrancar(true);
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return pantallaEntrar();
+  const { data: perfiles } = await sb.from('perfiles')
+    .select('*').eq('usuario_id', session.user.id).limit(1);
+  const perfil = perfiles?.[0];
+  if (!perfil) return arrancar(true);
+
+  if (estado.vista === 'panel') return pantallaPanel(perfil, session, true);
+  return pantallaOportunidades(perfil, session, true, estado.pestana);
+});
+
 // Asigna un manejador solo si el elemento existe. Un botón que se queda
 // sin pintar por un descuido tumbaba la pantalla entera: el error cortaba
 // el JavaScript antes de llegar a la lista de contratos.
@@ -397,7 +430,7 @@ async function llamar(accion, cuerpo = {}) {
 // Enrutado: la pantalla depende del punto en que esté el perfil
 // ============================================================
 
-async function arrancar() {
+async function arrancar(volviendo = false) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return pantallaEntrar();
   sesionActual = session.user.id;
@@ -407,7 +440,7 @@ async function arrancar() {
   const perfil = perfiles?.[0];
 
   if (!perfil) return pantallaCodigo(session);
-  if (perfil.paso_alta === 'listo') return pantallaOportunidades(perfil, session);
+  if (perfil.paso_alta === 'listo') return pantallaOportunidades(perfil, session, volviendo);
   if (perfil.paso_alta === 'cribando') return pantallaCribando(perfil, session);
   if (perfil.paso_alta === 'entrenando' && perfil.cpv_prefijos)
     return pantallaEntrenar(perfil, perfil.cpv_prefijos.split(','), session);
@@ -989,7 +1022,8 @@ async function pantallaCribando(perfil, session, lectura) {
 // 6 · Panel de la cuenta
 // ============================================================
 
-async function pantallaPanel(perfil, session) {
+async function pantallaPanel(perfil, session, volviendo = false) {
+  if (!volviendo) irA('panel');
   raiz.className = 'envoltorio';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando...</p></div>`;
 
@@ -1067,7 +1101,9 @@ async function pantallaPanel(perfil, session) {
       </div>
     </div>`;
 
-  document.getElementById('volver').onclick = () => arrancar();
+  // Retroceder en el historial en lugar de recomponer: así el gesto del
+  // botón y el del navegador hacen lo mismo.
+  alPulsar('volver', () => history.back());
 
   document.getElementById('reiniciar').onclick = async () => {
     const zona = document.getElementById('resultado');
@@ -1095,7 +1131,9 @@ async function pantallaPanel(perfil, session) {
 // 7 · Sus oportunidades
 // ============================================================
 
-async function pantallaOportunidades(perfil, session) {
+async function pantallaOportunidades(perfil, session, volviendo = false,
+                                     pestanaInicial = 'todo') {
+  if (!volviendo) irA('contratos', { pestana: 'todo' }, true);
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando tus contratos...</p></div>`;
 
@@ -1193,7 +1231,7 @@ async function pantallaOportunidades(perfil, session) {
   // Provincias elegidas. Vacío es "toda España", no "ninguna": es lo que
   // espera quien todavía no ha elegido nada.
   const elegidas = new Set();
-  let pestana = 'todo';
+  let pestana = pestanaInicial;
 
   function pintar() {
     const ver = document.getElementById('f-veredicto').value;
@@ -1514,18 +1552,22 @@ async function pantallaOportunidades(perfil, session) {
   document.getElementById('c-hoy').textContent = DATOS.filter(o => o.es_novedad).length;
   document.getElementById('c-todo').textContent = DATOS.length;
 
-  function cambiarPestana(cual) {
+  function cambiarPestana(cual, volviendo = false) {
     // Al salir de novedades se marca la visita: lo que ha visto deja de
     // serlo. Si se marcara al entrar, recargar vaciaría la lista que
     // está mirando.
     if (pestana === 'hoy' && cual !== 'hoy') sb.rpc('marcar_visita');
     pestana = cual;
+    // Cambiar de pestaña también es navegar: atrás debe devolver a la
+    // anterior, no sacar de la web.
+    if (!volviendo) irA('contratos', { pestana: cual });
     document.getElementById('p-hoy').setAttribute('aria-selected', cual === 'hoy');
     document.getElementById('p-todo').setAttribute('aria-selected', cual === 'todo');
     repintar();
   }
   alPulsar('p-hoy', () => cambiarPestana('hoy'));
   alPulsar('p-todo', () => cambiarPestana('todo'));
+  if (pestanaInicial !== 'todo') cambiarPestana(pestanaInicial, true);
 
   // Y al cerrar la pestaña del navegador, por el mismo motivo.
   window.addEventListener('beforeunload', () => {
