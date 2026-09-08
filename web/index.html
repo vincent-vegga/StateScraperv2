@@ -348,6 +348,15 @@ const raiz = document.getElementById('raiz');
 // cada vez que Supabase renueva el token.
 let sesionActual = null;
 
+// Asigna un manejador solo si el elemento existe. Un botón que se queda
+// sin pintar por un descuido tumbaba la pantalla entera: el error cortaba
+// el JavaScript antes de llegar a la lista de contratos.
+const alPulsar = (id, hacer) => {
+  const el = document.getElementById(id);
+  if (el) el.onclick = hacer;
+  else console.warn(`Falta el elemento #${id}`);
+};
+
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const euros = n => n == null ? null : new Intl.NumberFormat('es-ES',
@@ -1105,7 +1114,10 @@ async function pantallaOportunidades(perfil, session) {
     <div class="cabecera-app">
       <div><strong>Tus contratos</strong>
         <div class="quien">${esc(perfil.email ?? '')}</div></div>
-      <button class="enlace" id="salir">Salir</button>
+      <div style="display:flex;gap:14px">
+        <button class="enlace" id="panel">Mi cuenta</button>
+        <button class="enlace" id="salir">Salir</button>
+      </div>
     </div>
     <h1 id="titular" style="margin-top:30px"></h1>
     <div class="marcador" id="marcador">
@@ -1143,8 +1155,8 @@ async function pantallaOportunidades(perfil, session) {
     la lista con lo que de verdad te encaja.</p>
     <main id="lista"></main>`;
 
-  document.getElementById('salir').onclick = () => sb.auth.signOut();
-  document.getElementById('panel').onclick = () => pantallaPanel(perfil, session);
+  alPulsar('salir', () => sb.auth.signOut());
+  alPulsar('panel', () => pantallaPanel(perfil, session));
 
   const bloqueFecha = o => {
     if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo publicado</span></div>`;
@@ -1512,8 +1524,8 @@ async function pantallaOportunidades(perfil, session) {
     document.getElementById('p-todo').setAttribute('aria-selected', cual === 'todo');
     repintar();
   }
-  document.getElementById('p-hoy').onclick = () => cambiarPestana('hoy');
-  document.getElementById('p-todo').onclick = () => cambiarPestana('todo');
+  alPulsar('p-hoy', () => cambiarPestana('hoy'));
+  alPulsar('p-todo', () => cambiarPestana('todo'));
 
   // Y al cerrar la pestaña del navegador, por el mismo motivo.
   window.addEventListener('beforeunload', () => {
