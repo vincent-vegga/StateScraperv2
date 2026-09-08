@@ -977,7 +977,113 @@ async function pantallaCribando(perfil, session, lectura) {
 }
 
 // ============================================================
-// 6 · Sus oportunidades
+// 6 · Panel de la cuenta
+// ============================================================
+
+async function pantallaPanel(perfil, session) {
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `<div class="centro"><p class="guia">Cargando...</p></div>`;
+
+  const { data: p, error } = await sb.rpc('mi_panel');
+  if (error || !p) {
+    raiz.innerHTML = `<div class="centro"><div class="aviso mal">
+      No hemos podido cargar tu cuenta.</div></div>`;
+    return;
+  }
+
+  const fecha = s => s ? new Date(s).toLocaleDateString('es-ES',
+    {timeZone:ZONA, day:'numeric', month:'long', year:'numeric'}) : '—';
+  const buscamos = p.que_buscamos ?? [];
+  const sectores = p.sectores ?? [];
+
+  raiz.innerHTML = `
+    <div class="cabecera-app">
+      <div><strong>Mi cuenta</strong>
+        <div class="quien">${esc(p.email ?? '')}</div></div>
+      <button class="enlace" id="volver">Volver a mis contratos</button>
+    </div>
+
+    <div class="panel">
+      <div class="bloque">
+        <h3>Tu empresa</h3>
+        <dl>
+          <dt>Nombre</dt><dd>${esc(p.empresa ?? '—')}</dd>
+          <dt>CIF</dt><dd>${esc(p.cif ?? '—')}</dd>
+          <dt>Contratos ganados</dt><dd>${p.contratos_ganados ?? 0}${
+            p.importe_ganado ? ` · ${euros(Number(p.importe_ganado))}` : ''}</dd>
+          <dt>Actividad</dt><dd>${esc(p.actividad ?? '—')}</dd>
+        </dl>
+      </div>
+
+      ${buscamos.length ? `
+      <div class="bloque">
+        <h3>Qué buscamos por ti</h3>
+        <ul class="filtro-lista">
+          ${buscamos.map(f => `<li>${esc(f)}</li>`).join('')}
+        </ul>
+        <p class="guia" style="margin:14px 0 0;font-size:.88rem">
+        ¿Algo no encaja? Marca en tu lista los contratos que no te interesan
+        y lo ajustamos automáticamente.</p>
+      </div>` : ''}
+
+      ${sectores.length ? `
+      <div class="bloque">
+        <h3>Tus sectores</h3>
+        <div class="sectores">
+          ${sectores.map(s => `<div>${esc(s.sector ?? '—')}
+            <span>${s.contratos} contratos</span></div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      <div class="bloque">
+        <h3>Tu filtro</h3>
+        <dl>
+          <dt>Contratos que te mostramos</dt><dd>${p.oportunidades ?? 0}</dd>
+          <dt>Correcciones que has hecho</dt><dd>${p.correcciones?.total ?? 0}${
+            p.correcciones?.sin_aplicar
+              ? ` · ${p.correcciones.sin_aplicar} sin aplicar todavía` : ''}</dd>
+          <dt>Última actualización</dt><dd>${fecha(p.criterio_fecha)}</dd>
+          <dt>Cliente desde</dt><dd>${fecha(p.alta)}</dd>
+        </dl>
+      </div>
+
+      <div class="bloque peligro">
+        <h3>Empezar de cero</h3>
+        <p class="guia" style="margin:0 0 16px">Si tu negocio ha cambiado de
+        rumbo —una línea nueva, o has dejado de hacer algo— es mejor rehacer
+        el filtro que ir corrigiéndolo. Tarda un minuto y no se pierde nada:
+        tu historial de contratos sigue ahí.</p>
+        <button class="secundario" id="reiniciar">Rehacer mi filtro</button>
+        <div id="resultado"></div>
+      </div>
+    </div>`;
+
+  document.getElementById('volver').onclick = () => arrancar();
+
+  document.getElementById('reiniciar').onclick = async () => {
+    const zona = document.getElementById('resultado');
+    zona.innerHTML = `
+      <div class="aviso">¿Seguro? Se borrará tu filtro actual y volverás a
+      empezar desde tu CIF.
+      <div style="margin-top:12px;display:flex;gap:10px">
+        <button class="secundario" id="no">Cancelar</button>
+        <button class="principal" id="si">Sí, rehacerlo</button>
+      </div></div>`;
+    document.getElementById('no').onclick = () => zona.innerHTML = '';
+    document.getElementById('si').onclick = async () => {
+      zona.innerHTML = `<div class="aviso">Preparando...</div>`;
+      try {
+        await llamar('reiniciar');
+        arrancar();
+      } catch {
+        zona.innerHTML = `<div class="aviso mal">No se ha podido. Inténtalo de nuevo.</div>`;
+      }
+    };
+  };
+}
+
+// ============================================================
+// 7 · Sus oportunidades
 // ============================================================
 
 async function pantallaOportunidades(perfil, session) {
@@ -1038,6 +1144,7 @@ async function pantallaOportunidades(perfil, session) {
     <main id="lista"></main>`;
 
   document.getElementById('salir').onclick = () => sb.auth.signOut();
+  document.getElementById('panel').onclick = () => pantallaPanel(perfil, session);
 
   const bloqueFecha = o => {
     if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo publicado</span></div>`;
