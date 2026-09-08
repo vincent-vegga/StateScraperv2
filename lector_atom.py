@@ -77,6 +77,26 @@ from lxml import etree
 CPV_PREFIJOS_POR_DEFECTO: tuple[str, ...] = ("7995", "923", "925")
 
 
+def pendientes_de_verificar(cliente) -> set[str]:
+    """
+    Expedientes que se le están mostrando a algún cliente y llevan
+    tiempo sin confirmarse en el feed.
+
+    El scraper retrocede hasta encontrarlos. No sirve una ventana fija:
+    lo que importa no es cuántos días atrás se mira, sino haber visto
+    todo lo que se está enseñando. Si un contrato aparece en la pantalla
+    de alguien como oportunidad abierta y en realidad ya se adjudicó, es
+    el peor fallo posible para la confianza.
+    """
+    try:
+        filas = (cliente.rpc("pendientes_de_verificar", {"dias_margen": 2})
+                 .execute().data) or []
+        return {f["id_licitacion"] for f in filas}
+    except Exception as error:
+        logging.warning("No se pudo consultar qué verificar: %s", error)
+        return set()
+
+
 def prefijos_de_los_perfiles(cliente) -> tuple[str, ...]:
     """
     Unión de los prefijos CPV de todos los perfiles activos.
@@ -982,6 +1002,7 @@ def recorrer_feed(
     sesion: requests.Session,
     feed: dict[str, str],
     limite_temporal: datetime,
+    a_verificar: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Descarga un feed, sigue su paginación y devuelve las licitaciones que
@@ -990,6 +1011,12 @@ def recorrer_feed(
     Los feeds encadenan páginas hacia atrás con <link rel="next">. Quien
     debe detener el recorrido es la fecha, no el tope de páginas: ese tope
     es solo un freno de emergencia y su activación se avisa como problema.
+
+    `a_verificar` son expedientes que se le están mostrando a algún cliente
+    y llevan días sin confirmarse. El recorrido no se detiene hasta
+    haberlos visto, aunque queden fuera de la ventana temporal: mostrar
+    como abierto algo ya adjudicado es el fallo que más daño hace a la
+    confianza, y esos contratos son justo los que el cliente va a abrir.
     """
     nombre = feed["nombre"]
     extractor = EXTRACTORES.get(feed.get("tipo", "placsp"), extraer_placsp)
@@ -1007,6 +1034,13 @@ def recorrer_feed(
     #                profundidad real de vigilancia.
     fecha_mas_antigua_leida: datetime | None = None
     fecha_mas_antigua_cubierta: datetime | None = None
+
+    # Expedientes que se le están mostrando a algún cliente y llevan días
+    # sin confirmarse. El recorrido no se detiene hasta haberlos visto
+    # todos: si uno se adjudicó y no lo detectamos, el cliente lo abre y
+    # descubre que ya tiene dueño. Es el fallo que más daño hace.
+    por_verificar = set(a_verificar or ())
+    vistos_al_verificar: set[str] = set()
 
     for numero_pagina in range(1, MAX_PAGINAS_POR_FEED + 1):
         if not url_actual:
@@ -1045,6 +1079,12 @@ def recorrer_feed(
                                   or fecha_entrada < fecha_mas_antigua_leida):
                 fecha_mas_antigua_leida = fecha_entrada
 
+            # Se anota aunque quede fuera de la ventana: encontrarlo ES la
+            # verificación, y su fecha da igual.
+            if datos["id_licitacion"] in por_verificar:
+                vistos_al_verificar.add(datos["id_licitacion"])
+                resultados.append(datos)
+
             if not es_reciente(datos["fecha_actualizacion"], limite_temporal):
                 fuera_de_ventana += 1
                 continue
@@ -1061,17 +1101,38 @@ def recorrer_feed(
         # Si la MAYORÍA de la página queda fuera de la ventana, las siguientes
         # son aún más antiguas: dejamos de paginar. Exigir el 100 % hacía que
         # un solo rezagado reciente impidiera el corte indefinidamente.
+        quedan = por_verificar - vistos_al_verificar
         if entradas and fuera_de_ventana >= len(entradas) * UMBRAL_CORTE_PAGINA:
-            logging.info(
-                "[%s] Página %d: %d de %d entradas fuera de ventana (>= %.0f %%). Fin.",
-                nombre, numero_pagina, fuera_de_ventana, len(entradas),
-                UMBRAL_CORTE_PAGINA * 100,
-            )
-            ventana_agotada = True
-            break
+            # La ventana está agotada, pero si aún faltan expedientes por
+            # confirmar se sigue leyendo: el objetivo no es cubrir N días,
+            # es haber visto todo lo que se le está enseñando a alguien.
+            if quedan and numero_pagina < MAX_PAGINAS_POR_FEED:
+                if numero_pagina % 10 == 0:
+                    logging.info("[%s] Ventana agotada, pero faltan %d por "
+                                 "verificar. Sigo en la página %d.",
+                                 nombre, len(quedan), numero_pagina)
+            else:
+                logging.info(
+                    "[%s] Página %d: %d de %d entradas fuera de ventana (>= %.0f %%). Fin.",
+                    nombre, numero_pagina, fuera_de_ventana, len(entradas),
+                    UMBRAL_CORTE_PAGINA * 100,
+                )
+                ventana_agotada = True
+                break
 
         enlaces_siguientes = raiz.xpath("./*[local-name()='link'][@rel='next']/@href")
         url_actual = enlaces_siguientes[0] if enlaces_siguientes else None
+
+    if por_verificar:
+        faltan = por_verificar - vistos_al_verificar
+        logging.info("[%s] Verificados %d de %d expedientes en seguimiento.",
+                     nombre, len(vistos_al_verificar), len(por_verificar))
+        if faltan:
+            # No es un error: puede que sencillamente no se hayan movido.
+            # Pero la web lo marcará como no verificado en lugar de
+            # presentarlo como confirmado.
+            logging.info("[%s] %d no han reaparecido; se marcarán como no "
+                         "verificados.", nombre, len(faltan))
 
     ahora = datetime.now(timezone.utc)
     if fecha_mas_antigua_cubierta is not None:
@@ -1172,11 +1233,18 @@ def procesar_fuentes(cliente, diagnostico: bool) -> tuple[list[dict[str, Any]], 
     acumuladas: list[dict[str, Any]] = []
     fuentes_fallidas = 0
 
+    # Qué hay que confirmar: lo que se le está enseñando a algún cliente y
+    # lleva días sin verse en el feed.
+    a_verificar = set() if diagnostico else pendientes_de_verificar(cliente)
+    if a_verificar:
+        logging.info("En seguimiento: %d expedientes que se están mostrando "
+                     "y llevan días sin confirmarse.", len(a_verificar))
+
     for feed in construir_lista_fuentes():
         nombre = feed["nombre"]
         try:
             limite = calcular_limite_temporal(cliente, feed)
-            encontradas = recorrer_feed(sesion, feed, limite)
+            encontradas = recorrer_feed(sesion, feed, limite, a_verificar)
 
             # Si la misma licitación aparece en dos feeds, gana la primera.
             unicas = [x for x in encontradas if x["id_licitacion"] not in ya_vistas]
@@ -1357,6 +1425,10 @@ def refrescar_conocidas(cliente, conocidas: list[dict[str, Any]]) -> int:
             "estado_nombre": item.get("estado_nombre") or None,
             "fecha_limite": item.get("fecha_limite"),
             "presupuesto": item["presupuesto"],
+            # Verlo en el feed es la confirmación de que sigue como dice.
+            # Sin esta marca no se puede distinguir "está publicada" de
+            # "lo estaba la última vez que la vimos, hace tres semanas".
+            "ultima_verificacion": datetime.now(timezone.utc).isoformat(),
             "fecha_actualizacion": (
                 f.isoformat() if (f := a_fecha(item["fecha_actualizacion"])) else None
             ),
