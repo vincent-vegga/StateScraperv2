@@ -253,10 +253,25 @@ Policía Local" con el código de software lleva un error evidente.
 empresa, según los títulos que has leído. Descarta los que solo pueden \
 explicarse como un error de etiquetado.
 
+3. RESUMIR EL FILTRO PARA EL CLIENTE. Dos o tres frases cortas, en \
+lenguaje corriente, que expliquen QUÉ se busca y qué se descarta. No es el \
+criterio: es lo que se le enseña a él para que entienda con qué se le \
+filtra y pueda corregirlo si no encaja.
+
+   Ejemplo: ["Buscamos vestuario y equipación para policía local y \
+protección civil", "No incluimos bomberos, Guardia Civil ni Policía \
+Nacional", "Descartamos uniformidad de personal municipal sin relación con \
+la seguridad"].
+
+   Que sea concreto y en primera persona del plural. Nada de tecnicismos, \
+códigos CPV ni referencias a cómo funciona el sistema.
+
 Devuelve EXCLUSIVAMENTE JSON:
 {"criterio":"...","prefijos_validos":["3581","1810"],\
 "descartados":[{"prefijo":"4800","motivo":"..."}],\
-"actividad":"una frase sobre a qué se dedica","resumen":"una frase para el cliente"}`;
+"actividad":"una frase sobre a qué se dedica",\
+"que_buscamos":["frase 1","frase 2"],\
+"resumen":"una frase para el cliente"}`;
 
 async function leerHistorial(
   contratos: { titulo: string; organo: string; importe: number | null }[],
@@ -314,8 +329,13 @@ el "no" con el caso MÁS PARECIDO que aun así no encaja, no con lo lejano.
 
 6. Máximo 350 palabras.
 
+7. Devuelve además "que_buscamos": dos o tres frases cortas, en lenguaje \
+corriente y en primera persona del plural, que expliquen al cliente qué se \
+busca y qué se descarta. Es lo que él verá; el criterio no se le enseña.
+
 Devuelve EXCLUSIVAMENTE JSON:
-{"criterio":"...","cambios":"una frase sobre qué has ajustado",\
+{"criterio":"...","que_buscamos":["frase 1","frase 2"],\
+"cambios":"una frase sobre qué has ajustado",\
 "resumen":"una frase para el cliente"}`;
 
 async function regenerarCriterio(
@@ -621,6 +641,11 @@ Deno.serve(async (peticion) => {
         nombre: String(suya.nombre ?? perfil.nombre),
         descripcion: String(lectura.actividad ?? ""),
         criterio: String(lectura.criterio ?? ""),
+        // Lo que se le enseña a él. El criterio completo no: es la
+        // receta del filtro y además está escrito para un clasificador,
+        // no para leerse.
+        que_buscamos: Array.isArray(lectura.que_buscamos)
+          ? lectura.que_buscamos.map((x: unknown) => String(x)).slice(0, 5) : [],
         criterio_version: (perfil.criterio_version ?? 0) + 1,
         criterio_fecha: new Date().toISOString(),
         // Directo a cribar: no hay tarjetas que deslizar.
@@ -954,6 +979,9 @@ Deno.serve(async (peticion) => {
 
       await comoUsuario.from("perfiles").update({
         criterio: String(nuevo.criterio ?? perfil.criterio),
+        que_buscamos: Array.isArray(nuevo.que_buscamos)
+          ? nuevo.que_buscamos.map((x: unknown) => String(x)).slice(0, 5)
+          : perfil.que_buscamos,
         criterio_version: (perfil.criterio_version ?? 0) + 1,
         criterio_fecha: new Date().toISOString(),
       }).eq("id", perfil.id);
@@ -1041,6 +1069,28 @@ Deno.serve(async (peticion) => {
         quedan,
         total,
       });
+    }
+
+    // --- Empezar de cero ---
+    //
+    // Para un cambio de línea de negocio. Ampliar un criterio existente
+    // funciona mal cuando el cambio es radical: se queda arrastrando lo
+    // viejo. Rehacerlo cuesta un minuto y sale limpio.
+    if (accion === "reiniciar") {
+      await admin.from("veredictos").delete().eq("perfil_id", perfil.id);
+      await admin.from("correcciones").delete().eq("perfil_id", perfil.id);
+      await comoUsuario.from("perfiles").update({
+        criterio: null,
+        que_buscamos: [],
+        cpv_prefijos: null,
+        descripcion: null,
+        cif: null,
+        empresa: null,
+        paso_alta: "describiendo",
+      }).eq("id", perfil.id);
+
+      console.log(`Perfil ${perfil.id} reiniciado`);
+      return responder({ ok: true });
     }
 
     return responder({ error: "accion_desconocida" }, 400);
