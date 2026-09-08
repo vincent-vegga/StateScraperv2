@@ -189,9 +189,15 @@ input[type=search]:focus,select:focus{border-color:var(--fuerte);outline:0}
 .confirmado{
   display:inline-block;margin-top:10px;color:var(--si);font-size:.8rem;
 }
-/* Aviso de que un contrato lleva tiempo sin confirmarse en la fuente
-   oficial. No se oculta: se avisa. Ocultar por no haber podido
-   comprobar algo perdería oportunidades reales. */
+/* Aviso solo para lo que lleva MUCHO parado: más de noventa días.
+   Un expediente publicado que nadie toca no reaparece en el feed en
+   semanas, así que un umbral corto marcaría casi todos los contratos
+   normales. Un aviso que sale siempre no avisa: enseña a ignorarlo.
+
+   Y el mecanismo que de verdad protege es otro: cuando algo se
+   adjudica, el expediente se mueve, reaparece en el feed y su estado
+   deja de ser PUB. Esto solo cubre el caso raro de que el órgano no
+   publique ese cambio. */
 .sin-verificar{
   display:inline-block;margin-top:8px;color:var(--no);font-size:.78rem;
 }
@@ -1086,8 +1092,8 @@ async function pantallaOportunidades(perfil, session) {
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
           <p class="meta">${esc([o.organo, o.provincia].filter(Boolean).join(' · '))}</p>
-          ${o.dias_sin_verificar > 7
-            ? `<span class="sin-verificar">Sin confirmar desde hace
+          ${o.dias_sin_verificar > 90
+            ? `<span class="sin-verificar">Sin movimiento desde hace
                ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
           ${o.correccion
             ? `<span class="confirmado">Confirmado como tuyo</span>`
@@ -1107,12 +1113,12 @@ async function pantallaOportunidades(perfil, session) {
           <dt>Presupuesto</dt><dd>${euros(o.presupuesto) ?? 'sin importe publicado'}</dd>
           <dt>Plazo</dt><dd>${plazoLargo(o.fecha_limite)}</dd>
           <dt>Códigos CPV</dt><dd>${esc((o.cpvs || []).join(', ')) || '—'}</dd>
-          <dt>Última confirmación</dt><dd>${
+          <dt>Último movimiento</dt><dd>${
             o.dias_sin_verificar === 0 ? 'hoy'
             : o.dias_sin_verificar === 1 ? 'ayer'
             : `hace ${o.dias_sin_verificar} días`}${
-            o.dias_sin_verificar > 7
-              ? ' — puede haber cambiado de estado sin que lo hayamos visto' : ''}</dd>
+            o.dias_sin_verificar > 90
+              ? ' — lleva mucho parado, conviene comprobarlo' : ''}</dd>
         </dl>
         ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
       </section></div>`).join('')
