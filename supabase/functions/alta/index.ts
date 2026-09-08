@@ -280,6 +280,69 @@ async function leerHistorial(
 }
 
 // ------------------------------------------------------------
+// Regeneración con las correcciones del cliente
+// ------------------------------------------------------------
+
+const INSTRUCCIONES_AJUSTE = `\
+Eres un analista de contratación pública. Una empresa tiene un criterio \
+automático que decide qué contratos públicos le interesan, y ha corregido \
+algunos resultados. Tu tarea es reescribir su criterio incorporando esas \
+correcciones.
+
+REGLAS, POR ORDEN DE IMPORTANCIA:
+
+1. CONSERVA LO QUE FUNCIONA. Las correcciones son ajustes, no un criterio \
+nuevo. Los contratos que la empresa ha GANADO siguen siendo la base y \
+deben seguir encajando en el "sí".
+
+2. NO CIERRES DE MÁS. Perder una oportunidad cuesta un cliente; mostrar \
+una de más cuesta un vistazo. Una corrección puede mover un caso de "sí" a \
+"quizás" con facilidad; para moverlo a "no" hace falta que el motivo lo \
+justifique explícitamente o que el patrón se repita en varias \
+correcciones. Un rechazo suelto no cierra una categoría entera.
+
+3. LOS MOTIVOS ESCRITOS MANDAN sobre los rechazos sin explicar. Si dice \
+"no trabajo con vestuario que no sea de seguridad", eso es una regla; diez \
+rechazos sin motivo son solo una pista de que algo falla.
+
+4. BUSCA EL PATRÓN, no los casos. Si ha rechazado tres contratos de \
+uniformidad municipal, el criterio debe decir que la uniformidad sin \
+destinatario de seguridad no encaja, no enumerar esos tres ayuntamientos.
+
+5. Mantén la estructura: qué es "sí", qué es "quizás", qué es "no". Define \
+el "no" con el caso MÁS PARECIDO que aun así no encaja, no con lo lejano.
+
+6. Máximo 350 palabras.
+
+Devuelve EXCLUSIVAMENTE JSON:
+{"criterio":"...","cambios":"una frase sobre qué has ajustado",\
+"resumen":"una frase para el cliente"}`;
+
+async function regenerarCriterio(
+  criterio: string,
+  ganados: { titulo: string }[],
+  correcciones: { titulo: string; organo: string; interesa: boolean; motivo: string | null }[],
+) {
+  const lista = (xs: typeof correcciones) =>
+    xs.map((c) => `- ${c.titulo}${c.organo ? ` (${c.organo})` : ""}` +
+                  (c.motivo ? `\n  MOTIVO: ${c.motivo}` : "")).join("\n");
+  const si = correcciones.filter((c) => c.interesa);
+  const no = correcciones.filter((c) => !c.interesa);
+
+  return await llamarModelo([
+    { role: "system", content: INSTRUCCIONES_AJUSTE },
+    {
+      role: "user",
+      content: `CRITERIO ACTUAL:\n${criterio}\n\n` +
+        `CONTRATOS QUE HA GANADO (la base, no tocar):\n` +
+        ganados.slice(0, 25).map((g) => `- ${g.titulo}`).join("\n") + "\n\n" +
+        (si.length ? `HA MARCADO COMO "SÍ ME INTERESA" (${si.length}):\n${lista(si)}\n\n` : "") +
+        (no.length ? `HA MARCADO COMO "NO ME INTERESA" (${no.length}):\n${lista(no)}` : ""),
+    },
+  ], 1600, MODELO_HISTORIAL);
+}
+
+// ------------------------------------------------------------
 // Generación del criterio
 // ------------------------------------------------------------
 
@@ -859,6 +922,61 @@ Deno.serve(async (peticion) => {
       }).eq("id", perfil.id);
 
       return responder({ ok: true, resumen: criterio.resumen });
+    }
+
+    // --- Regenerar el criterio con las correcciones ---
+    //
+    // No se regenera con cada corrección: con un solo ejemplo el modelo
+    // no puede deducir nada, y llamar al modelo por cada clic sería caro
+    // y lento. Con cinco juntas ya hay patrón.
+    if (accion === "ajustar") {
+      const { data: correcciones } = await comoUsuario.from("correcciones")
+        .select("id, id_licitacion, titulo, organo, interesa, motivo")
+        .eq("perfil_id", perfil.id).eq("aplicada", false);
+
+      if (!correcciones?.length) {
+        return responder({ ok: true, sin_cambios: true });
+      }
+
+      const { data: ganados } = await admin.rpc("ultimos_ganados",
+        { cif_buscado: perfil.cif ?? "", tope: 25 });
+
+      const nuevo = await regenerarCriterio(
+        perfil.criterio ?? "",
+        ((ganados ?? []) as Record<string, unknown>[])
+          .map((g) => ({ titulo: String(g.titulo ?? "") })),
+        correcciones.map((c) => ({
+          titulo: String(c.titulo), organo: String(c.organo ?? ""),
+          interesa: Boolean(c.interesa),
+          motivo: c.motivo ? String(c.motivo) : null,
+        })),
+      );
+
+      await comoUsuario.from("perfiles").update({
+        criterio: String(nuevo.criterio ?? perfil.criterio),
+        criterio_version: (perfil.criterio_version ?? 0) + 1,
+        criterio_fecha: new Date().toISOString(),
+      }).eq("id", perfil.id);
+
+      await comoUsuario.from("correcciones")
+        .update({ aplicada: true })
+        .in("id", correcciones.map((c) => c.id));
+
+      // Se vuelve a clasificar todo lo suyo con el criterio nuevo: si no,
+      // la corrección se quedaría en el contrato que la provocó en lugar
+      // de propagarse.
+      await admin.from("veredictos").delete().eq("perfil_id", perfil.id);
+      await comoUsuario.from("perfiles").update({ paso_alta: "cribando" })
+        .eq("id", perfil.id);
+
+      console.log(`Criterio ajustado con ${correcciones.length} correcciones`);
+
+      return responder({
+        ok: true,
+        cambios: String(nuevo.cambios ?? ""),
+        resumen: String(nuevo.resumen ?? ""),
+        aplicadas: correcciones.length,
+      });
     }
 
     // --- Cribar un lote de lo pendiente ---
