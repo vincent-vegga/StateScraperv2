@@ -154,6 +154,65 @@ select,input[type=search]{
 }
 input[type=search]:focus,select:focus{border-color:var(--fuerte);outline:0}
 
+/* ---------- Pestañas ---------- */
+.pestanas{display:flex;gap:26px;margin-top:30px;border-bottom:1px solid var(--linea)}
+.pestana{
+  background:none;border:0;color:var(--tenue);font:inherit;font-size:.98rem;
+  font-weight:500;padding:0 0 13px;cursor:pointer;position:relative;
+  transition:color .15s;
+}
+.pestana:hover{color:var(--texto)}
+.pestana[aria-selected="true"]{color:var(--texto)}
+.pestana[aria-selected="true"]::after{
+  content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;
+  background:var(--texto);
+}
+.pestana .cuantas{margin-left:7px;font-size:.82rem;color:var(--tenue);font-weight:400}
+
+/* ---------- Corrección ---------- */
+/* Aparecen al pasar por encima de la fila: presentes cuando hacen falta,
+   invisibles mientras se lee. */
+.acciones{
+  display:flex;gap:8px;margin-top:10px;opacity:0;transition:opacity .15s;
+}
+.fila-envoltorio:hover .acciones,
+.fila-envoltorio:focus-within .acciones{opacity:1}
+@media(hover:none){ .acciones{opacity:1} }
+.accion{
+  background:none;border:1px solid var(--linea);border-radius:3px;
+  color:var(--tenue);font:inherit;font-size:.8rem;padding:4px 11px;
+  cursor:pointer;transition:color .15s,border-color .15s;
+}
+.accion.si:hover{color:var(--si);border-color:var(--si)}
+.accion.no:hover{color:var(--no);border-color:var(--no)}
+
+.explica{
+  margin:20px 0 0;padding:14px 16px;border:1px solid var(--linea);
+  border-radius:4px;background:var(--superficie);color:var(--tenue);
+  font-size:.9rem;line-height:1.6;
+}
+.explica strong{color:var(--texto);font-weight:600}
+
+/* Diálogo del motivo. Se pregunta pero no se exige: una frase suya vale
+   más que diez rechazos sin explicar, y obligar a escribirla haría que
+   nadie corrigiera. */
+.velo{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.dialogo{
+  background:var(--superficie);border:1px solid var(--fuerte);
+  border-radius:5px;padding:26px;max-width:460px;width:100%;
+}
+.dialogo h3{margin:0 0 10px;font-size:1.1rem;font-weight:600}
+.dialogo p{color:var(--tenue);font-size:.9rem;margin:0 0 16px}
+.dialogo textarea{
+  width:100%;min-height:88px;background:var(--fondo);color:var(--texto);
+  border:1px solid var(--linea);border-radius:3px;padding:11px;
+  font:inherit;font-size:.92rem;resize:vertical;
+}
+.dialogo .botonera{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+
 /* Selector geográfico: campo con etiquetas y desplegable buscable.
    Se usa esto y no una lista de botones porque hay 52 provincias, y
    una fila de 52 botones es ruido visual que la vista se salta. */
@@ -933,6 +992,12 @@ async function pantallaOportunidades(perfil, session) {
       <div><span id="m-importe">—</span><small>en juego</small></div>
       <div><span id="m-urge">—</span><small>vencen esta semana</small></div>
     </div>
+    <div class="pestanas" role="tablist">
+      <button class="pestana" role="tab" id="p-hoy" aria-selected="false">
+        Novedades<span class="cuantas" id="c-hoy"></span></button>
+      <button class="pestana" role="tab" id="p-todo" aria-selected="true">
+        Todos los abiertos<span class="cuantas" id="c-todo"></span></button>
+    </div>
     <div class="filtros">
       <select id="f-veredicto">
         <option value="">Cualquier encaje</option>
@@ -950,6 +1015,10 @@ async function pantallaOportunidades(perfil, session) {
              aria-multiselectable="true" hidden></div>
       </div>
     </div>
+    <p class="explica">Cada vez que marcas un contrato como
+    <strong>no me interesa</strong> o <strong>sí me interesa</strong>, tu
+    filtro aprende. A las pocas correcciones lo ajustamos y vuelves a ver
+    la lista con lo que de verdad te encaja.</p>
     <main id="lista"></main>`;
 
   document.getElementById('salir').onclick = () => sb.auth.signOut();
@@ -989,21 +1058,30 @@ async function pantallaOportunidades(perfil, session) {
   // Provincias elegidas. Vacío es "toda España", no "ninguna": es lo que
   // espera quien todavía no ha elegido nada.
   const elegidas = new Set();
+  let pestana = 'todo';
 
   function pintar() {
     const ver = document.getElementById('f-veredicto').value;
     const txt = document.getElementById('f-texto').value.toLowerCase().trim();
     const vistos = DATOS.filter(o =>
+      (pestana === 'todo' || o.es_novedad) &&
       (elegidas.size === 0 || elegidas.has(o.provincia)) &&
       (!ver || o.veredicto === ver) &&
       (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
 
     marcador(vistos);
     document.getElementById('lista').innerHTML = vistos.length ? vistos.map((o,i) => `
+      <div class="fila-envoltorio">
       <button class="fila" data-i="${i}">
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
-          <p class="meta">${esc([o.organo, o.provincia].filter(Boolean).join(' · '))}</p></div>
+          <p class="meta">${esc([o.organo, o.provincia].filter(Boolean).join(' · '))}</p>
+          <span class="acciones">
+            ${o.veredicto === 'quizas'
+              ? `<span class="accion si" data-si="${esc(o.id_licitacion)}">Sí me interesa</span>` : ''}
+            <span class="accion no" data-no="${esc(o.id_licitacion)}">No me interesa</span>
+          </span>
+        </div>
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
       </button>
@@ -1017,11 +1095,98 @@ async function pantallaOportunidades(perfil, session) {
           <dt>Códigos CPV</dt><dd>${esc((o.cpvs || []).join(', ')) || '—'}</dd>
         </dl>
         ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
-      </section>`).join('')
+      </section></div>`).join('')
       : `<p class="vacio">Ningún contrato encaja con estos filtros.</p>`;
 
-    raiz.querySelectorAll('.fila').forEach(f => f.onclick = () =>
-      document.getElementById('d' + f.dataset.i).classList.toggle('abierto'));
+    raiz.querySelectorAll('.fila').forEach(f => f.onclick = ev => {
+      // Los botones de corrección viven dentro de la fila para que
+      // aparezcan al pasar por encima. Hay que evitar que su clic
+      // despliegue también el detalle.
+      const accion = ev.target.closest('.accion');
+      if (accion) {
+        ev.stopPropagation();
+        if (accion.dataset.si) corregir(accion.dataset.si, true);
+        else pedirMotivo(accion.dataset.no);
+        return;
+      }
+      document.getElementById('d' + f.dataset.i).classList.toggle('abierto');
+    });
+  }
+
+  // ---------- Correcciones ----------
+
+  async function corregir(id, interesa, motivo) {
+    // Desaparece al instante: el cliente no debe esperar a que responda
+    // el servidor para dejar de ver lo que no le sirve.
+    const i = DATOS.findIndex(o => o.id_licitacion === id);
+    if (i >= 0) DATOS.splice(i, 1);
+    repintar();
+
+    try {
+      const { data } = await sb.rpc('corregir', {
+        licitacion: id, le_interesa: interesa, por_que: motivo ?? null,
+      });
+      // A las cinco correcciones se regenera el criterio: con una sola
+      // el modelo no puede deducir nada, y con cinco ya hay patrón.
+      if (data?.pendientes >= 5) ajustarFiltro();
+    } catch { /* la corrección se reintentará al recargar */ }
+  }
+
+  function pedirMotivo(id) {
+    const velo = document.createElement('div');
+    velo.className = 'velo';
+    velo.innerHTML = `
+      <div class="dialogo">
+        <h3>¿Por qué no te interesa?</h3>
+        <p>Con una frase basta, y nos ayuda mucho más que el descarte solo.
+        Puedes saltártelo.</p>
+        <textarea id="por-que" placeholder="Por ejemplo: no trabajo con vestuario que no sea de cuerpos de seguridad"></textarea>
+        <div class="botonera">
+          <button class="enlace" id="saltar">Descartar sin explicar</button>
+          <button class="principal" id="enviar">Enviar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(velo);
+    const campo = velo.querySelector('#por-que');
+    campo.focus();
+
+    const cerrar = motivo => { velo.remove(); corregir(id, false, motivo); };
+    velo.querySelector('#saltar').onclick = () => cerrar(null);
+    velo.querySelector('#enviar').onclick = () => cerrar(campo.value.trim() || null);
+    velo.onclick = ev => { if (ev.target === velo) velo.remove(); };
+    campo.onkeydown = ev => {
+      if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) cerrar(campo.value.trim() || null);
+      if (ev.key === 'Escape') velo.remove();
+    };
+  }
+
+  async function ajustarFiltro() {
+    const aviso = document.createElement('div');
+    aviso.className = 'velo';
+    aviso.innerHTML = `
+      <div class="dialogo">
+        <h3>Estamos ajustando tu filtro</h3>
+        <p>Con tus últimas correcciones. Tardará un momento.</p>
+      </div>`;
+    document.body.appendChild(aviso);
+
+    try {
+      const r = await llamar('ajustar');
+      // Recribar con el criterio nuevo: si no, la corrección se quedaría
+      // en el contrato que la provocó en lugar de propagarse.
+      let vueltas = 0;
+      while (vueltas++ < 200) {
+        const c = await llamar('cribar');
+        if (c.terminado) break;
+      }
+      aviso.querySelector('.dialogo').innerHTML = `
+        <h3>Listo</h3>
+        <p>${esc(r.resumen || 'Hemos ajustado tu filtro con tus correcciones.')}</p>
+        <div class="botonera"><button class="principal" id="ver">Ver la lista</button></div>`;
+      aviso.querySelector('#ver').onclick = () => location.reload();
+    } catch {
+      aviso.remove();
+    }
   }
 
   let temporizador;
@@ -1184,6 +1349,31 @@ async function pantallaOportunidades(perfil, session) {
   };
   document.addEventListener('click', ev => {
     if (!ev.target.closest('.selector')) cerrar();
+  });
+
+  // ---------- Pestañas ----------
+  // Los contadores ignoran los filtros: dicen cuánto hay en total en cada
+  // una. Si mostraran el resultado filtrado, cambiar de pestaña sería un
+  // salto a ciegas.
+  document.getElementById('c-hoy').textContent = DATOS.filter(o => o.es_novedad).length;
+  document.getElementById('c-todo').textContent = DATOS.length;
+
+  function cambiarPestana(cual) {
+    // Al salir de novedades se marca la visita: lo que ha visto deja de
+    // serlo. Si se marcara al entrar, recargar vaciaría la lista que
+    // está mirando.
+    if (pestana === 'hoy' && cual !== 'hoy') sb.rpc('marcar_visita');
+    pestana = cual;
+    document.getElementById('p-hoy').setAttribute('aria-selected', cual === 'hoy');
+    document.getElementById('p-todo').setAttribute('aria-selected', cual === 'todo');
+    repintar();
+  }
+  document.getElementById('p-hoy').onclick = () => cambiarPestana('hoy');
+  document.getElementById('p-todo').onclick = () => cambiarPestana('todo');
+
+  // Y al cerrar la pestaña del navegador, por el mismo motivo.
+  window.addEventListener('beforeunload', () => {
+    if (pestana === 'hoy') sb.rpc('marcar_visita');
   });
 
   pintarEtiquetas();
