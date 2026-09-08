@@ -185,6 +185,10 @@ input[type=search]:focus,select:focus{border-color:var(--fuerte);outline:0}
 }
 .accion.si:hover{color:var(--si);border-color:var(--si)}
 .accion.no:hover{color:var(--no);border-color:var(--no)}
+/* Lo ya confirmado se marca en vez de volver a preguntarlo. */
+.confirmado{
+  display:inline-block;margin-top:10px;color:var(--si);font-size:.8rem;
+}
 
 .explica{
   margin:20px 0 0;padding:14px 16px;border:1px solid var(--linea);
@@ -1076,11 +1080,12 @@ async function pantallaOportunidades(perfil, session) {
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
           <p class="meta">${esc([o.organo, o.provincia].filter(Boolean).join(' · '))}</p>
-          <span class="acciones">
-            ${o.veredicto === 'quizas'
-              ? `<span class="accion si" data-si="${esc(o.id_licitacion)}">Sí me interesa</span>` : ''}
-            <span class="accion no" data-no="${esc(o.id_licitacion)}">No me interesa</span>
-          </span>
+          ${o.correccion
+            ? `<span class="confirmado">Confirmado como tuyo</span>`
+            : `<span class="acciones">
+                 <span class="accion si" data-si="${esc(o.id_licitacion)}">Sí me interesa</span>
+                 <span class="accion no" data-no="${esc(o.id_licitacion)}">No me interesa</span>
+               </span>`}
         </div>
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
@@ -1115,20 +1120,31 @@ async function pantallaOportunidades(perfil, session) {
 
   // ---------- Correcciones ----------
 
+  // A las tres correcciones se regenera el criterio. Con una sola el
+  // modelo no puede deducir nada; con tres ya hay patrón, y esperar más
+  // solo retrasa la mejora. El coste de una regeneración es irrisorio.
+  const CORRECCIONES_PARA_AJUSTAR = 3;
+
   async function corregir(id, interesa, motivo) {
-    // Desaparece al instante: el cliente no debe esperar a que responda
-    // el servidor para dejar de ver lo que no le sirve.
     const i = DATOS.findIndex(o => o.id_licitacion === id);
-    if (i >= 0) DATOS.splice(i, 1);
+    if (i >= 0) {
+      if (interesa) {
+        // Confirmado: la fila se queda, pero ya no hay nada que
+        // preguntar sobre ella.
+        DATOS[i].correccion = true;
+      } else {
+        // Descartado: desaparece al instante. El cliente no debe esperar
+        // al servidor para dejar de ver lo que no le sirve.
+        DATOS.splice(i, 1);
+      }
+    }
     repintar();
 
     try {
       const { data } = await sb.rpc('corregir', {
         licitacion: id, le_interesa: interesa, por_que: motivo ?? null,
       });
-      // A las cinco correcciones se regenera el criterio: con una sola
-      // el modelo no puede deducir nada, y con cinco ya hay patrón.
-      if (data?.pendientes >= 5) ajustarFiltro();
+      if (data?.pendientes >= CORRECCIONES_PARA_AJUSTAR) ajustarFiltro();
     } catch { /* la corrección se reintentará al recargar */ }
   }
 
