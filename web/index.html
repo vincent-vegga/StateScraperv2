@@ -189,6 +189,12 @@ input[type=search]:focus,select:focus{border-color:var(--fuerte);outline:0}
 .confirmado{
   display:inline-block;margin-top:10px;color:var(--si);font-size:.8rem;
 }
+/* Aviso de que un contrato lleva tiempo sin confirmarse en la fuente
+   oficial. No se oculta: se avisa. Ocultar por no haber podido
+   comprobar algo perdería oportunidades reales. */
+.sin-verificar{
+  display:inline-block;margin-top:8px;color:var(--no);font-size:.78rem;
+}
 
 .explica{
   margin:20px 0 0;padding:14px 16px;border:1px solid var(--linea);
@@ -1080,6 +1086,9 @@ async function pantallaOportunidades(perfil, session) {
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
           <p class="meta">${esc([o.organo, o.provincia].filter(Boolean).join(' · '))}</p>
+          ${o.dias_sin_verificar > 7
+            ? `<span class="sin-verificar">Sin confirmar desde hace
+               ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
           ${o.correccion
             ? `<span class="confirmado">Confirmado como tuyo</span>`
             : `<span class="acciones">
@@ -1098,6 +1107,12 @@ async function pantallaOportunidades(perfil, session) {
           <dt>Presupuesto</dt><dd>${euros(o.presupuesto) ?? 'sin importe publicado'}</dd>
           <dt>Plazo</dt><dd>${plazoLargo(o.fecha_limite)}</dd>
           <dt>Códigos CPV</dt><dd>${esc((o.cpvs || []).join(', ')) || '—'}</dd>
+          <dt>Última confirmación</dt><dd>${
+            o.dias_sin_verificar === 0 ? 'hoy'
+            : o.dias_sin_verificar === 1 ? 'ayer'
+            : `hace ${o.dias_sin_verificar} días`}${
+            o.dias_sin_verificar > 7
+              ? ' — puede haber cambiado de estado sin que lo hayamos visto' : ''}</dd>
         </dl>
         ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
       </section></div>`).join('')
