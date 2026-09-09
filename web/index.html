@@ -779,9 +779,6 @@ select:focus{
   box-shadow:var(--sombra-baja);padding:20px;
 }
 .seccion-mercado + .seccion-mercado{margin-top:14px}
-/* La propia empresa se distingue: es el punto de partida, no una más de
-   la lista. */
-.seccion-mercado.tuya{border-color:var(--fuerte)}
 .seccion-mercado > h3{
   display:flex;align-items:baseline;gap:11px;margin:0 0 4px;
   font-size:1rem;font-weight:650;
@@ -992,10 +989,37 @@ select:focus{
   margin:0 0 11px;font-size:.83rem;font-weight:650;color:var(--tenue);
   letter-spacing:.05em;text-transform:uppercase;
 }
+/* Interruptor de forma. Uno solo para toda la aplicación: la elección
+   es del cliente, no de cada gráfico, y repetir el control en cada sitio
+   sería ruido. */
+.forma{display:flex;gap:2px;margin-left:auto}
+.forma button{
+  border:1px solid var(--linea);background:var(--superficie);
+  color:var(--tenue);cursor:pointer;padding:5px 10px;font:inherit;
+  font-size:.78rem;transition:color .15s,background-color .15s;
+}
+.forma button:first-child{border-radius:6px 0 0 6px}
+.forma button:last-child{border-radius:0 6px 6px 0;border-left:0}
+.forma button[aria-pressed="true"]{
+  background:var(--btn-fondo);color:var(--btn-texto);border-color:var(--btn-fondo);
+}
+
 .apilada{
   display:flex;width:100%;height:34px;border-radius:7px;overflow:hidden;
   background:var(--linea);
 }
+
+/* Quesito. Se dibuja con el trazo de un círculo y no con arcos: cada
+   porción es un segmento del contorno, lo que evita el cálculo de
+   trayectorias y hace que cada una sea un elemento propio al que se
+   puede apuntar. */
+.quesito{display:block;width:190px;height:190px;margin:2px auto 0}
+.quesito circle{
+  fill:none;stroke-width:26;cursor:pointer;
+  transition:opacity .15s,stroke-width .15s;
+}
+.quesito:hover circle:not(:hover){opacity:.4}
+.quesito circle:hover,.quesito circle.activo{stroke-width:30}
 .apilada .trozo{
   min-width:3px;border:0;padding:0;cursor:pointer;
   transition:opacity .15s,filter .15s;
@@ -1821,6 +1845,17 @@ let sesionActual = null;
 // decidido en su equipo.
 const temaActual = () => document.documentElement.dataset.tema || 'claro';
 
+// Forma de los gráficos. Uno solo para toda la aplicación: es una
+// preferencia del cliente, no de cada gráfico.
+const formaActual = () => {
+  try { return localStorage.getItem('forma') || 'barras'; }
+  catch { return 'barras'; }
+};
+
+function ponerForma(cual) {
+  try { localStorage.setItem('forma', cual); } catch { /* modo privado */ }
+}
+
 function ponerTema(cual) {
   document.documentElement.dataset.tema = cual;
   try { localStorage.setItem('tema', cual); } catch { /* modo privado */ }
@@ -2559,15 +2594,44 @@ function apilada(filas, campoNombre, campoValor, unidad) {
   };
 
   const id = 'r' + Math.random().toString(36).slice(2, 8);
+
+  // Barras o quesito, según lo que tenga elegido el cliente. Los dos
+  // dibujan lo mismo: cada porción lleva su etiqueta y su valor, así que
+  // el detalle al pasar por encima funciona igual con cualquiera.
+  let grafico;
+  if (formaActual() === 'quesito') {
+    // Se dibuja con el trazo de un círculo y no con arcos: cada porción es
+    // un segmento del contorno, lo que evita calcular trayectorias y hace
+    // que cada una sea un elemento propio al que se puede apuntar.
+    const R = 60, C = 2 * Math.PI * R;
+    let recorrido = 0;
+    grafico = `<svg class="quesito" viewBox="0 0 160 160" role="img">
+      ${trozos.map((t, i) => {
+        const parte = t.valor / total;
+        const trazo = `<circle class="trozo" data-i="${i}" cx="80" cy="80" r="${R}"
+          stroke="${t.color}"
+          stroke-dasharray="${(parte * C).toFixed(2)} ${C.toFixed(2)}"
+          stroke-dashoffset="${(-recorrido * C).toFixed(2)}"
+          transform="rotate(-90 80 80)"
+          data-valor="${esc(comoTexto(t.valor))}"
+          aria-label="${esc(t.nombre)}: ${pct(t.valor)}"></circle>`;
+        recorrido += parte;
+        return trazo;
+      }).join('')}
+    </svg>`;
+  } else {
+    grafico = `<div class="apilada">
+      ${trozos.map((t, i) => `<button class="trozo" data-i="${i}"
+        style="width:${t.valor / total * 100}%;background:${t.color}"
+        data-valor="${esc(comoTexto(t.valor))}"
+        aria-label="${esc(t.nombre)}: ${pct(t.valor)}"></button>`).join('')}
+    </div>`;
+  }
+
   return `
     <div class="reparto" data-reparto="${id}">
       <h4>${unidad === 'euros' ? 'Por importe' : 'Por número de contratos'}</h4>
-      <div class="apilada">
-        ${trozos.map((t, i) => `<button class="trozo" data-i="${i}"
-          style="width:${t.valor / total * 100}%;background:${t.color}"
-          data-valor="${esc(comoTexto(t.valor))}"
-          aria-label="${esc(t.nombre)}: ${pct(t.valor)}"></button>`).join('')}
-      </div>
+      ${grafico}
       <div class="detalle-trozo callado" data-hueco>
         Pasa por encima o toca para ver el detalle
       </div>
@@ -2594,7 +2658,7 @@ function reparto(filas, campoNombre) {
 function activarBarras(donde) {
   donde.querySelectorAll('[data-reparto]').forEach(caja => {
     const hueco = caja.querySelector('[data-hueco]');
-    const trozos = [...caja.querySelectorAll('.apilada .trozo')];
+    const trozos = [...caja.querySelectorAll('.trozo')];
     if (!hueco || !trozos.length) return;
     const reposo = hueco.innerHTML;
 
@@ -2605,7 +2669,7 @@ function activarBarras(donde) {
       const corte = etiqueta.lastIndexOf(': ');
       hueco.className = 'detalle-trozo';
       hueco.innerHTML = `
-        <span class="punto" style="background:${t.style.background}"></span>
+        <span class="punto" style="background:${t.style.background || t.getAttribute('stroke')}"></span>
         <span class="cual">${esc(etiqueta.slice(0, corte))}</span>
         <span class="cuanto">${esc(etiqueta.slice(corte + 2))} · ${
           esc(t.dataset.valor ?? '')}</span>`;
@@ -2624,7 +2688,7 @@ function activarBarras(donde) {
       // toque otro.
       t.onclick = () => mostrar(t.dataset.i);
     });
-    caja.querySelector('.apilada').onmouseleave = soltar;
+    caja.querySelector('.apilada, .quesito')?.addEventListener('mouseleave', soltar);
 
     caja.querySelectorAll('.leyenda button').forEach(b => {
       b.onmouseenter = () => mostrar(b.dataset.i);
@@ -2677,6 +2741,8 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       <input type="text" id="cif-buscar" placeholder="CIF de una empresa"
              autocomplete="off">
       <button class="principal" id="buscar-cif">Buscar</button>
+      ${perfil.cif ? `<button class="enlace" id="ver-mia">o ver
+        ${esc(perfil.empresa || 'mi empresa')}</button>` : ''}
     </div>
 
     <div id="zona" style="margin-top:22px"></div>`;
@@ -2687,6 +2753,10 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
   const zona = document.getElementById('zona');
   const campo = document.getElementById('cif-buscar');
+
+  // Ver la propia empresa es la misma acción que buscar otra, así que va
+  // junto al buscador y no abajo con las listas.
+  alPulsar('ver-mia', () => verEmpresa(perfil.cif));
 
   // ---------- Estado: listas ----------
   async function verListas() {
@@ -2727,16 +2797,6 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     // La lista de seguimiento se enseña SIEMPRE, aunque esté vacía: si no
     // aparece, nadie descubre que existe.
     zona.innerHTML = `
-      ${perfil.cif ? `
-      <div class="seccion-mercado tuya">
-        <h3>Tu empresa</h3>
-        <p class="guia" style="margin:0 0 14px;font-size:.9rem">Los mismos
-        datos que ves de cualquier otra: en qué sectores has ganado, a qué
-        organismos vendes y por cuánto.</p>
-        <button class="secundario" id="ver-mia">Ver la ficha de
-          ${esc(perfil.empresa || 'mi empresa')}</button>
-      </div>` : ''}
-
       <div class="seccion-mercado">
         <h3>Tu lista de seguimiento
           <span class="cuantas">${seguidas.length || 'vacía'}</span></h3>
@@ -2755,8 +2815,6 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
         ${competencia.length ? tabla(competencia, 't-competencia')
           : '<p class="sin-datos">Todavía no hay datos de tus sectores.</p>'}
       </div>`;
-
-    alPulsar('ver-mia', () => verEmpresa(perfil.cif));
 
     zona.querySelectorAll('tr[data-cif]').forEach(f =>
       f.onclick = ev => {
@@ -2861,8 +2919,16 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
               ${e.sigo ? 'Siguiendo' : 'Seguir'}</button>`}
         </div>
 
-        ${sectores.length ? `<div style="margin-bottom:26px">
-          ${reparto(sectores, 'sector')}</div>` : ''}
+        ${sectores.length ? `
+          <div style="display:flex;align-items:center;margin-bottom:6px">
+            <div class="forma" role="group" aria-label="Forma de los gráficos">
+              <button data-forma="barras"
+                aria-pressed="${formaActual() !== 'quesito'}">Barras</button>
+              <button data-forma="quesito"
+                aria-pressed="${formaActual() === 'quesito'}">Quesito</button>
+            </div>
+          </div>
+          <div style="margin-bottom:26px">${reparto(sectores, 'sector')}</div>` : ''}
 
         ${organos.length ? `
           <h4 style="margin:0 0 12px;font-size:.83rem;font-weight:650;
@@ -2891,6 +2957,14 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
     activarBarras(zona);
     alPulsar('volver-listas', () => history.back());
+
+    // Cambiar de forma repinta la ficha con la nueva y guarda la elección
+    // para todos los gráficos, aquí y en las demás pantallas.
+    zona.querySelectorAll('[data-forma]').forEach(b => b.onclick = () => {
+      if (b.getAttribute('aria-pressed') === 'true') return;
+      ponerForma(b.dataset.forma);
+      pintarFicha(e);
+    });
 
     alPulsar('seguir', async () => {
       const b = document.getElementById('seguir');
