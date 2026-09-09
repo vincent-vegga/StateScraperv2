@@ -745,6 +745,19 @@ select:focus{
    se lee peor que una sección cada vez. */
 .menu-envoltorio{position:relative}
 
+/* Confirmación breve. Un icono sin etiqueta no dice qué ha pasado al
+   pulsarlo, y el texto al pasar por encima no existe en el móvil. */
+.recado{
+  position:fixed;left:50%;bottom:26px;z-index:60;
+  transform:translateX(-50%) translateY(10px);
+  padding:11px 18px;border-radius:99px;
+  background:var(--btn-fondo);color:var(--btn-texto);
+  font-size:.9rem;box-shadow:var(--sombra-flotante);
+  opacity:0;pointer-events:none;
+  transition:opacity .18s,transform .18s;
+}
+.recado.visible{opacity:1;transform:translateX(-50%) translateY(0)}
+
 /* Campana de avisos. Sin animación: una campana que vibra significa
    "hay algo nuevo", no "el aviso está encendido", y si vibrase siempre
    dejaría de decir nada. Encendido es el estado normal; apagado se
@@ -2357,6 +2370,25 @@ const SECCIONES = {
   organos: 'Mis organismos',
 };
 
+// Confirmación efímera. Se usa donde la acción no deja rastro visible
+// por sí sola, como la campana: un icono que cambia de forma no explica
+// qué ha pasado.
+let recadoTemporizador;
+function recado(texto) {
+  let caja = document.getElementById('recado');
+  if (!caja) {
+    caja = document.createElement('div');
+    caja.id = 'recado';
+    caja.className = 'recado';
+    caja.setAttribute('role', 'status');
+    document.body.appendChild(caja);
+  }
+  caja.textContent = texto;
+  requestAnimationFrame(() => caja.classList.add('visible'));
+  clearTimeout(recadoTemporizador);
+  recadoTemporizador = setTimeout(() => caja.classList.remove('visible'), 3200);
+}
+
 // La campana enciende y apaga el correo diario. Va suelta y no dentro
 // del menú porque su estado tiene que verse de un vistazo: si alguien
 // apagó los avisos hace un mes, debe notarlo sin abrir nada.
@@ -2394,11 +2426,15 @@ function activarCampana(yaSabido = null) {
     // Se pinta al instante: el cliente no debe esperar al servidor para
     // ver que su decisión se ha registrado.
     pintar(quiero);
+    recado(quiero
+      ? 'Recibirás el aviso diario por correo'
+      : 'Ya no recibirás el aviso diario');
     try {
       const { data } = await sb.rpc('cambiar_avisos', { quiero });
       pintar(data !== false);
     } catch {
       pintar(!quiero);
+      recado('No se ha podido guardar. Inténtalo de nuevo.');
     }
   };
 }
@@ -2574,6 +2610,10 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
           <dt>Actividad</dt><dd>${esc(p.actividad ?? '—')}</dd>
           <dt>Correo</dt><dd>${esc(p.email ?? '—')}</dd>
           <dt>Cliente desde</dt><dd>${fecha(p.alta)}</dd>
+          <dt>Aviso diario por correo</dt><dd>${
+            p.avisos === false
+              ? 'desactivado — actívalo con la campana de arriba'
+              : 'activado'}</dd>
         </dl>
       </div>
       <div class="bloque">
@@ -2859,6 +2899,22 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // espera quien todavía no ha elegido nada.
   const elegidas = new Set();
   let pestana = pestanaInicial;
+
+  // La visita se marca por HABER ENTRADO, no solo por abrir la pestaña de
+  // novedades.
+  //
+  // Antes solo se marcaba al salir de esa pestaña, así que quien no la
+  // pulsara nunca dejaba el contador intacto: al recargar volvían a
+  // aparecer las mismas de siempre, y "novedad" dejaba de significar nada.
+  //
+  // Una sola vez por sesión, y sin tocar el contador de esta: lo que está
+  // mirando sigue marcado hasta que vuelva.
+  let yaMarcada = false;
+  const marcarLaVisita = () => {
+    if (yaMarcada) return;
+    yaMarcada = true;
+    sb.rpc('marcar_visita');
+  };
 
   function pintar() {
     const ver = document.getElementById('f-veredicto').value;
@@ -3187,7 +3243,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     // serlo. Si se marcara al entrar, recargar vaciaría la lista que
     // está mirando.
     if (pestana === 'hoy' && cual !== 'hoy') {
-      sb.rpc('marcar_visita');
+      marcarLaVisita();
       // Y se refleja aquí mismo. Antes solo se guardaba en la base, así
       // que el contador seguía diciendo 23 hasta recargar la página:
       // marcaba como pendiente algo que el cliente acababa de ver.
@@ -3206,10 +3262,21 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   alPulsar('p-todo', () => cambiarPestana('todo'));
   if (pestanaInicial !== 'todo') cambiarPestana(pestanaInicial, true);
 
-  // Y al cerrar la pestaña del navegador, por el mismo motivo.
-  window.addEventListener('beforeunload', () => {
-    if (pestana === 'hoy') sb.rpc('marcar_visita');
-  });
+  // La visita se marca por HABER ENTRADO, no solo por abrir la pestaña
+  // de novedades.
+  //
+  // Antes solo se marcaba al salir de esa pestaña, así que quien no la
+  // pulsara nunca dejaba el contador intacto: al recargar volvían a
+  // aparecer las mismas de siempre, y "novedad" dejaba de significar
+  // nada.
+  //
+  // Se espera unos segundos para no marcar como visto un arranque que se
+  // cierra al instante, y no se toca el contador de esta sesión: lo que
+  // está mirando sigue marcado hasta que vuelva.
+  setTimeout(marcarLaVisita, 4000);
+
+  // Y al cerrar, por si se va antes de esos segundos.
+  window.addEventListener('beforeunload', marcarLaVisita);
 
   pintarEtiquetas();
   ['f-veredicto','f-texto'].forEach(id =>
