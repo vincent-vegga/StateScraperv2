@@ -42,18 +42,6 @@ body{
   overflow-x:hidden;
 }
 
-body::before{
-  content:'';
-  position:fixed;
-  z-index:100;
-  top:0;
-  left:0;
-  right:0;
-  height:4px;
-  background:var(--acento);
-  pointer-events:none;
-}
-
 ::selection{
   background:rgba(199,139,53,.24);
   color:var(--texto);
@@ -1219,15 +1207,16 @@ select:focus{
   line-height:1.2;
 }
 
+/* Marcado, no pintado. Un bloque de color por fila convierte la lista
+   en un semáforo; una línea superior basta para que el ojo lo encuentre
+   sin que la pantalla grite. */
 .fecha.apura{
-  border-color:rgba(189,104,39,.35);
   border-top-color:var(--urge);
-  background:#fff9f1;
 }
 
-.fecha.apura .dia,
 .fecha.apura .cuenta-dias{
   color:var(--urge);
+  font-weight:600;
 }
 
 .fecha.sinplazo{
@@ -2631,7 +2620,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const p = partes(o.fecha_limite);
     const c = o.dias < 0 ? 'vencido' : o.dias === 0 ? 'vence hoy'
             : o.dias === 1 ? 'queda 1 día' : `quedan ${o.dias} días`;
-    return `<div class="fecha ${o.dias <= 7 ? 'apura' : ''}">
+    // Tres días, no siete. Con siete se marcaba media lista, y un aviso
+    // que sale en la mayoría de las filas deja de avisar: se convierte
+    // en ruido y enseña a ignorarlo.
+    return `<div class="fecha ${o.dias <= 3 ? 'apura' : ''}">
       <span class="dia">${p.day} ${MESES[+p.month-1]}</span>
       <span class="cuenta-dias">${c}</span></div>`;
   };
