@@ -745,6 +745,77 @@ select:focus{
    se lee peor que una sección cada vez. */
 .menu-envoltorio{position:relative}
 
+/* ---------- Navegación principal ----------
+   Contratos y Mercado son áreas pares, no una dentro de otra: qué me
+   interesa presentar, y qué pasa en mi sector. Meterlas en el menú de
+   cuenta escondería la segunda. Las pestañas de Novedades y Todos se
+   quedan dentro de Contratos, que es donde pertenecen. */
+.principales{display:flex;gap:20px;margin-top:6px}
+.principales button{
+  border:0;background:none;padding:0;cursor:pointer;font:inherit;
+  font-size:.92rem;color:var(--tenue);transition:color .15s;
+}
+.principales button:hover{color:var(--texto)}
+.principales button[aria-current="true"]{color:var(--texto);font-weight:650}
+
+/* ---------- Mercado ---------- */
+.buscador-cif{display:flex;gap:9px;margin:26px 0 8px;flex-wrap:wrap}
+.buscador-cif input{flex:1 1 220px;text-transform:uppercase;letter-spacing:.03em}
+
+.tarjeta-empresa{
+  border:1px solid var(--linea);border-radius:10px;padding:24px;
+  background:var(--superficie);margin-top:20px;box-shadow:var(--sombra-baja);
+}
+.tarjeta-empresa .arriba{
+  display:flex;justify-content:space-between;gap:18px;align-items:flex-start;
+  flex-wrap:wrap;margin-bottom:20px;
+}
+.tarjeta-empresa h3{margin:0 0 5px;font-size:1.15rem;font-weight:650}
+.tarjeta-empresa .cifras{
+  display:flex;gap:26px;flex-wrap:wrap;margin:0;color:var(--tenue);
+  font-size:.9rem;
+}
+.tarjeta-empresa .cifras strong{
+  color:var(--texto);font-weight:650;font-variant-numeric:tabular-nums;
+}
+
+.seguir{
+  display:inline-flex;align-items:center;gap:7px;min-height:36px;
+  padding:0 14px;border:1px solid var(--linea);border-radius:8px;
+  background:var(--superficie);color:var(--texto);font:inherit;
+  font-size:.88rem;font-weight:600;cursor:pointer;white-space:nowrap;
+  transition:border-color .15s,background-color .15s;
+}
+.seguir:hover{border-color:var(--fuerte);background:var(--hover)}
+.seguir[aria-pressed="true"]{border-color:var(--texto);background:var(--texto);
+  color:var(--btn-texto)}
+
+.tabla{width:100%;border-collapse:collapse;margin-top:4px;font-size:.92rem}
+.tabla th{
+  text-align:left;padding:9px 12px 9px 0;color:var(--tenue);
+  font-size:.79rem;font-weight:650;letter-spacing:.05em;
+  text-transform:uppercase;border-bottom:1px solid var(--linea);
+}
+.tabla th.num, .tabla td.num{text-align:right;
+  font-variant-numeric:tabular-nums;padding-right:0}
+.tabla td{padding:12px 12px 12px 0;border-bottom:1px solid var(--linea)}
+.tabla tr:last-child td{border-bottom:0}
+.tabla tbody tr{cursor:pointer;transition:background-color .12s}
+.tabla tbody tr:hover{background:var(--hover)}
+.tabla .quien{font-weight:600}
+.tabla .marca-sigo{color:var(--si);font-size:.78rem;margin-left:8px}
+
+.ultimos-contratos > div{
+  padding:13px 0;border-bottom:1px solid var(--linea);
+}
+.ultimos-contratos > div:last-child{border-bottom:0}
+.ultimos-contratos .que{font-size:.94rem;line-height:1.42;margin:0 0 4px}
+.ultimos-contratos .quien{color:var(--tenue);font-size:.86rem}
+
+@media(max-width:720px){
+  .tabla th:nth-child(2), .tabla td:nth-child(2){display:none}
+}
+
 /* Confirmación breve. Un icono sin etiqueta no dice qué ha pasado al
    pulsarlo, y el texto al pasar por encima no existe en el móvil. */
 .recado{
@@ -1718,6 +1789,7 @@ window.addEventListener('popstate', async (ev) => {
   const perfil = perfiles?.[0];
   if (!perfil) return arrancar(true);
 
+  if (estado.vista === 'mercado') return pantallaMercado(perfil, session, true);
   if (estado.vista === 'panel')
     return pantallaPanel(perfil, session, true, estado.seccion ?? 'cuenta');
   return pantallaOportunidades(perfil, session, true, estado.pestana);
@@ -2358,7 +2430,318 @@ async function pantallaCribando(perfil, session, lectura) {
 }
 
 // ============================================================
-// 6 · Panel de la cuenta
+// 6 · Mercado
+// ============================================================
+
+// Paleta fría, sin rojos ni naranjas.
+//
+// En la interfaz el color ya significa algo: --no y --urge son rojizos,
+// y --acento marca lo que reclama atención. Pintar con esos tonos una
+// categoría neutra hace que el gráfico parezca una alarma: media barra
+// naranja se lee como "algo va mal" aunque solo diga "equipamiento
+// médico".
+//
+// La regla habitual en sistemas de diseño: los colores con significado
+// se reservan, y las categorías usan una escala cualitativa aparte.
+// Aquí, azules y verdeazulados que descienden en tono, lo bastante
+// distintos entre sí para no confundirse.
+const PALETA = ['#2d5f8a','#3f8f8c','#5c7fb8','#6aa88b','#7a6ea8',
+                '#4a8fa8','#8a9a5b','#5e7a94'];
+const COLOR_OTROS = '#aab6c2';
+
+function apilada(filas, campoNombre, campoValor, unidad) {
+  const total = filas.reduce((s, f) => s + (Number(f[campoValor]) || 0), 0);
+  if (!total) return '';
+
+  const conValor = filas
+    .map((f, i) => ({
+      nombre: String(f[campoNombre] ?? '—'),
+      valor: Number(f[campoValor]) || 0,
+      color: PALETA[i % PALETA.length],
+    }))
+    .filter(x => x.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
+
+  const grandes = conValor.filter(x => x.valor / total >= 0.02);
+  const chicos = conValor.filter(x => x.valor / total < 0.02);
+  const trozos = [...grandes];
+  if (chicos.length) {
+    trozos.push({
+      nombre: chicos.length === 1 ? chicos[0].nombre
+            : `Otros ${chicos.length} ${unidad === 'euros' ? '' : ''}`.trim(),
+      valor: chicos.reduce((s, x) => s + x.valor, 0),
+      color: COLOR_OTROS,
+      agrupa: chicos,
+    });
+  }
+
+  const comoTexto = v => unidad === 'euros' ? euros(v)
+    : `${v} ${v === 1 ? 'contrato' : 'contratos'}`;
+  const pct = v => {
+    const p = v / total * 100;
+    return p >= 10 ? `${Math.round(p)} %` : `${p.toFixed(1).replace('.', ',')} %`;
+  };
+
+  const id = 'r' + Math.random().toString(36).slice(2, 8);
+  return `
+    <div class="reparto" data-reparto="${id}">
+      <h4>${unidad === 'euros' ? 'Por importe' : 'Por número de contratos'}</h4>
+      <div class="apilada">
+        ${trozos.map((t, i) => `<button class="trozo" data-i="${i}"
+          style="width:${t.valor / total * 100}%;background:${t.color}"
+          data-valor="${esc(comoTexto(t.valor))}"
+          aria-label="${esc(t.nombre)}: ${pct(t.valor)}"></button>`).join('')}
+      </div>
+      <div class="detalle-trozo callado" data-hueco>
+        Pasa por encima o toca para ver el detalle
+      </div>
+      <div class="leyenda">
+        ${trozos.map((t, i) => `<button data-i="${i}">
+          <span class="punto" style="background:${t.color}"></span>
+          <span class="cual">${esc(t.nombre)}</span>
+          <span class="pct">${pct(t.valor)}</span>
+        </button>`).join('')}
+      </div>
+    </div>`;
+}
+
+// Devuelve las dos barras de una misma dimensión.
+function reparto(filas, campoNombre) {
+  if (!filas.length) return `<p class="sin-datos">Todavía no hay datos.</p>`;
+  return apilada(filas, campoNombre, 'contratos', 'contratos')
+       + apilada(filas, campoNombre, 'importe', 'euros');
+}
+
+// Detalle de cada segmento de las barras apiladas. Al pasar por encima o
+// tocar, la línea de debajo dice qué es y cuánto vale. En el móvil no hay
+// cursor, así que el toque es la única forma de leer un segmento estrecho.
+function activarBarras(donde) {
+  donde.querySelectorAll('[data-reparto]').forEach(caja => {
+    const hueco = caja.querySelector('[data-hueco]');
+    const trozos = [...caja.querySelectorAll('.apilada .trozo')];
+    if (!hueco || !trozos.length) return;
+    const reposo = hueco.innerHTML;
+
+    const mostrar = i => {
+      const t = trozos[i];
+      if (!t) return;
+      const etiqueta = t.getAttribute('aria-label');
+      const corte = etiqueta.lastIndexOf(': ');
+      hueco.className = 'detalle-trozo';
+      hueco.innerHTML = `
+        <span class="punto" style="background:${t.style.background}"></span>
+        <span class="cual">${esc(etiqueta.slice(0, corte))}</span>
+        <span class="cuanto">${esc(etiqueta.slice(corte + 2))} · ${
+          esc(t.dataset.valor ?? '')}</span>`;
+      trozos.forEach((x, j) => x.classList.toggle('activo', j === +i));
+    };
+    const soltar = () => {
+      hueco.className = 'detalle-trozo callado';
+      hueco.innerHTML = reposo;
+      trozos.forEach(x => x.classList.remove('activo'));
+    };
+
+    trozos.forEach(t => {
+      t.onmouseenter = () => mostrar(t.dataset.i);
+      t.onfocus = () => mostrar(t.dataset.i);
+      // En táctil el clic es lo único que hay: se queda fijo hasta que se
+      // toque otro.
+      t.onclick = () => mostrar(t.dataset.i);
+    });
+    caja.querySelector('.apilada').onmouseleave = soltar;
+
+    caja.querySelectorAll('.leyenda button').forEach(b => {
+      b.onmouseenter = () => mostrar(b.dataset.i);
+      b.onclick = () => mostrar(b.dataset.i);
+    });
+    caja.querySelector('.leyenda').onmouseleave = soltar;
+  });
+}
+
+// Navegación principal. Va en la cabecera y no en el menú de cuenta
+// porque Contratos y Mercado son áreas pares: qué me interesa presentar,
+// y qué pasa en mi sector.
+function navPrincipal(donde) {
+  return `
+    <div class="principales">
+      <button data-nav="contratos" aria-current="${donde === 'contratos'}">Contratos</button>
+      <button data-nav="mercado" aria-current="${donde === 'mercado'}">Mercado</button>
+    </div>`;
+}
+
+function activarNav(perfil, session, donde) {
+  document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => {
+    if (b.dataset.nav === donde) return;
+    if (b.dataset.nav === 'mercado') pantallaMercado(perfil, session);
+    else pantallaOportunidades(perfil, session);
+  });
+}
+
+async function pantallaMercado(perfil, session, volviendo = false) {
+  if (!volviendo) irA('mercado');
+  raiz.className = 'envoltorio ancho';
+  raiz.innerHTML = `
+    <div class="cabecera-app">
+      <div><strong>Mercado</strong>
+        <div class="quien">${esc(perfil.empresa || '')}</div>
+        ${navPrincipal('mercado')}</div>
+      <div style="display:flex;gap:9px;align-items:center">
+        ${campanaAvisos()}
+        ${menuCuenta()}
+      </div>
+    </div>
+
+    <h1 style="margin-top:30px">Quién gana en tu sector</h1>
+    <p class="guia">Los contratos públicos son datos abiertos: quién los
+    gana, por cuánto y de qué organismo. Busca cualquier empresa por su CIF
+    o mira quién se lleva los de tus sectores.</p>
+
+    <div class="buscador-cif">
+      <input type="text" id="cif-buscar" placeholder="CIF de una empresa"
+             autocomplete="off">
+      <button class="principal" id="buscar-cif">Buscar</button>
+    </div>
+    <div id="ficha"></div>
+
+    <div id="listas" style="margin-top:34px"></div>`;
+
+  activarMenu(perfil, session);
+  activarCampana();
+  activarNav(perfil, session, 'mercado');
+
+  const ficha = document.getElementById('ficha');
+  const campo = document.getElementById('cif-buscar');
+
+  async function verEmpresa(cif) {
+    ficha.innerHTML = `<p class="guia" style="margin-top:20px">Buscando...</p>`;
+    const { data, error } = await sb.rpc('ficha_empresa', { cif_buscado: cif });
+    if (error || !data || !data.contratos) {
+      ficha.innerHTML = `<div class="aviso">No hemos encontrado contratos
+        adjudicados con ese CIF. Puede que no haya ganado ninguno todavía.</div>`;
+      return;
+    }
+    pintarFicha(data);
+  }
+
+  function pintarFicha(e) {
+    const sectores = e.sectores ?? [];
+    const organos = e.organos ?? [];
+    const ultimos = e.ultimos ?? [];
+    ficha.innerHTML = `
+      <div class="tarjeta-empresa">
+        <div class="arriba">
+          <div>
+            <h3>${esc(e.nombre ?? e.cif)}</h3>
+            <p class="cifras">
+              <span><strong>${e.contratos}</strong> contratos</span>
+              ${e.importe ? `<span><strong>${euros(Number(e.importe))}</strong>
+                adjudicados</span>` : ''}
+              ${e.ultimo ? `<span>último en ${esc(new Date(e.ultimo)
+                .toLocaleDateString('es-ES', {timeZone:ZONA, month:'long',
+                year:'numeric'}))}</span>` : ''}
+            </p>
+          </div>
+          <button class="seguir" id="seguir" aria-pressed="${!!e.sigo}"
+                  data-cif="${esc(e.cif)}" data-nombre="${esc(e.nombre ?? e.cif)}">
+            ${e.sigo ? 'Siguiendo' : 'Seguir'}</button>
+        </div>
+
+        ${sectores.length ? `<div style="margin-bottom:26px">
+          ${reparto(sectores, 'sector')}</div>` : ''}
+
+        ${organos.length ? `
+          <h4 style="margin:0 0 12px;font-size:.83rem;font-weight:650;
+                     color:var(--tenue);letter-spacing:.05em;
+                     text-transform:uppercase">A quién le vende</h4>
+          <table class="tabla"><tbody>
+            ${organos.map(o => `<tr style="cursor:default">
+              <td class="quien">${esc(o.organo)}</td>
+              <td class="num">${o.contratos}</td>
+              <td class="num">${o.importe ? euros(Number(o.importe)) : '—'}</td>
+            </tr>`).join('')}
+          </tbody></table>` : ''}
+
+        ${ultimos.length ? `
+          <h4 style="margin:26px 0 4px;font-size:.83rem;font-weight:650;
+                     color:var(--tenue);letter-spacing:.05em;
+                     text-transform:uppercase">Sus últimos contratos</h4>
+          <div class="ultimos-contratos">
+            ${ultimos.map(u => `<div>
+              <p class="que">${esc(u.titulo)}</p>
+              <span class="quien">${esc(u.organo ?? '')}${
+                u.importe ? ` · ${euros(Number(u.importe))}` : ''}</span>
+            </div>`).join('')}
+          </div>` : ''}
+      </div>`;
+
+    activarBarras(ficha);
+    alPulsar('seguir', async () => {
+      const b = document.getElementById('seguir');
+      const { data } = await sb.rpc('seguir', {
+        cif_empresa: b.dataset.cif, nombre_empresa: b.dataset.nombre });
+      b.setAttribute('aria-pressed', String(!!data));
+      b.textContent = data ? 'Siguiendo' : 'Seguir';
+      recado(data ? 'Añadida a tu lista de seguimiento'
+                  : 'Quitada de tu lista');
+      pintarListas();
+    });
+  }
+
+  alPulsar('buscar-cif', () => {
+    const cif = campo.value.trim();
+    if (cif.length >= 8) verEmpresa(cif);
+  });
+  campo.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') document.getElementById('buscar-cif').click();
+  });
+
+  // ---------- Competencia y seguimiento ----------
+  async function pintarListas() {
+    const [comp, seg] = await Promise.all([
+      sb.rpc('competencia'),
+      sb.rpc('mi_seguimiento'),
+    ]);
+    const competencia = comp.data ?? [];
+    const seguidas = seg.data ?? [];
+
+    const tabla = (filas, vacio) => filas.length ? `
+      <table class="tabla">
+        <thead><tr><th>Empresa</th><th class="num">Contratos</th>
+          <th class="num">Importe</th></tr></thead>
+        <tbody>${filas.map(f => `<tr data-cif="${esc(f.cif)}">
+          <td class="quien">${esc(f.nombre ?? f.cif)}${
+            f.sigo ? '<span class="marca-sigo">siguiendo</span>' : ''}</td>
+          <td class="num">${f.contratos}</td>
+          <td class="num">${f.importe ? euros(Number(f.importe)) : '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : `<p class="sin-datos">${vacio}</p>`;
+
+    document.getElementById('listas').innerHTML = `
+      ${seguidas.length ? `
+        <div class="bloque" style="margin-bottom:18px">
+          <h3>Tu lista de seguimiento</h3>
+          ${tabla(seguidas, '')}
+        </div>` : ''}
+      <div class="bloque">
+        <h3>Quién gana más en tus sectores</h3>
+        <p class="guia" style="margin:0 0 18px;font-size:.9rem">Empresas que
+        han ganado contratos de los mismos códigos que tú. Pulsa una para
+        ver su ficha.</p>
+        ${tabla(competencia, 'Todavía no hay datos de tus sectores.')}
+      </div>`;
+
+    document.querySelectorAll('#listas tr[data-cif]').forEach(f =>
+      f.onclick = () => {
+        campo.value = f.dataset.cif;
+        verEmpresa(f.dataset.cif);
+        ficha.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+  }
+  pintarListas();
+}
+
+// ============================================================
+// 7 · Panel de la cuenta
 // ============================================================
 
 // Menú de cuenta. Vive en la cabecera de las dos pantallas —contratos y
@@ -2522,84 +2905,6 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   // Los segmentos por debajo del 2 % se agrupan: por separado serían
   // hilos de dos píxeles imposibles de señalar, y su cifra sigue
   // apareciendo en la leyenda.
-  // Paleta fría, sin rojos ni naranjas.
-  //
-  // En la interfaz el color ya significa algo: --no y --urge son rojizos,
-  // y --acento marca lo que reclama atención. Pintar con esos tonos una
-  // categoría neutra hace que el gráfico parezca una alarma: media barra
-  // naranja se lee como "algo va mal" aunque solo diga "equipamiento
-  // médico".
-  //
-  // La regla habitual en sistemas de diseño: los colores con significado
-  // se reservan, y las categorías usan una escala cualitativa aparte.
-  // Aquí, azules y verdeazulados que descienden en tono, lo bastante
-  // distintos entre sí para no confundirse.
-  const PALETA = ['#2d5f8a','#3f8f8c','#5c7fb8','#6aa88b','#7a6ea8',
-                  '#4a8fa8','#8a9a5b','#5e7a94'];
-  const COLOR_OTROS = '#aab6c2';
-
-  function apilada(filas, campoNombre, campoValor, unidad) {
-    const total = filas.reduce((s, f) => s + (Number(f[campoValor]) || 0), 0);
-    if (!total) return '';
-
-    const conValor = filas
-      .map((f, i) => ({
-        nombre: String(f[campoNombre] ?? '—'),
-        valor: Number(f[campoValor]) || 0,
-        color: PALETA[i % PALETA.length],
-      }))
-      .filter(x => x.valor > 0)
-      .sort((a, b) => b.valor - a.valor);
-
-    const grandes = conValor.filter(x => x.valor / total >= 0.02);
-    const chicos = conValor.filter(x => x.valor / total < 0.02);
-    const trozos = [...grandes];
-    if (chicos.length) {
-      trozos.push({
-        nombre: chicos.length === 1 ? chicos[0].nombre
-              : `Otros ${chicos.length} ${unidad === 'euros' ? '' : ''}`.trim(),
-        valor: chicos.reduce((s, x) => s + x.valor, 0),
-        color: COLOR_OTROS,
-        agrupa: chicos,
-      });
-    }
-
-    const comoTexto = v => unidad === 'euros' ? euros(v)
-      : `${v} ${v === 1 ? 'contrato' : 'contratos'}`;
-    const pct = v => {
-      const p = v / total * 100;
-      return p >= 10 ? `${Math.round(p)} %` : `${p.toFixed(1).replace('.', ',')} %`;
-    };
-
-    const id = 'r' + Math.random().toString(36).slice(2, 8);
-    return `
-      <div class="reparto" data-reparto="${id}">
-        <h4>${unidad === 'euros' ? 'Por importe' : 'Por número de contratos'}</h4>
-        <div class="apilada">
-          ${trozos.map((t, i) => `<button class="trozo" data-i="${i}"
-            style="width:${t.valor / total * 100}%;background:${t.color}"
-            data-valor="${esc(comoTexto(t.valor))}"
-            aria-label="${esc(t.nombre)}: ${pct(t.valor)}"></button>`).join('')}
-        </div>
-        <div class="detalle-trozo callado" data-hueco>
-          Pasa por encima o toca para ver el detalle
-        </div>
-        <div class="leyenda">
-          ${trozos.map((t, i) => `<button data-i="${i}">
-            <span class="punto" style="background:${t.color}"></span>
-            <span class="cual">${esc(t.nombre)}</span>
-            <span class="pct">${pct(t.valor)}</span>
-          </button>`).join('')}
-        </div>
-      </div>`;
-  }
-
-  // Devuelve las dos barras de una misma dimensión.
-  function reparto(filas, campoNombre) {
-    if (!filas.length) return `<p class="sin-datos">Todavía no hay datos.</p>`;
-    return apilada(filas, campoNombre, 'contratos', 'contratos')
-         + apilada(filas, campoNombre, 'importe', 'euros');
-  }
 
   const secciones = {
     cuenta: `
@@ -2696,6 +3001,8 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   activarMenu(perfil, session);
   activarCampana(p.avisos);
 
+  activarBarras(raiz);
+
   // Si ocultó la explicación de la lista, aquí puede recuperarla.
   const hueco = document.getElementById('recuperar');
   let oculta = false;
@@ -2710,51 +3017,6 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         Hecho. Volverá a aparecer en tu lista.</p>`;
     });
   }
-
-  // ---------- Detalle de cada segmento ----------
-  //
-  // Al pasar por encima o tocar, la línea de debajo dice qué es y cuánto
-  // vale. En el móvil no hay cursor, así que el toque es la única forma
-  // de leer un segmento estrecho.
-  raiz.querySelectorAll('[data-reparto]').forEach(caja => {
-    const hueco = caja.querySelector('[data-hueco]');
-    const trozos = [...caja.querySelectorAll('.apilada .trozo')];
-    const reposo = hueco.innerHTML;
-
-    const mostrar = i => {
-      const t = trozos[i];
-      if (!t) return;
-      const etiqueta = t.getAttribute('aria-label');
-      const corte = etiqueta.lastIndexOf(': ');
-      hueco.className = 'detalle-trozo';
-      hueco.innerHTML = `
-        <span class="punto" style="background:${t.style.background}"></span>
-        <span class="cual">${esc(etiqueta.slice(0, corte))}</span>
-        <span class="cuanto">${esc(etiqueta.slice(corte + 2))} · ${
-          esc(t.dataset.valor ?? '')}</span>`;
-      trozos.forEach((x, j) => x.classList.toggle('activo', j === +i));
-    };
-    const soltar = () => {
-      hueco.className = 'detalle-trozo callado';
-      hueco.innerHTML = reposo;
-      trozos.forEach(x => x.classList.remove('activo'));
-    };
-
-    trozos.forEach(t => {
-      t.onmouseenter = () => mostrar(t.dataset.i);
-      t.onfocus = () => mostrar(t.dataset.i);
-      // En táctil el clic es lo único que hay: se queda fijo hasta que
-      // se toque otro.
-      t.onclick = () => mostrar(t.dataset.i);
-    });
-    caja.querySelector('.apilada').onmouseleave = soltar;
-
-    caja.querySelectorAll('.leyenda button').forEach(b => {
-      b.onmouseenter = () => mostrar(b.dataset.i);
-      b.onclick = () => mostrar(b.dataset.i);
-    });
-    caja.querySelector('.leyenda').onmouseleave = soltar;
-  });
 
   // ---------- Rehacer el filtro ----------
   alPulsar('reiniciar', () => {
@@ -2780,7 +3042,7 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
 }
 
 // ============================================================
-// 7 · Sus oportunidades
+// 8 · Sus oportunidades
 // ============================================================
 
 async function pantallaOportunidades(perfil, session, volviendo = false,
@@ -2803,7 +3065,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>Tus contratos</strong>
-        <div class="quien">${esc(perfil.empresa || perfil.email || '')}</div></div>
+        <div class="quien">${esc(perfil.empresa || perfil.email || '')}</div>
+        ${navPrincipal('contratos')}</div>
       <div style="display:flex;gap:9px;align-items:center">
         ${campanaAvisos()}
         ${menuCuenta()}
@@ -2843,6 +3106,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
   activarMenu(perfil, session);
   activarCampana();
+  activarNav(perfil, session, 'contratos');
 
   // ---------- La explicación se puede ocultar ----------
   //
