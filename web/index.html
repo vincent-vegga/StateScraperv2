@@ -625,7 +625,10 @@ kbd{
 
 .cabecera-app{
   display:flex;
-  align-items:center;
+  /* Arriba, no en medio: el bloque de la izquierda tiene tres líneas
+     —título, empresa y navegación— y centrar los botones los dejaba
+     flotando a la altura del nombre de la empresa. */
+  align-items:flex-start;
   justify-content:space-between;
   gap:20px;
   /* Ajustada: es una barra de servicio, no una portada. El espacio que
@@ -755,7 +758,7 @@ select:focus{
    interesa presentar, y qué pasa en mi sector. Meterlas en el menú de
    cuenta escondería la segunda. Las pestañas de Novedades y Todos se
    quedan dentro de Contratos, que es donde pertenecen. */
-.principales{display:flex;gap:20px;margin-top:6px}
+.principales{display:flex;gap:20px;margin-top:12px}
 .principales button{
   border:0;background:none;padding:0;cursor:pointer;font:inherit;
   font-size:.92rem;color:var(--tenue);transition:color .15s;
@@ -776,6 +779,9 @@ select:focus{
   box-shadow:var(--sombra-baja);padding:20px;
 }
 .seccion-mercado + .seccion-mercado{margin-top:14px}
+/* La propia empresa se distingue: es el punto de partida, no una más de
+   la lista. */
+.seccion-mercado.tuya{border-color:var(--fuerte)}
 .seccion-mercado > h3{
   display:flex;align-items:baseline;gap:11px;margin:0 0 4px;
   font-size:1rem;font-weight:650;
@@ -2663,8 +2669,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
     <h1 style="margin-top:26px">Quién gana en tu sector</h1>
     <p class="guia">Los contratos públicos son datos abiertos: quién los
-    gana, por cuánto y de qué organismo. Busca una empresa por su CIF, o
-    mira quién se lleva los de tus sectores y guárdala para seguirla.</p>
+    gana, por cuánto y de qué organismo. Mira tu propio historial, busca
+    una empresa por su CIF, o averigua quién se lleva los contratos de tus
+    sectores.</p>
 
     <div class="buscador-cif">
       <input type="text" id="cif-buscar" placeholder="CIF de una empresa"
@@ -2720,6 +2727,16 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     // La lista de seguimiento se enseña SIEMPRE, aunque esté vacía: si no
     // aparece, nadie descubre que existe.
     zona.innerHTML = `
+      ${perfil.cif ? `
+      <div class="seccion-mercado tuya">
+        <h3>Tu empresa</h3>
+        <p class="guia" style="margin:0 0 14px;font-size:.9rem">Los mismos
+        datos que ves de cualquier otra: en qué sectores has ganado, a qué
+        organismos vendes y por cuánto.</p>
+        <button class="secundario" id="ver-mia">Ver la ficha de
+          ${esc(perfil.empresa || 'mi empresa')}</button>
+      </div>` : ''}
+
       <div class="seccion-mercado">
         <h3>Tu lista de seguimiento
           <span class="cuantas">${seguidas.length || 'vacía'}</span></h3>
@@ -2738,6 +2755,8 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
         ${competencia.length ? tabla(competencia, 't-competencia')
           : '<p class="sin-datos">Todavía no hay datos de tus sectores.</p>'}
       </div>`;
+
+    alPulsar('ver-mia', () => verEmpresa(perfil.cif));
 
     zona.querySelectorAll('tr[data-cif]').forEach(f =>
       f.onclick = ev => {
@@ -2836,9 +2855,10 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
                 year:'numeric'}))}</span>` : ''}
             </p>
           </div>
-          <button class="seguir" id="seguir" aria-pressed="${!!e.sigo}"
-                  data-cif="${esc(e.cif)}" data-nombre="${esc(e.nombre ?? e.cif)}">
-            ${e.sigo ? 'Siguiendo' : 'Seguir'}</button>
+          ${e.cif === perfil.cif ? '' : `
+            <button class="seguir" id="seguir" aria-pressed="${!!e.sigo}"
+                    data-cif="${esc(e.cif)}" data-nombre="${esc(e.nombre ?? e.cif)}">
+              ${e.sigo ? 'Siguiendo' : 'Seguir'}</button>`}
         </div>
 
         ${sectores.length ? `<div style="margin-bottom:26px">
@@ -2904,11 +2924,13 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 // panel— para que llegar a cualquier sección sea un solo clic. Antes
 // había que entrar al panel y buscar otro botón dentro, y algo que se
 // usa a diario no puede estar a dos pasos.
+// Mi cuenta guarda lo que configura el servicio. Los sectores y los
+// organismos se han ido a Mercado: son inteligencia sobre la propia
+// empresa, el mismo dato que se ve de un competidor, y tenerlos aquí los
+// separaba de donde pertenecen.
 const SECCIONES = {
   cuenta: 'Mi cuenta',
   filtro: 'Mi filtro',
-  sectores: 'Mis sectores',
-  organos: 'Mis organismos',
 };
 
 // Confirmación efímera. Se usa donde la acción no deja rastro visible
@@ -3051,8 +3073,6 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   const fecha = s => s ? new Date(s).toLocaleDateString('es-ES',
     {timeZone:ZONA, day:'numeric', month:'long', year:'numeric'}) : '—';
   const buscamos = p.que_buscamos ?? [];
-  const sectores = p.sectores ?? [];
-  const organos = p.organos ?? [];
 
   // Barras apiladas: la línea entera es el total, y cada segmento la
   // parte que representa. Una barra que se llena al 100 % por ser la
@@ -3119,22 +3139,6 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         <div id="resultado"></div>
       </div>`,
 
-    sectores: `
-      <div class="bloque">
-        <h3>Dónde has ganado</h3>
-        <p class="guia" style="margin:0 0 22px;font-size:.9rem">Tus contratos
-        por sector, en número y en dinero. No siempre coinciden: el sector
-        donde más ganas no tiene por qué ser el que más factura.</p>
-        ${reparto(sectores, 'sector')}
-      </div>`,
-
-    organos: `
-      <div class="bloque">
-        <h3>A quién le vendes</h3>
-        <p class="guia" style="margin:0 0 22px;font-size:.9rem">Los organismos
-        que más contratos te han adjudicado.</p>
-        ${reparto(organos, 'organo')}
-      </div>`,
   };
 
   raiz.innerHTML = `
@@ -3156,8 +3160,6 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   alPulsar('volver', () => pantallaOportunidades(perfil, session));
   activarMenu(perfil, session);
   activarCampana(p.avisos);
-
-  activarBarras(raiz);
 
   // Si ocultó la explicación de la lista, aquí puede recuperarla.
   const hueco = document.getElementById('recuperar');
