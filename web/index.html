@@ -2628,33 +2628,90 @@ async function pantallaMercado(perfil, session, volviendo = false) {
       </div>
     </div>
 
-    <h1 style="margin-top:30px">Quién gana en tu sector</h1>
+    <h1 style="margin-top:26px">Quién gana en tu sector</h1>
     <p class="guia">Los contratos públicos son datos abiertos: quién los
-    gana, por cuánto y de qué organismo. Busca cualquier empresa por su CIF
-    o mira quién se lleva los de tus sectores.</p>
+    gana, por cuánto y de qué organismo. Busca una empresa por su CIF, o
+    mira quién se lleva los de tus sectores y guárdala para seguirla.</p>
 
     <div class="buscador-cif">
       <input type="text" id="cif-buscar" placeholder="CIF de una empresa"
              autocomplete="off">
       <button class="principal" id="buscar-cif">Buscar</button>
     </div>
-    <div id="ficha"></div>
 
-    <div id="listas" style="margin-top:34px"></div>`;
+    <div id="zona" style="margin-top:22px"></div>`;
 
   activarMenu(perfil, session);
   activarCampana();
   activarNav(perfil, session, 'mercado');
 
-  const ficha = document.getElementById('ficha');
+  const zona = document.getElementById('zona');
   const campo = document.getElementById('cif-buscar');
 
+  // ---------- Estado: listas ----------
+  async function verListas(abrir = null) {
+    zona.innerHTML = `<p class="guia">Cargando...</p>`;
+    const [comp, seg] = await Promise.all([
+      sb.rpc('competencia'),
+      sb.rpc('mi_seguimiento'),
+    ]);
+    const competencia = comp.data ?? [];
+    const seguidas = seg.data ?? [];
+
+    const tabla = filas => `
+      <table class="tabla">
+        <thead><tr><th>Empresa</th><th class="num">Contratos</th>
+          <th class="num">Importe</th></tr></thead>
+        <tbody>${filas.map(f => `<tr data-cif="${esc(f.cif)}">
+          <td class="quien">${esc(f.nombre ?? f.cif)}${
+            f.sigo ? '<span class="marca-sigo">siguiendo</span>' : ''}</td>
+          <td class="num">${f.contratos}</td>
+          <td class="num">${f.importe ? euros(Number(f.importe)) : '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+
+    // La lista de seguimiento se enseña SIEMPRE, aunque esté vacía: si no
+    // aparece, nadie descubre que existe.
+    zona.innerHTML = `
+      <details class="plegable" ${seguidas.length || abrir === 'seguimiento' ? 'open' : ''}>
+        <summary>Tu lista de seguimiento
+          <span class="cuantas">${seguidas.length || 'vacía'}</span>
+          <span class="flechita">▾</span></summary>
+        <div class="dentro">
+          ${seguidas.length ? tabla(seguidas) : `
+            <p class="vacio-seguimiento">Todavía no sigues a ninguna empresa.
+            Busca una por su CIF o elígela de la lista de abajo, y pulsa
+            <strong>Seguir</strong> en su ficha para tenerla aquí a mano.</p>`}
+        </div>
+      </details>
+
+      <details class="plegable" open>
+        <summary>Quién gana más en tus sectores
+          <span class="cuantas">${competencia.length}</span>
+          <span class="flechita">▾</span></summary>
+        <div class="dentro">
+          <p class="guia" style="margin:0 0 16px;font-size:.9rem">Empresas que
+          han ganado contratos de los mismos códigos que tú. Pulsa una para
+          ver su ficha.</p>
+          ${competencia.length ? tabla(competencia)
+            : '<p class="sin-datos">Todavía no hay datos de tus sectores.</p>'}
+        </div>
+      </details>`;
+
+    zona.querySelectorAll('tr[data-cif]').forEach(f =>
+      f.onclick = () => verEmpresa(f.dataset.cif));
+  }
+
+  // ---------- Estado: ficha ----------
   async function verEmpresa(cif) {
-    ficha.innerHTML = `<p class="guia" style="margin-top:20px">Buscando...</p>`;
+    zona.innerHTML = `<p class="guia">Buscando...</p>`;
     const { data, error } = await sb.rpc('ficha_empresa', { cif_buscado: cif });
     if (error || !data || !data.contratos) {
-      ficha.innerHTML = `<div class="aviso">No hemos encontrado contratos
-        adjudicados con ese CIF. Puede que no haya ganado ninguno todavía.</div>`;
+      zona.innerHTML = `
+        <button class="volver-listas" id="volver-listas">← Volver a las listas</button>
+        <div class="aviso">No hemos encontrado contratos adjudicados con ese
+        CIF. Puede que no haya ganado ninguno todavía.</div>`;
+      alPulsar('volver-listas', () => { campo.value = ''; verListas(); });
       return;
     }
     pintarFicha(data);
@@ -2664,8 +2721,10 @@ async function pantallaMercado(perfil, session, volviendo = false) {
     const sectores = e.sectores ?? [];
     const organos = e.organos ?? [];
     const ultimos = e.ultimos ?? [];
-    ficha.innerHTML = `
-      <div class="tarjeta-empresa">
+
+    zona.innerHTML = `
+      <button class="volver-listas" id="volver-listas">← Volver a las listas</button>
+      <div class="tarjeta-empresa" style="margin-top:8px">
         <div class="arriba">
           <div>
             <h3>${esc(e.nombre ?? e.cif)}</h3>
@@ -2711,16 +2770,18 @@ async function pantallaMercado(perfil, session, volviendo = false) {
           </div>` : ''}
       </div>`;
 
-    activarBarras(ficha);
+    activarBarras(zona);
+    alPulsar('volver-listas', () => { campo.value = ''; verListas(); });
+
     alPulsar('seguir', async () => {
       const b = document.getElementById('seguir');
       const { data } = await sb.rpc('seguir', {
         cif_empresa: b.dataset.cif, nombre_empresa: b.dataset.nombre });
       b.setAttribute('aria-pressed', String(!!data));
       b.textContent = data ? 'Siguiendo' : 'Seguir';
-      recado(data ? 'Añadida a tu lista de seguimiento'
-                  : 'Quitada de tu lista');
-      pintarListas();
+      recado(data
+        ? 'Añadida a tu lista de seguimiento'
+        : 'Quitada de tu lista de seguimiento');
     });
   }
 
@@ -2732,49 +2793,7 @@ async function pantallaMercado(perfil, session, volviendo = false) {
     if (ev.key === 'Enter') document.getElementById('buscar-cif').click();
   });
 
-  // ---------- Competencia y seguimiento ----------
-  async function pintarListas() {
-    const [comp, seg] = await Promise.all([
-      sb.rpc('competencia'),
-      sb.rpc('mi_seguimiento'),
-    ]);
-    const competencia = comp.data ?? [];
-    const seguidas = seg.data ?? [];
-
-    const tabla = (filas, vacio) => filas.length ? `
-      <table class="tabla">
-        <thead><tr><th>Empresa</th><th class="num">Contratos</th>
-          <th class="num">Importe</th></tr></thead>
-        <tbody>${filas.map(f => `<tr data-cif="${esc(f.cif)}">
-          <td class="quien">${esc(f.nombre ?? f.cif)}${
-            f.sigo ? '<span class="marca-sigo">siguiendo</span>' : ''}</td>
-          <td class="num">${f.contratos}</td>
-          <td class="num">${f.importe ? euros(Number(f.importe)) : '—'}</td>
-        </tr>`).join('')}</tbody>
-      </table>` : `<p class="sin-datos">${vacio}</p>`;
-
-    document.getElementById('listas').innerHTML = `
-      ${seguidas.length ? `
-        <div class="bloque" style="margin-bottom:18px">
-          <h3>Tu lista de seguimiento</h3>
-          ${tabla(seguidas, '')}
-        </div>` : ''}
-      <div class="bloque">
-        <h3>Quién gana más en tus sectores</h3>
-        <p class="guia" style="margin:0 0 18px;font-size:.9rem">Empresas que
-        han ganado contratos de los mismos códigos que tú. Pulsa una para
-        ver su ficha.</p>
-        ${tabla(competencia, 'Todavía no hay datos de tus sectores.')}
-      </div>`;
-
-    document.querySelectorAll('#listas tr[data-cif]').forEach(f =>
-      f.onclick = () => {
-        campo.value = f.dataset.cif;
-        verEmpresa(f.dataset.cif);
-        ficha.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-  }
-  pintarListas();
+  verListas();
 }
 
 // ============================================================
