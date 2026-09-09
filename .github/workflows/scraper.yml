@@ -41,6 +41,7 @@ on:
           - diagnostico
           - solo_cribado
           - cribado_prueba
+          - alerta_prueba
           - importar_historico
           - catalogar_historico
       cpv_prefijos:
@@ -120,7 +121,7 @@ jobs:
       # Clasificaciones simultáneas. De una en una, mil licitaciones son
       # veinte minutos.
       CRIBADO_SIMULTANEAS: '20'
-      URL_INTERFAZ: 'https://vincent-vegga.github.io/state-scraper/'
+      URL_INTERFAZ: 'https://statescraperv2.pages.dev'
       # Filtro geográfico del canal agregado. Ponlo a 'false' si algún
       # día quieres cubrir todas las comunidades autónomas.
       SOLO_CATALUNYA_AGREGADO: 'true'
@@ -182,6 +183,23 @@ jobs:
         if: inputs.modo != 'diagnostico' && inputs.modo != 'importar_historico'
         run: |
           python cribador.py ${{ inputs.modo == 'cribado_prueba' && '--muestra 20' || '' }}
+
+      - name: Probar la alerta sin enviarla
+        # Compone los correos y los escribe en el registro, sin mandarlos.
+        # Sirve para ver qué le llegaría a cada cliente.
+        if: inputs.modo == 'alerta_prueba'
+        run: python alertador.py --simulacro
+
+      - name: Alerta diaria por cliente (paso 5)
+        # Cada cliente recibe SUS novedades. Va después del cribado porque
+        # necesita los veredictos del día.
+        #
+        # Ni en diagnóstico ni en las pruebas: mandar correos de verdad
+        # desde un ensayo sería el peor error posible.
+        if: inputs.modo == 'normal' || inputs.modo == 'solo_cribado'
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: python alertador.py
 
       - name: Importar histórico de un sector
         # Tarea puntual: carga licitaciones pasadas de unos CPV concretos
