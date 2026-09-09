@@ -748,8 +748,10 @@ select:focus{
 /* Confirmación breve. Un icono sin etiqueta no dice qué ha pasado al
    pulsarlo, y el texto al pasar por encima no existe en el móvil. */
 .recado{
-  position:fixed;left:50%;bottom:26px;z-index:60;
-  transform:translateX(-50%) translateY(10px);
+  /* Arriba: es donde está la campana que lo provoca, así que el aviso
+     aparece cerca de la acción en lugar de al otro extremo. */
+  position:fixed;left:50%;top:18px;z-index:60;
+  transform:translateX(-50%) translateY(-10px);
   padding:11px 18px;border-radius:99px;
   background:var(--btn-fondo);color:var(--btn-texto);
   font-size:.9rem;box-shadow:var(--sombra-flotante);
@@ -2395,7 +2397,7 @@ function recado(texto) {
 function campanaAvisos() {
   return `
     <button class="campana" id="campana" aria-pressed="true"
-            aria-label="Avisos por correo" title="Avisos por correo">
+            aria-label="Avisos por correo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -2409,12 +2411,11 @@ function activarCampana(yaSabido = null) {
   const boton = document.getElementById('campana');
   if (!boton) return;
 
-  const pintar = encendido => {
+  // Sin texto al pasar por encima: el mensaje de confirmación ya lo
+  // explica, y el del navegador tarda en salir, no existe en el móvil y
+  // deja el mismo texto dos veces en pantalla.
+  const pintar = encendido =>
     boton.setAttribute('aria-pressed', String(encendido));
-    boton.title = encendido
-      ? 'Recibes el aviso diario. Pulsa para dejar de recibirlo.'
-      : 'No recibes el aviso diario. Pulsa para volver a recibirlo.';
-  };
 
   // El panel ya ha consultado mi_panel, así que se le pasa el dato en
   // vez de repetir la llamada.
@@ -2890,9 +2891,17 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // lo que busca.
   function pintarTitular(lista) {
     const n = lista.length;
-    document.getElementById('titular').textContent = n === 0
-      ? 'Ahora mismo no hay contratos abiertos para ti'
-      : `Hay ${n} ${n === 1 ? 'contrato abierto' : 'contratos abiertos'} para ti`;
+    const titular = document.getElementById('titular');
+    if (n > 0) {
+      titular.textContent =
+        `Hay ${n} ${n === 1 ? 'contrato abierto' : 'contratos abiertos'} para ti`;
+      return;
+    }
+    // Sin nada que enseñar, el motivo importa: no es lo mismo estar al
+    // día en novedades que no tener ningún contrato abierto.
+    titular.textContent = pestana === 'hoy'
+      ? 'No hay novedades para ti'
+      : 'Ahora mismo no hay contratos abiertos para ti';
   }
 
   // Provincias elegidas. Vacío es "toda España", no "ninguna": es lo que
