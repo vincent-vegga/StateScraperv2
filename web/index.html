@@ -839,7 +839,12 @@ select:focus{
    empresa sin tener que abrir su ficha. */
 .seguir.chico{min-height:30px;padding:0 11px;font-size:.8rem}
 
-.tabla{width:100%;border-collapse:collapse;margin-top:4px;font-size:.92rem}
+/* Ancho fijo: si la tabla se ajusta al contenido, desplegar filas con
+   importes más largos mueve las columnas y la lista da un salto. */
+.tabla{
+  width:100%;border-collapse:collapse;margin-top:4px;font-size:.92rem;
+  table-layout:fixed;
+}
 .tabla th{
   text-align:left;padding:9px 12px 9px 0;color:var(--tenue);
   font-size:.79rem;font-weight:650;letter-spacing:.05em;
@@ -848,9 +853,11 @@ select:focus{
 /* Centradas: en una tabla de tres columnas donde la primera es texto
    largo, alinear los números a la derecha los deja pegados al borde y
    lejos de su encabezado. */
-.tabla th.num, .tabla td.num{text-align:center;
-  font-variant-numeric:tabular-nums;white-space:nowrap;padding:9px 14px}
-.tabla th.fin, .tabla td.fin{text-align:right;padding-right:0;width:1%}
+.tabla th.num, .tabla td.num{text-align:center;width:112px;
+  font-variant-numeric:tabular-nums;white-space:nowrap;padding:9px 10px}
+.tabla th.fin, .tabla td.fin{text-align:right;padding-right:0;width:116px}
+/* El nombre puede ser largo: parte de línea en vez de desbordar. */
+.tabla td.quien{word-break:break-word}
 .tabla td{padding:12px 12px 12px 0;border-bottom:1px solid var(--linea)}
 .tabla tr:last-child td{border-bottom:0}
 .tabla tbody tr{cursor:pointer;transition:background-color .12s}
@@ -868,7 +875,8 @@ select:focus{
   /* Cabe menos: se deja el nombre, el importe y el botón. El número de
      contratos se ve al abrir la ficha. */
   .tabla th:nth-child(2), .tabla td:nth-child(2){display:none}
-  .tabla th.num, .tabla td.num{padding:9px 8px}
+  .tabla th.num, .tabla td.num{width:96px;padding:9px 6px}
+  .tabla th.fin, .tabla td.fin{width:100px}
   .seguir.chico{padding:0 9px;font-size:.76rem}
 }
 
@@ -1845,7 +1853,8 @@ window.addEventListener('popstate', async (ev) => {
   const perfil = perfiles?.[0];
   if (!perfil) return arrancar(true);
 
-  if (estado.vista === 'mercado') return pantallaMercado(perfil, session, true);
+  if (estado.vista === 'mercado')
+    return pantallaMercado(perfil, session, true, estado.cif ?? null);
   if (estado.vista === 'panel')
     return pantallaPanel(perfil, session, true, estado.seccion ?? 'cuenta');
   return pantallaOportunidades(perfil, session, true, estado.pestana);
@@ -2633,7 +2642,7 @@ function activarNav(perfil, session, donde) {
   });
 }
 
-async function pantallaMercado(perfil, session, volviendo = false) {
+async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   if (!volviendo) irA('mercado');
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `
@@ -2746,9 +2755,21 @@ async function pantallaMercado(perfil, session, volviendo = false) {
         recado(data
           ? 'Añadida a tu lista de seguimiento'
           : 'Quitada de tu lista de seguimiento');
-        // La lista de arriba cambia, así que se vuelve a pintar. Se hace
-        // después del recado para que no parezca que se ha perdido.
-        setTimeout(verListas, 700);
+
+        // Al seguirla desde la competencia, su fila se va: ya está arriba
+        // en la lista de seguimiento y saldría dos veces. Si deja de
+        // seguirla, vuelve a aparecer al recargar.
+        //
+        // La lista de seguimiento NO se repinta: hacerlo movería lo que
+        // el cliente está mirando. Se pone al día al volver a entrar.
+        const enCompetencia = b.closest('#t-competencia');
+        if (data && enCompetencia) {
+          const suya = b.closest('tr');
+          // Se descubre la siguiente oculta para que sigan viéndose tres.
+          const escondida = enCompetencia.querySelector('tbody tr.oculta');
+          if (escondida) escondida.classList.remove('oculta');
+          suya.remove();
+        }
       } catch {
         b.setAttribute('aria-pressed', String(antes));
         b.textContent = antes ? 'Siguiendo' : 'Seguir';
@@ -2772,7 +2793,11 @@ async function pantallaMercado(perfil, session, volviendo = false) {
   }
 
   // ---------- Estado: ficha ----------
-  async function verEmpresa(cif) {
+  //
+  // Deja marca en el historial: sin ella, atrás salía de Mercado entero
+  // en vez de devolver a las listas.
+  async function verEmpresa(cif, restaurando = false) {
+    if (!restaurando) irA('mercado', { cif });
     zona.innerHTML = `<p class="guia">Buscando...</p>`;
     const { data, error } = await sb.rpc('ficha_empresa', { cif_buscado: cif });
     if (error || !data || !data.contratos) {
@@ -2780,7 +2805,7 @@ async function pantallaMercado(perfil, session, volviendo = false) {
         <button class="volver-listas" id="volver-listas">← Volver a las listas</button>
         <div class="aviso">No hemos encontrado contratos adjudicados con ese
         CIF. Puede que no haya ganado ninguno todavía.</div>`;
-      alPulsar('volver-listas', () => { campo.value = ''; verListas(); });
+      alPulsar('volver-listas', () => history.back());
       return;
     }
     pintarFicha(data);
@@ -2840,7 +2865,7 @@ async function pantallaMercado(perfil, session, volviendo = false) {
       </div>`;
 
     activarBarras(zona);
-    alPulsar('volver-listas', () => { campo.value = ''; verListas(); });
+    alPulsar('volver-listas', () => history.back());
 
     alPulsar('seguir', async () => {
       const b = document.getElementById('seguir');
@@ -2862,7 +2887,8 @@ async function pantallaMercado(perfil, session, volviendo = false) {
     if (ev.key === 'Enter') document.getElementById('buscar-cif').click();
   });
 
-  verListas();
+  if (cif) { campo.value = cif; verEmpresa(cif, true); }
+  else verListas();
 }
 
 // ============================================================
@@ -3199,10 +3225,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     </div>
     <h1 id="titular" style="margin-top:30px"></h1>
     <div class="pestanas" role="tablist">
-      <button class="pestana" role="tab" id="p-hoy" aria-selected="false">
-        Novedades<span class="cuantas" id="c-hoy"></span></button>
       <button class="pestana" role="tab" id="p-todo" aria-selected="true">
         Todos los abiertos<span class="cuantas" id="c-todo"></span></button>
+      <button class="pestana" role="tab" id="p-hoy" aria-selected="false">
+        Novedades<span class="cuantas" id="c-hoy"></span></button>
     </div>
     <div class="filtros">
       <select id="f-veredicto">
