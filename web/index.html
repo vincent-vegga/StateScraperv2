@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
+/* El tema vive entero en estas variables, así que cambiarlo es
+   reasignarlas. El resto de la hoja no sabe de colores concretos. */
 :root{
   --fondo:#f3f5f7;
   --superficie:#ffffff;
@@ -21,6 +23,41 @@
   --alto:48px;
   --acento:#c78b35;
   --sombra:0 10px 28px rgba(24,42,61,.08);
+  /* Papeles que cambian de valor entre temas y no se pueden derivar de
+     los anteriores: el fondo al pasar por encima, la letra sobre el
+     botón sólido, y los tintes suaves de aviso. */
+  --hover:rgba(23,42,61,.045);
+  --btn-fondo:#172a3d;
+  --btn-fondo-hover:#0d1d2d;
+  --btn-texto:#ffffff;
+  --tinte-si:rgba(25,116,94,.07);
+  --tinte-no:rgba(182,83,71,.07);
+  --tinte-acento:rgba(199,139,53,.07);
+}
+
+/* Modo oscuro. Los mismos papeles con otros valores: fondo, superficie,
+   texto, y los dos colores de veredicto ajustados para que mantengan
+   contraste sobre oscuro. */
+html[data-tema="oscuro"]{
+  color-scheme:dark;
+  --fondo:#15171a;
+  --superficie:#1d2024;
+  --texto:#e8eaed;
+  --tenue:#9aa2ac;
+  --linea:rgba(232,234,237,.12);
+  --fuerte:rgba(232,234,237,.3);
+  --si:#7fb89c;
+  --no:#d98a7a;
+  --urge:#d99a6a;
+  --acento:#d6a458;
+  --sombra:0 10px 28px rgba(0,0,0,.4);
+  --hover:rgba(232,234,237,.06);
+  --btn-fondo:#e8eaed;
+  --btn-fondo-hover:#ffffff;
+  --btn-texto:#15171a;
+  --tinte-si:rgba(127,184,156,.1);
+  --tinte-no:rgba(217,138,122,.1);
+  --tinte-acento:rgba(214,164,88,.1);
 }
 
 *{box-sizing:border-box}
@@ -179,10 +216,10 @@ textarea:focus-visible{
   align-items:center;
   justify-content:center;
   padding:12px 25px;
-  border:1px solid var(--texto);
+  border:1px solid var(--btn-fondo);
   border-radius:8px;
-  background:var(--texto);
-  color:#fff;
+  background:var(--btn-fondo);
+  color:var(--btn-texto);
   font-size:1rem;
   font-weight:650;
   line-height:1.2;
@@ -191,8 +228,8 @@ textarea:focus-visible{
 }
 
 .principal:hover{
-  border-color:#0d1d2d;
-  background:#0d1d2d;
+  border-color:var(--btn-fondo-hover);
+  background:var(--btn-fondo-hover);
   box-shadow:0 6px 15px rgba(23,42,61,.2);
   transform:translateY(-1px);
 }
@@ -225,7 +262,7 @@ textarea:focus-visible{
 
 .secundario:hover{
   border-color:var(--texto);
-  background:#f8fafb;
+  background:var(--hover);
 }
 
 .enlace{
@@ -257,13 +294,13 @@ textarea:focus-visible{
 
 .aviso.mal{
   border-color:rgba(182,83,71,.42);
-  background:#fff9f7;
+  background:var(--tinte-no);
   color:var(--no);
 }
 
 .aviso.bien{
   border-color:rgba(25,116,94,.38);
-  background:#f5fbf8;
+  background:var(--tinte-si);
   color:var(--si);
 }
 
@@ -364,7 +401,7 @@ textarea:focus-visible{
   flex-direction:column;
   overflow:hidden;
   padding:28px;
-  border:1px solid #d7dfe6;
+  border:1px solid var(--linea);
   border-radius:14px;
   background:var(--superficie);
   box-shadow:var(--sombra);
@@ -424,14 +461,14 @@ textarea:focus-visible{
 .sello.si{
   right:0;
   border-color:var(--si);
-  background:#f2fbf7;
+  background:var(--tinte-si);
   color:var(--si);
 }
 
 .sello.no{
   left:0;
   border-color:var(--no);
-  background:#fff7f5;
+  background:var(--tinte-no);
   color:var(--no);
 }
 
@@ -487,13 +524,13 @@ textarea:focus-visible{
 
 .botones .si:hover{
   border-color:var(--si);
-  background:#f1faf6;
+  background:var(--tinte-si);
   color:var(--si);
 }
 
 .botones .no:hover{
   border-color:var(--no);
-  background:#fff6f3;
+  background:var(--tinte-no);
   color:var(--no);
 }
 
@@ -676,7 +713,7 @@ select:focus{
 .filtro-lista li + li{border-top:1px solid var(--linea)}
 .filtro-lista li::before{
   content:'';position:absolute;left:5px;top:19px;width:5px;height:5px;
-  border-radius:50%;background:var(--acento);
+  border-radius:50%;background:var(--fuerte);
 }
 .peligro{border-color:rgba(182,83,71,.3)}
 .peligro h3{color:var(--no)}
@@ -697,8 +734,8 @@ select:focus{
   box-shadow:0 1px 1px rgba(24,42,61,.03);
   transition:border-color .15s,background-color .15s;
 }
-.boton-cuenta:hover{border-color:var(--fuerte);background:#f8fafb}
-.boton-cuenta[aria-expanded="true"]{border-color:var(--fuerte);background:#f8fafb}
+.boton-cuenta:hover{border-color:var(--fuerte);background:var(--hover)}
+.boton-cuenta[aria-expanded="true"]{border-color:var(--fuerte);background:var(--hover)}
 .boton-cuenta .flechita{
   color:var(--tenue);font-size:.7rem;line-height:1;transition:transform .18s;
 }
@@ -714,9 +751,29 @@ select:focus{
   border-radius:6px;background:none;color:var(--texto);font:inherit;
   font-size:.92rem;text-align:left;cursor:pointer;transition:background-color .12s;
 }
-.menu button:hover{background:rgba(23,42,61,.06)}
+.menu button:hover{background:var(--hover)}
 .menu button[aria-current="true"]{font-weight:650}
 .menu .separa{height:1px;margin:5px 8px;background:var(--linea)}
+
+/* Interruptor de tema. Dentro del menú y no en la barra: se toca una
+   vez y no vuelve a tocarse. */
+.menu .tema{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+}
+.palanca{
+  position:relative;width:38px;height:21px;flex:0 0 38px;
+  border-radius:99px;background:var(--linea);
+  transition:background-color .2s;
+}
+.palanca::after{
+  content:'';position:absolute;top:3px;left:3px;width:15px;height:15px;
+  border-radius:50%;background:var(--tenue);
+  transition:transform .2s,background-color .2s;
+}
+.menu .tema[aria-pressed="true"] .palanca{background:var(--fuerte)}
+.menu .tema[aria-pressed="true"] .palanca::after{
+  transform:translateX(17px);background:var(--texto);
+}
 .menu .peligroso{color:var(--no)}
 
 .seccion[hidden]{display:none !important}
@@ -882,13 +939,13 @@ select:focus{
 
 .accion.si:hover{
   border-color:var(--si);
-  background:#f2faf7;
+  background:var(--tinte-si);
   color:var(--si);
 }
 
 .accion.no:hover{
   border-color:var(--no);
-  background:#fff7f5;
+  background:var(--tinte-no);
   color:var(--no);
 }
 
@@ -922,6 +979,20 @@ select:focus{
   color:var(--texto);
   font-weight:650;
 }
+
+.explica{position:relative;padding-right:44px}
+/* Aparece al acercarse: presente cuando se busca, invisible mientras se
+   lee. */
+.explica .cerrar{
+  position:absolute;top:8px;right:9px;
+  width:26px;height:26px;padding:0;border:0;border-radius:6px;
+  background:none;color:var(--tenue);font-size:1.05rem;line-height:1;
+  cursor:pointer;opacity:0;transition:opacity .15s,background-color .15s;
+}
+.explica:hover .cerrar,
+.explica:focus-within .cerrar{opacity:1}
+.explica .cerrar:hover{background:var(--hover);color:var(--texto)}
+@media(hover:none),(pointer:coarse){ .explica .cerrar{opacity:1} }
 
 /* Selector geográfico */
 
@@ -981,9 +1052,9 @@ select:focus{
   align-items:center;
   gap:6px;
   padding:4px 5px 4px 11px;
-  border:1px solid #b9c5ce;
+  border:1px solid var(--fuerte);
   border-radius:99px;
-  background:#f7f9fa;
+  background:var(--hover);
   color:var(--texto);
   font-size:.81rem;
   font-weight:600;
@@ -1043,7 +1114,7 @@ select:focus{
 
 .opcion:hover,
 .opcion.destacada{
-  background:#f1f5f7;
+  background:var(--hover);
 }
 
 .opcion.raiz{
@@ -1077,7 +1148,7 @@ select:focus{
   left:4px;
   width:4px;
   height:8px;
-  border:solid #fff;
+  border:solid var(--superficie);
   border-width:0 2px 2px 0;
   transform:rotate(43deg);
 }
@@ -1128,7 +1199,7 @@ select:focus{
 }
 
 .fila:hover{
-  background:rgba(255,255,255,.55);
+  background:var(--hover);
 }
 
 .fila:focus-visible{
@@ -1264,7 +1335,7 @@ select:focus{
   display:none;
   padding:3px 12px 28px 102px;
   border-bottom:1px solid var(--linea);
-  background:rgba(255,255,255,.28);
+  background:var(--hover);
 }
 
 .detalle.abierto{
@@ -1294,8 +1365,8 @@ select:focus{
   max-width:66ch;
   margin:0 0 21px;
   padding:12px 16px;
-  border-left:3px solid var(--acento);
-  background:#fffaf2;
+  border-left:3px solid var(--fuerte);
+  background:var(--tinte-acento);
   color:var(--tenue);
   font-size:.92rem;
 }
@@ -1316,7 +1387,7 @@ select:focus{
 
 .ver:hover{
   border-color:var(--texto);
-  background:var(--superficie);
+  background:var(--hover);
 }
 
 .vacio{
@@ -1343,7 +1414,7 @@ select:focus{
   width:100%;
   max-width:480px;
   padding:28px;
-  border:1px solid rgba(255,255,255,.35);
+  border:1px solid var(--fuerte);
   border-radius:14px;
   background:var(--superficie);
   box-shadow:0 24px 60px rgba(13,29,45,.25);
@@ -1539,6 +1610,30 @@ const raiz = document.getElementById('raiz');
 // Usuario cuya sesión ya se ha atendido. Evita reiniciar la pantalla
 // cada vez que Supabase renueva el token.
 let sesionActual = null;
+
+// ---------- Tema ----------
+//
+// Todo el color de la hoja sale de las variables de :root, así que
+// cambiar de tema es reasignarlas: basta con un atributo en <html>.
+//
+// Se recuerda entre sesiones. Sin elección guardada se respeta lo que
+// tenga configurado el sistema, que es lo que espera quien ya lo ha
+// decidido en su equipo.
+const temaActual = () =>
+  document.documentElement.dataset.tema
+  || (matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro');
+
+function ponerTema(cual) {
+  document.documentElement.dataset.tema = cual;
+  try { localStorage.setItem('tema', cual); } catch { /* modo privado */ }
+}
+
+(function temaInicial() {
+  let guardado = null;
+  try { guardado = localStorage.getItem('tema'); } catch { /* modo privado */ }
+  document.documentElement.dataset.tema = guardado
+    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro');
+})();
 
 // ---------- Historial del navegador ----------
 //
@@ -2232,6 +2327,9 @@ function menuCuenta(actual = null) {
         ${Object.keys(SECCIONES).map(k => `<button role="menuitem" data-ir="${k}"
           aria-current="${k === actual}">${SECCIONES[k]}</button>`).join('')}
         <div class="separa"></div>
+        <button role="menuitem" class="tema" id="tema"
+                aria-pressed="false">Modo oscuro<span class="palanca"></span></button>
+        <div class="separa"></div>
         <button role="menuitem" class="peligroso" id="salir-menu">Salir</button>
       </div>
     </div>`;
@@ -2263,6 +2361,17 @@ function activarMenu(perfil, session) {
     pantallaPanel(perfil, session, false, b.dataset.ir);
   });
   alPulsar('salir-menu', () => sb.auth.signOut());
+
+  const boton = document.getElementById('tema');
+  if (boton) {
+    boton.setAttribute('aria-pressed', String(temaActual() === 'oscuro'));
+    boton.onclick = ev => {
+      ev.stopPropagation();
+      const nuevo = temaActual() === 'oscuro' ? 'claro' : 'oscuro';
+      ponerTema(nuevo);
+      boton.setAttribute('aria-pressed', String(nuevo === 'oscuro'));
+    };
+  }
 }
 
 
@@ -2411,6 +2520,7 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         <p class="guia" style="margin:18px 0 0;font-size:.88rem">
         Marca en tu lista los contratos que no te interesan y ajustamos el
         filtro automáticamente.</p>
+        <div id="recuperar"></div>
       </div>
       <div class="bloque peligro">
         <h3>Empezar de cero</h3>
@@ -2453,6 +2563,21 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
 
   alPulsar('volver', () => history.back());
   activarMenu(perfil, session);
+
+  // Si ocultó la explicación de la lista, aquí puede recuperarla.
+  const hueco = document.getElementById('recuperar');
+  let oculta = false;
+  try { oculta = localStorage.getItem('sin-explicacion') === '1'; } catch { /* nada */ }
+  if (hueco && oculta) {
+    hueco.innerHTML = `<button class="enlace" id="volver-explica"
+      style="padding-left:0;margin-top:10px">Volver a mostrar la explicación
+      en mi lista</button>`;
+    alPulsar('volver-explica', () => {
+      try { localStorage.removeItem('sin-explicacion'); } catch { /* nada */ }
+      hueco.innerHTML = `<p class="guia" style="margin:10px 0 0;font-size:.88rem">
+        Hecho. Volverá a aparecer en tu lista.</p>`;
+    });
+  }
 
   // ---------- Detalle de cada segmento ----------
   //
@@ -2573,13 +2698,29 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
              aria-multiselectable="true" hidden></div>
       </div>
     </div>
-    <p class="explica">Cada vez que marcas un contrato como
+    <p class="explica" id="explica">Cada vez que marcas un contrato como
     <strong>no me interesa</strong> o <strong>sí me interesa</strong>, tu
     filtro aprende. A las pocas correcciones lo ajustamos y vuelves a ver
-    la lista con lo que de verdad te encaja.</p>
+    la lista con lo que de verdad te encaja.
+    <button class="cerrar" id="cerrar-explica"
+            aria-label="Dejar de mostrar esta explicación">×</button></p>
     <main id="lista"></main>`;
 
   activarMenu(perfil, session);
+
+  // ---------- La explicación se puede ocultar ----------
+  //
+  // Se recuerda para no volver a mostrarla, pero se puede recuperar desde
+  // el panel: quien la cierre el primer día no debería quedarse sin saber
+  // para qué sirven los botones.
+  const explica = document.getElementById('explica');
+  try {
+    if (localStorage.getItem('sin-explicacion') === '1') explica?.remove();
+  } catch { /* modo privado */ }
+  alPulsar('cerrar-explica', () => {
+    explica?.remove();
+    try { localStorage.setItem('sin-explicacion', '1'); } catch { /* nada */ }
+  });
 
   const bloqueFecha = o => {
     if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo</span></div>`;
