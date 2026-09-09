@@ -758,6 +758,43 @@ select:focus{
 .principales button:hover{color:var(--texto)}
 .principales button[aria-current="true"]{color:var(--texto);font-weight:650}
 
+/* ---------- Mercado ----------
+   La ficha SUSTITUYE a las listas en lugar de apilarse encima. Apilando,
+   abrir una empresa empujaba las listas hacia abajo y la página saltaba
+   bajo el cursor. Así solo hay dos estados: las listas, o una ficha. */
+
+.plegable{
+  border:1px solid var(--linea);border-radius:10px;background:var(--superficie);
+  box-shadow:var(--sombra-baja);overflow:hidden;
+}
+.plegable + .plegable{margin-top:14px}
+.plegable > summary{
+  display:flex;align-items:center;gap:11px;
+  padding:17px 20px;cursor:pointer;list-style:none;
+  font-size:1rem;font-weight:650;
+}
+.plegable > summary::-webkit-details-marker{display:none}
+.plegable > summary:hover{background:var(--hover)}
+.plegable > summary .flechita{
+  color:var(--tenue);font-size:.72rem;transition:transform .18s;
+}
+.plegable[open] > summary .flechita{transform:rotate(180deg)}
+.plegable > summary .cuantas{
+  margin-left:auto;color:var(--tenue);font-size:.86rem;font-weight:400;
+}
+.plegable .dentro{padding:0 20px 20px}
+
+.volver-listas{
+  display:inline-flex;align-items:center;gap:7px;
+  border:0;background:none;padding:6px 0;color:var(--tenue);
+  font:inherit;font-size:.9rem;cursor:pointer;transition:color .15s;
+}
+.volver-listas:hover{color:var(--texto)}
+
+.vacio-seguimiento{
+  padding:8px 0 4px;color:var(--tenue);font-size:.92rem;line-height:1.6;
+}
+
 /* ---------- Mercado ---------- */
 .buscador-cif{display:flex;gap:9px;margin:26px 0 8px;flex-wrap:wrap}
 .buscador-cif input{flex:1 1 220px;text-transform:uppercase;letter-spacing:.03em}
