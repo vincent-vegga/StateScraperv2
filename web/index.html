@@ -778,13 +778,18 @@ select:focus{
 .seccion-mercado > h3 .cuantas{
   margin-left:auto;color:var(--tenue);font-size:.86rem;font-weight:400;
 }
+/* Sin borde propio: la última fila de la tabla ya trae el suyo, y los
+   dos juntos dibujaban una franja doble. */
 .mas{
-  display:block;width:100%;margin-top:4px;padding:11px 0;
-  border:0;border-top:1px solid var(--linea);background:none;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;padding:12px 0 2px;
+  border:0;background:none;
   color:var(--tenue);font:inherit;font-size:.88rem;cursor:pointer;
   transition:color .15s;
 }
 .mas:hover{color:var(--texto)}
+.mas .flechita{font-size:.72rem;transition:transform .18s}
+.mas[aria-expanded="true"] .flechita{transform:rotate(180deg)}
 .oculta{display:none}
 
 .volver-listas{
@@ -2678,8 +2683,11 @@ async function pantallaMercado(perfil, session, volviendo = false) {
           <th class="num">Importe</th></tr></thead>
         <tbody>${filas.map(fila).join('')}</tbody>
       </table>
-      ${filas.length > ASOMAN ? `<button class="mas" data-tabla="${id}">
-        Ver las ${filas.length - ASOMAN} restantes</button>` : ''}`;
+      ${filas.length > ASOMAN ? `<button class="mas" data-tabla="${id}"
+        aria-expanded="false"
+        data-mas="Ver las ${filas.length - ASOMAN} restantes"
+        data-menos="Ver menos">Ver las ${filas.length - ASOMAN} restantes
+        <span class="flechita">▾</span></button>` : ''}`;
 
     // La lista de seguimiento se enseña SIEMPRE, aunque esté vacía: si no
     // aparece, nadie descubre que existe.
@@ -2706,10 +2714,18 @@ async function pantallaMercado(perfil, session, volviendo = false) {
     zona.querySelectorAll('tr[data-cif]').forEach(f =>
       f.onclick = () => verEmpresa(f.dataset.cif));
 
-    zona.querySelectorAll('[data-tabla]').forEach(b => b.onclick = () => {
-      document.getElementById(b.dataset.tabla)
-        .querySelectorAll('.oculta').forEach(t => t.classList.remove('oculta'));
-      b.remove();
+    // Alterna: se puede volver a cerrar. Antes el botón desaparecía al
+    // pulsarlo y la lista se quedaba abierta para siempre.
+    zona.querySelectorAll('[data-tabla]').forEach(b => {
+      const filas = [...document.getElementById(b.dataset.tabla)
+        .querySelectorAll('tbody tr')];
+      b.onclick = () => {
+        const abierto = b.getAttribute('aria-expanded') === 'true';
+        filas.forEach((t, i) => t.classList.toggle('oculta', abierto && i >= ASOMAN));
+        b.setAttribute('aria-expanded', String(!abierto));
+        b.firstChild.textContent = abierto
+          ? b.dataset.mas + ' ' : b.dataset.menos + ' ';
+      };
     });
   }
 
