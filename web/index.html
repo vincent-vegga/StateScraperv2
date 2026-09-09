@@ -86,6 +86,11 @@ html[data-tema="oscuro"]{
 html{
   color-scheme:light;
   scroll-behavior:smooth;
+  /* Se reserva el hueco de la barra de desplazamiento aunque no haga
+     falta. Sin esto, al desplegar una lista la página crece, aparece la
+     barra, y todo el contenido se desplaza unos píxeles a la izquierda:
+     parecía que las columnas se movían solas. */
+  scrollbar-gutter:stable;
 }
 
 body{
