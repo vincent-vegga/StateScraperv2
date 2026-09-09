@@ -33,6 +33,17 @@
   --tinte-si:rgba(25,116,94,.07);
   --tinte-no:rgba(182,83,71,.07);
   --tinte-acento:rgba(199,139,53,.07);
+  /* La barra de filtros se queda fija sobre la lista, así que necesita
+     un fondo semiopaco del color de la página. Escrito a mano se
+     quedaba blanco en oscuro. */
+  --fondo-velado:rgba(243,245,247,.94);
+  --sombra-corta:0 1px 1px rgba(24,42,61,.03);
+  --sombra-baja:0 1px 2px rgba(24,42,61,.025);
+  --sombra-pegajosa:0 8px 18px rgba(24,42,61,.035);
+  --sombra-flotante:0 16px 35px rgba(24,42,61,.16);
+  --sombra-boton:0 4px 10px rgba(23,42,61,.14);
+  --sombra-boton-alta:0 6px 15px rgba(23,42,61,.2);
+  --foco:0 0 0 3px rgba(23,42,61,.09);
 }
 
 /* Modo oscuro. Los mismos papeles con otros valores: fondo, superficie,
@@ -58,6 +69,16 @@ html[data-tema="oscuro"]{
   --tinte-si:rgba(127,184,156,.1);
   --tinte-no:rgba(217,138,122,.1);
   --tinte-acento:rgba(214,164,88,.1);
+  --fondo-velado:rgba(21,23,26,.94);
+  /* En oscuro las sombras se ven poco y el relieve lo dan los bordes;
+     se mantienen suaves para que no ensucien. */
+  --sombra-corta:0 1px 1px rgba(0,0,0,.25);
+  --sombra-baja:0 1px 2px rgba(0,0,0,.3);
+  --sombra-pegajosa:0 8px 18px rgba(0,0,0,.35);
+  --sombra-flotante:0 16px 35px rgba(0,0,0,.55);
+  --sombra-boton:0 4px 10px rgba(0,0,0,.3);
+  --sombra-boton-alta:0 6px 15px rgba(0,0,0,.4);
+  --foco:0 0 0 3px rgba(232,234,237,.12);
 }
 
 *{box-sizing:border-box}
@@ -155,7 +176,7 @@ textarea{
   font:inherit;
   font-size:1rem;
   line-height:1.4;
-  box-shadow:0 1px 1px rgba(24,42,61,.03);
+  box-shadow:var(--sombra-corta);
   transition:border-color .16s,box-shadow .16s,background-color .16s;
 }
 
@@ -171,7 +192,7 @@ input:focus,
 textarea:focus{
   outline:0;
   border-color:var(--fuerte);
-  box-shadow:0 0 0 3px rgba(23,42,61,.09);
+  box-shadow:var(--foco);
 }
 
 textarea{
@@ -223,14 +244,14 @@ textarea:focus-visible{
   font-size:1rem;
   font-weight:650;
   line-height:1.2;
-  box-shadow:0 4px 10px rgba(23,42,61,.14);
+  box-shadow:var(--sombra-boton);
   transition:background-color .16s,border-color .16s,box-shadow .16s,transform .16s;
 }
 
 .principal:hover{
   border-color:var(--btn-fondo-hover);
   background:var(--btn-fondo-hover);
-  box-shadow:0 6px 15px rgba(23,42,61,.2);
+  box-shadow:var(--sombra-boton-alta);
   transform:translateY(-1px);
 }
 
@@ -320,7 +341,7 @@ textarea:focus-visible{
   border-radius:10px;
   background:var(--superficie);
   text-align:left;
-  box-shadow:0 1px 2px rgba(24,42,61,.025);
+  box-shadow:var(--sombra-baja);
 }
 
 .familia input{
@@ -565,7 +586,7 @@ kbd{
   border:1px solid var(--linea);
   border-radius:10px;
   background:var(--superficie);
-  box-shadow:0 1px 2px rgba(24,42,61,.025);
+  box-shadow:var(--sombra-baja);
 }
 
 .gesto .flecha{
@@ -650,8 +671,8 @@ kbd{
   gap:10px;
   padding:18px 0 16px;
   border-bottom:1px solid var(--linea);
-  background:rgba(243,245,247,.94);
-  box-shadow:0 8px 18px rgba(24,42,61,.035);
+  background:var(--fondo-velado);
+  box-shadow:var(--sombra-pegajosa);
   backdrop-filter:blur(12px);
 }
 
@@ -668,7 +689,7 @@ input[type=search]{
   font:inherit;
   font-size:.92rem;
   line-height:1.2;
-  box-shadow:0 1px 1px rgba(24,42,61,.03);
+  box-shadow:var(--sombra-corta);
   transition:border-color .16s,box-shadow .16s;
 }
 
@@ -692,14 +713,14 @@ input[type=search]:focus,
 select:focus{
   outline:0;
   border-color:var(--fuerte);
-  box-shadow:0 0 0 3px rgba(23,42,61,.09);
+  box-shadow:var(--foco);
 }
 
 /* ---------- Panel de cuenta ---------- */
 .panel{max-width:720px;padding:30px 0}
 .bloque{
   border:1px solid var(--linea);border-radius:10px;padding:24px;
-  background:var(--superficie);box-shadow:0 1px 2px rgba(24,42,61,.025);
+  background:var(--superficie);box-shadow:var(--sombra-baja);
 }
 .bloque + .bloque{margin-top:16px}
 .bloque h3{margin:0 0 18px;font-size:1.02rem;font-weight:650}
@@ -731,7 +752,7 @@ select:focus{
   padding:0 13px;border:1px solid var(--linea);border-radius:8px;
   background:var(--superficie);color:var(--texto);font:inherit;
   font-size:.88rem;font-weight:600;cursor:pointer;
-  box-shadow:0 1px 1px rgba(24,42,61,.03);
+  box-shadow:var(--sombra-corta);
   transition:border-color .15s,background-color .15s;
 }
 .boton-cuenta:hover{border-color:var(--fuerte);background:var(--hover)}
@@ -743,7 +764,7 @@ select:focus{
 .menu{
   position:absolute;top:calc(100% + 8px);right:0;z-index:40;min-width:210px;
   background:var(--superficie);border:1px solid var(--fuerte);border-radius:9px;
-  padding:5px;box-shadow:0 16px 35px rgba(24,42,61,.16);
+  padding:5px;box-shadow:var(--sombra-flotante);
 }
 .menu[hidden]{display:none !important}
 .menu button{
@@ -1014,13 +1035,13 @@ select:focus{
   border-radius:8px;
   background:var(--superficie);
   cursor:text;
-  box-shadow:0 1px 1px rgba(24,42,61,.03);
+  box-shadow:var(--sombra-corta);
   transition:border-color .16s,box-shadow .16s;
 }
 
 .campo-geo:focus-within{
   border-color:var(--fuerte);
-  box-shadow:0 0 0 3px rgba(23,42,61,.09);
+  box-shadow:var(--foco);
 }
 
 .campo-geo input{
@@ -1088,7 +1109,7 @@ select:focus{
   border:1px solid var(--fuerte);
   border-radius:9px;
   background:var(--superficie);
-  box-shadow:0 16px 35px rgba(24,42,61,.16);
+  box-shadow:var(--sombra-flotante);
 }
 
 .desplegable[hidden]{
@@ -1417,7 +1438,7 @@ select:focus{
   border:1px solid var(--fuerte);
   border-radius:14px;
   background:var(--superficie);
-  box-shadow:0 24px 60px rgba(13,29,45,.25);
+  box-shadow:var(--sombra-flotante);
 }
 
 .dialogo h3{
@@ -1619,9 +1640,7 @@ let sesionActual = null;
 // Se recuerda entre sesiones. Sin elección guardada se respeta lo que
 // tenga configurado el sistema, que es lo que espera quien ya lo ha
 // decidido en su equipo.
-const temaActual = () =>
-  document.documentElement.dataset.tema
-  || (matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro');
+const temaActual = () => document.documentElement.dataset.tema || 'claro';
 
 function ponerTema(cual) {
   document.documentElement.dataset.tema = cual;
@@ -1631,8 +1650,10 @@ function ponerTema(cual) {
 (function temaInicial() {
   let guardado = null;
   try { guardado = localStorage.getItem('tema'); } catch { /* modo privado */ }
-  document.documentElement.dataset.tema = guardado
-    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro');
+  // Claro por defecto, sin mirar la preferencia del sistema: es el tema
+  // en el que está pensado el producto, y quien prefiera el oscuro lo
+  // encuentra en su menú.
+  document.documentElement.dataset.tema = guardado || 'claro';
 })();
 
 // ---------- Historial del navegador ----------
@@ -2556,12 +2577,16 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         <div class="quien">${esc(p.empresa || p.email || '')}</div></div>
       <div style="display:flex;gap:12px;align-items:center">
         ${menuCuenta(seccion)}
-        <button class="enlace" id="volver">Volver</button>
+        <button class="enlace" id="volver">Mis contratos</button>
       </div>
     </div>
     <div class="panel">${secciones[seccion] ?? secciones.cuenta}</div>`;
 
-  alPulsar('volver', () => history.back());
+  // A la lista, no a la pantalla anterior. Cada sección del panel deja
+  // su marca en el historial, así que retroceder devolvía a la sección
+  // de antes en vez de salir: para volver a los contratos había que
+  // pulsar varias veces.
+  alPulsar('volver', () => pantallaOportunidades(perfil, session));
   activarMenu(perfil, session);
 
   // Si ocultó la explicación de la lista, aquí puede recuperarla.
