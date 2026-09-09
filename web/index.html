@@ -835,20 +835,27 @@ select:focus{
 .seguir[aria-pressed="true"]{border-color:var(--texto);background:var(--texto);
   color:var(--btn-texto)}
 
+/* El mismo botón, más pequeño, para cada fila de las listas: seguir a una
+   empresa sin tener que abrir su ficha. */
+.seguir.chico{min-height:30px;padding:0 11px;font-size:.8rem}
+
 .tabla{width:100%;border-collapse:collapse;margin-top:4px;font-size:.92rem}
 .tabla th{
   text-align:left;padding:9px 12px 9px 0;color:var(--tenue);
   font-size:.79rem;font-weight:650;letter-spacing:.05em;
   text-transform:uppercase;border-bottom:1px solid var(--linea);
 }
-.tabla th.num, .tabla td.num{text-align:right;
-  font-variant-numeric:tabular-nums;padding-right:0}
+/* Centradas: en una tabla de tres columnas donde la primera es texto
+   largo, alinear los números a la derecha los deja pegados al borde y
+   lejos de su encabezado. */
+.tabla th.num, .tabla td.num{text-align:center;
+  font-variant-numeric:tabular-nums;white-space:nowrap;padding:9px 14px}
+.tabla th.fin, .tabla td.fin{text-align:right;padding-right:0;width:1%}
 .tabla td{padding:12px 12px 12px 0;border-bottom:1px solid var(--linea)}
 .tabla tr:last-child td{border-bottom:0}
 .tabla tbody tr{cursor:pointer;transition:background-color .12s}
 .tabla tbody tr:hover{background:var(--hover)}
 .tabla .quien{font-weight:600}
-.tabla .marca-sigo{color:var(--si);font-size:.78rem;margin-left:8px}
 
 .ultimos-contratos > div{
   padding:13px 0;border-bottom:1px solid var(--linea);
@@ -858,7 +865,11 @@ select:focus{
 .ultimos-contratos .quien{color:var(--tenue);font-size:.86rem}
 
 @media(max-width:720px){
+  /* Cabe menos: se deja el nombre, el importe y el botón. El número de
+     contratos se ve al abrir la ficha. */
   .tabla th:nth-child(2), .tabla td:nth-child(2){display:none}
+  .tabla th.num, .tabla td.num{padding:9px 8px}
+  .seguir.chico{padding:0 9px;font-size:.76rem}
 }
 
 /* Confirmación breve. Un icono sin etiqueta no dice qué ha pasado al
@@ -2669,19 +2680,22 @@ async function pantallaMercado(perfil, session, volviendo = false) {
     // Tres filas a la vista y el resto detrás de un botón.
     const ASOMAN = 3;
 
-    const fila = (f, i) => `<tr data-cif="${esc(f.cif)}"
+    const fila = (f, i, sigo) => `<tr data-cif="${esc(f.cif)}"
         class="${i >= ASOMAN ? 'oculta' : ''}">
-        <td class="quien">${esc(f.nombre ?? f.cif)}${
-          f.sigo ? '<span class="marca-sigo">siguiendo</span>' : ''}</td>
+        <td class="quien">${esc(f.nombre ?? f.cif)}</td>
         <td class="num">${f.contratos}</td>
         <td class="num">${f.importe ? euros(Number(f.importe)) : '—'}</td>
+        <td class="fin"><button class="seguir chico" aria-pressed="${sigo}"
+          data-seguir="${esc(f.cif)}" data-nombre="${esc(f.nombre ?? f.cif)}"
+          >${sigo ? 'Siguiendo' : 'Seguir'}</button></td>
       </tr>`;
 
-    const tabla = (filas, id) => `
+    const tabla = (filas, id, todasSeguidas = false) => `
       <table class="tabla" id="${id}">
         <thead><tr><th>Empresa</th><th class="num">Contratos</th>
-          <th class="num">Importe</th></tr></thead>
-        <tbody>${filas.map(fila).join('')}</tbody>
+          <th class="num">Importe</th><th class="fin"></th></tr></thead>
+        <tbody>${filas.map((f, i) =>
+          fila(f, i, todasSeguidas || !!f.sigo)).join('')}</tbody>
       </table>
       ${filas.length > ASOMAN ? `<button class="mas" data-tabla="${id}"
         aria-expanded="false"
@@ -2695,7 +2709,7 @@ async function pantallaMercado(perfil, session, volviendo = false) {
       <div class="seccion-mercado">
         <h3>Tu lista de seguimiento
           <span class="cuantas">${seguidas.length || 'vacía'}</span></h3>
-        ${seguidas.length ? tabla(seguidas, 't-seguimiento') : `
+        ${seguidas.length ? tabla(seguidas, 't-seguimiento', true) : `
           <p class="vacio-seguimiento">Todavía no sigues a ninguna empresa.
           Busca una por su CIF o elígela de la lista de abajo, y pulsa
           <strong>Seguir</strong> en su ficha para tenerla aquí a mano.</p>`}
@@ -2712,7 +2726,35 @@ async function pantallaMercado(perfil, session, volviendo = false) {
       </div>`;
 
     zona.querySelectorAll('tr[data-cif]').forEach(f =>
-      f.onclick = () => verEmpresa(f.dataset.cif));
+      f.onclick = ev => {
+        // El botón de seguir vive dentro de la fila para que aparezca a su
+        // altura; hay que evitar que su clic abra además la ficha.
+        if (ev.target.closest('[data-seguir]')) return;
+        verEmpresa(f.dataset.cif);
+      });
+
+    zona.querySelectorAll('[data-seguir]').forEach(b => b.onclick = async () => {
+      const antes = b.getAttribute('aria-pressed') === 'true';
+      // Se pinta al instante y se corrige si el servidor dice otra cosa.
+      b.setAttribute('aria-pressed', String(!antes));
+      b.textContent = !antes ? 'Siguiendo' : 'Seguir';
+      try {
+        const { data } = await sb.rpc('seguir', {
+          cif_empresa: b.dataset.seguir, nombre_empresa: b.dataset.nombre });
+        b.setAttribute('aria-pressed', String(!!data));
+        b.textContent = data ? 'Siguiendo' : 'Seguir';
+        recado(data
+          ? 'Añadida a tu lista de seguimiento'
+          : 'Quitada de tu lista de seguimiento');
+        // La lista de arriba cambia, así que se vuelve a pintar. Se hace
+        // después del recado para que no parezca que se ha perdido.
+        setTimeout(verListas, 700);
+      } catch {
+        b.setAttribute('aria-pressed', String(antes));
+        b.textContent = antes ? 'Siguiendo' : 'Seguir';
+        recado('No se ha podido guardar. Inténtalo de nuevo.');
+      }
+    });
 
     // Alterna: se puede volver a cerrar. Antes el botón desaparecía al
     // pulsarlo y la lista se quedaba abierta para siempre.
