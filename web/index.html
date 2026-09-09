@@ -763,26 +763,29 @@ select:focus{
    abrir una empresa empujaba las listas hacia abajo y la página saltaba
    bajo el cursor. Así solo hay dos estados: las listas, o una ficha. */
 
-.plegable{
+/* Se enseñan tres filas y el resto se despliega. Un bloque cerrado no
+   dice qué hay dentro; con unas cuantas asomando se ve de qué va y si
+   merece abrirlo. */
+.seccion-mercado{
   border:1px solid var(--linea);border-radius:10px;background:var(--superficie);
-  box-shadow:var(--sombra-baja);overflow:hidden;
+  box-shadow:var(--sombra-baja);padding:20px;
 }
-.plegable + .plegable{margin-top:14px}
-.plegable > summary{
-  display:flex;align-items:center;gap:11px;
-  padding:17px 20px;cursor:pointer;list-style:none;
+.seccion-mercado + .seccion-mercado{margin-top:14px}
+.seccion-mercado > h3{
+  display:flex;align-items:baseline;gap:11px;margin:0 0 4px;
   font-size:1rem;font-weight:650;
 }
-.plegable > summary::-webkit-details-marker{display:none}
-.plegable > summary:hover{background:var(--hover)}
-.plegable > summary .flechita{
-  color:var(--tenue);font-size:.72rem;transition:transform .18s;
-}
-.plegable[open] > summary .flechita{transform:rotate(180deg)}
-.plegable > summary .cuantas{
+.seccion-mercado > h3 .cuantas{
   margin-left:auto;color:var(--tenue);font-size:.86rem;font-weight:400;
 }
-.plegable .dentro{padding:0 20px 20px}
+.mas{
+  display:block;width:100%;margin-top:4px;padding:11px 0;
+  border:0;border-top:1px solid var(--linea);background:none;
+  color:var(--tenue);font:inherit;font-size:.88rem;cursor:pointer;
+  transition:color .15s;
+}
+.mas:hover{color:var(--texto)}
+.oculta{display:none}
 
 .volver-listas{
   display:inline-flex;align-items:center;gap:7px;
@@ -2649,7 +2652,7 @@ async function pantallaMercado(perfil, session, volviendo = false) {
   const campo = document.getElementById('cif-buscar');
 
   // ---------- Estado: listas ----------
-  async function verListas(abrir = null) {
+  async function verListas() {
     zona.innerHTML = `<p class="guia">Cargando...</p>`;
     const [comp, seg] = await Promise.all([
       sb.rpc('competencia'),
@@ -2658,48 +2661,56 @@ async function pantallaMercado(perfil, session, volviendo = false) {
     const competencia = comp.data ?? [];
     const seguidas = seg.data ?? [];
 
-    const tabla = filas => `
-      <table class="tabla">
+    // Tres filas a la vista y el resto detrás de un botón.
+    const ASOMAN = 3;
+
+    const fila = (f, i) => `<tr data-cif="${esc(f.cif)}"
+        class="${i >= ASOMAN ? 'oculta' : ''}">
+        <td class="quien">${esc(f.nombre ?? f.cif)}${
+          f.sigo ? '<span class="marca-sigo">siguiendo</span>' : ''}</td>
+        <td class="num">${f.contratos}</td>
+        <td class="num">${f.importe ? euros(Number(f.importe)) : '—'}</td>
+      </tr>`;
+
+    const tabla = (filas, id) => `
+      <table class="tabla" id="${id}">
         <thead><tr><th>Empresa</th><th class="num">Contratos</th>
           <th class="num">Importe</th></tr></thead>
-        <tbody>${filas.map(f => `<tr data-cif="${esc(f.cif)}">
-          <td class="quien">${esc(f.nombre ?? f.cif)}${
-            f.sigo ? '<span class="marca-sigo">siguiendo</span>' : ''}</td>
-          <td class="num">${f.contratos}</td>
-          <td class="num">${f.importe ? euros(Number(f.importe)) : '—'}</td>
-        </tr>`).join('')}</tbody>
-      </table>`;
+        <tbody>${filas.map(fila).join('')}</tbody>
+      </table>
+      ${filas.length > ASOMAN ? `<button class="mas" data-tabla="${id}">
+        Ver las ${filas.length - ASOMAN} restantes</button>` : ''}`;
 
     // La lista de seguimiento se enseña SIEMPRE, aunque esté vacía: si no
     // aparece, nadie descubre que existe.
     zona.innerHTML = `
-      <details class="plegable" ${seguidas.length || abrir === 'seguimiento' ? 'open' : ''}>
-        <summary>Tu lista de seguimiento
-          <span class="cuantas">${seguidas.length || 'vacía'}</span>
-          <span class="flechita">▾</span></summary>
-        <div class="dentro">
-          ${seguidas.length ? tabla(seguidas) : `
-            <p class="vacio-seguimiento">Todavía no sigues a ninguna empresa.
-            Busca una por su CIF o elígela de la lista de abajo, y pulsa
-            <strong>Seguir</strong> en su ficha para tenerla aquí a mano.</p>`}
-        </div>
-      </details>
+      <div class="seccion-mercado">
+        <h3>Tu lista de seguimiento
+          <span class="cuantas">${seguidas.length || 'vacía'}</span></h3>
+        ${seguidas.length ? tabla(seguidas, 't-seguimiento') : `
+          <p class="vacio-seguimiento">Todavía no sigues a ninguna empresa.
+          Busca una por su CIF o elígela de la lista de abajo, y pulsa
+          <strong>Seguir</strong> en su ficha para tenerla aquí a mano.</p>`}
+      </div>
 
-      <details class="plegable" open>
-        <summary>Quién gana más en tus sectores
-          <span class="cuantas">${competencia.length}</span>
-          <span class="flechita">▾</span></summary>
-        <div class="dentro">
-          <p class="guia" style="margin:0 0 16px;font-size:.9rem">Empresas que
-          han ganado contratos de los mismos códigos que tú. Pulsa una para
-          ver su ficha.</p>
-          ${competencia.length ? tabla(competencia)
-            : '<p class="sin-datos">Todavía no hay datos de tus sectores.</p>'}
-        </div>
-      </details>`;
+      <div class="seccion-mercado">
+        <h3>Quién gana más en tus sectores
+          <span class="cuantas">${competencia.length}</span></h3>
+        <p class="guia" style="margin:0 0 14px;font-size:.9rem">Empresas que
+        han ganado contratos de los mismos códigos que tú. Pulsa una para ver
+        su ficha.</p>
+        ${competencia.length ? tabla(competencia, 't-competencia')
+          : '<p class="sin-datos">Todavía no hay datos de tus sectores.</p>'}
+      </div>`;
 
     zona.querySelectorAll('tr[data-cif]').forEach(f =>
       f.onclick = () => verEmpresa(f.dataset.cif));
+
+    zona.querySelectorAll('[data-tabla]').forEach(b => b.onclick = () => {
+      document.getElementById(b.dataset.tabla)
+        .querySelectorAll('.oculta').forEach(t => t.classList.remove('oculta'));
+      b.remove();
+    });
   }
 
   // ---------- Estado: ficha ----------
