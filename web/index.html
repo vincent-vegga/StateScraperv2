@@ -599,49 +599,6 @@ kbd{
   color:var(--tenue);font-variant-numeric:tabular-nums;
 }
 
-/* ---------- Resumen accionable ----------
-   Antes eran cuatro recuadros con números: uno repetía el titular y los
-   otros tres no llevaban a ninguna parte. Ahora son atajos —al pulsarlos
-   se filtra la lista— así que el número deja de ser decoración y pasa a
-   ser la navegación. */
-.resumen{
-  display:flex;flex-wrap:wrap;gap:9px;align-items:center;
-  margin:18px 0 0;
-  transition:opacity .18s;
-}
-.resumen.cambiando{opacity:.35}
-
-.atajo{
-  display:inline-flex;align-items:baseline;gap:7px;
-  min-height:36px;padding:0 14px;
-  border:1px solid var(--linea);border-radius:99px;
-  background:var(--superficie);color:var(--texto);
-  font:inherit;font-size:.9rem;cursor:pointer;
-  box-shadow:0 1px 1px rgba(24,42,61,.03);
-  transition:border-color .15s,background-color .15s;
-}
-.atajo:hover{border-color:var(--fuerte);background:#f8fafb}
-.atajo[aria-pressed="true"]{
-  border-color:var(--texto);background:var(--texto);color:#fff;
-}
-.atajo[aria-pressed="true"] .rotulo{color:rgba(255,255,255,.72)}
-.atajo strong{
-  font-weight:650;font-variant-numeric:tabular-nums;
-}
-.atajo .rotulo{color:var(--tenue);font-size:.86rem}
-
-/* El de plazo lleva el color de urgencia solo cuando hay algo que
-   corra prisa; con cero, es un atajo más y no debe destacar. */
-.atajo.urge:not([aria-pressed="true"]) strong{color:var(--urge)}
-
-/* Dato de contexto, sin acción: no se pulsa, así que no parece un botón. */
-.dato{
-  display:inline-flex;align-items:baseline;gap:7px;
-  padding:0 4px;color:var(--tenue);font-size:.9rem;
-}
-.dato strong{color:var(--texto);font-weight:650;
-  font-variant-numeric:tabular-nums}
-
 /* Filtros y pestañas */
 
 .filtros{
@@ -1539,8 +1496,7 @@ select:focus{
   .carta,
   .relleno,
   #lista,
-  .resumen,
-  .pista .lleno{
+  .apilada .trozo{
     transition:none;
   }
 
@@ -2579,7 +2535,6 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       ${menuCuenta()}
     </div>
     <h1 id="titular" style="margin-top:30px"></h1>
-    <div class="resumen" id="marcador"></div>
     <div class="pestanas" role="tablist">
       <button class="pestana" role="tab" id="p-hoy" aria-selected="false">
         Novedades<span class="cuantas" id="c-hoy"></span></button>
@@ -2632,51 +2587,16 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     return `${fechaLarga(s)}, a las ${p.hour}:${p.minute} (hora peninsular)`;
   };
 
-  // Atajo activo. Null es "sin atajo", que no es lo mismo que ninguno
-  // seleccionado en los filtros de abajo: son dos capas distintas.
-  let atajo = null;
-
-  function marcador(lista) {
-    // Los contadores se calculan sobre TODO lo que hay, no sobre lo ya
-    // filtrado: si dijeran el resultado del filtro actual, pulsarlos
-    // sería un salto a ciegas y volver atrás no tendría número.
-    const base = DATOS.filter(o =>
-      (pestana === 'todo' || o.es_novedad) &&
-      (elegidas.size === 0 || elegidas.has(o.provincia)));
-
-    const n = base.length;
-    const conEncaje = base.filter(o => o.veredicto === 'si').length;
-    const urgentes = base.filter(o => o.dias != null && o.dias >= 0 && o.dias <= 7).length;
-    const total = base.reduce((s, o) => s + (o.presupuesto || 0), 0);
-
+  // Solo el titular. Los cuatro recuadros de antes —abiertos, encaje
+  // claro, importe, vencimientos— duplicaban lo que ya dicen el titular
+  // y los filtros de debajo. La misma función en dos sitios confunde
+  // más de lo que ayuda, y quien usa esto es un profesional que sabe
+  // lo que busca.
+  function pintarTitular(lista) {
+    const n = lista.length;
     document.getElementById('titular').textContent = n === 0
       ? 'Ahora mismo no hay contratos abiertos para ti'
       : `Hay ${n} ${n === 1 ? 'contrato abierto' : 'contratos abiertos'} para ti`;
-
-    const compacto = v => new Intl.NumberFormat('es-ES',
-      {notation:'compact', style:'currency', currency:'EUR',
-       maximumFractionDigits:1}).format(v);
-
-    document.getElementById('marcador').innerHTML = `
-      ${conEncaje ? `<button class="atajo" data-atajo="si"
-        aria-pressed="${atajo === 'si'}">
-        <strong>${conEncaje}</strong><span class="rotulo">con encaje claro</span>
-      </button>` : ''}
-      ${urgentes ? `<button class="atajo urge" data-atajo="urge"
-        aria-pressed="${atajo === 'urge'}">
-        <strong>${urgentes}</strong><span class="rotulo">${
-          urgentes === 1 ? 'vence esta semana' : 'vencen esta semana'}</span>
-      </button>` : ''}
-      ${total ? `<span class="dato"><strong>${compacto(total)}</strong>
-        <span>en juego</span></span>` : ''}`;
-
-    document.getElementById('marcador').querySelectorAll('[data-atajo]')
-      .forEach(b => b.onclick = () => {
-        // Volver a pulsarlo lo desactiva: es un interruptor, no un
-        // destino sin salida.
-        atajo = atajo === b.dataset.atajo ? null : b.dataset.atajo;
-        repintar();
-      });
   }
 
   // Provincias elegidas. Vacío es "toda España", no "ninguna": es lo que
@@ -2690,12 +2610,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const vistos = DATOS.filter(o =>
       (pestana === 'todo' || o.es_novedad) &&
       (elegidas.size === 0 || elegidas.has(o.provincia)) &&
-      (atajo !== 'si' || o.veredicto === 'si') &&
-      (atajo !== 'urge' || (o.dias != null && o.dias >= 0 && o.dias <= 7)) &&
       (!ver || o.veredicto === ver) &&
       (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
 
-    marcador(vistos);
+    pintarTitular(vistos);
     document.getElementById('lista').innerHTML = vistos.length ? vistos.map((o,i) => `
       <div class="fila-envoltorio">
       <button class="fila" data-i="${i}">
@@ -2839,14 +2757,11 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   let temporizador;
   const repintar = () => {
     const lista = document.getElementById('lista');
-    const marca = document.getElementById('marcador');
     lista.classList.add('cambiando');
-    marca.classList.add('cambiando');
     clearTimeout(temporizador);
     temporizador = setTimeout(() => {
       pintar();
       lista.classList.remove('cambiando');
-      marca.classList.remove('cambiando');
     }, 160);
   };
 
