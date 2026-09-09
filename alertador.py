@@ -26,10 +26,9 @@ Uso:
 Variables de entorno:
     SUPABASE_URL, SUPABASE_KEY   -> obligatorias
     RESEND_API_KEY               -> obligatoria (salvo en simulacro)
-    DESTINATARIOS_ALERTA         -> correos separados por comas
     REMITENTE_ALERTA             -> por defecto onboarding@resend.dev
     URL_INTERFAZ                 -> enlace a la web que se incluye
-    HORAS_NOVEDAD                -> ventana de novedad (por defecto 6)
+    HORAS_NOVEDAD                -> ventana de novedad (por defecto 26)
 """
 
 from __future__ import annotations
@@ -48,16 +47,18 @@ from datetime import datetime, timedelta, timezone
 # 1. CONFIGURACIÓN
 # ==============================================================
 
-VISTA = "oportunidades"
 API_RESEND = "https://api.resend.com/emails"
 
 REMITENTE = os.environ.get("REMITENTE_ALERTA", "onboarding@resend.dev")
 URL_INTERFAZ = os.environ.get(
-    "URL_INTERFAZ", "https://vincent-vegga.github.io/state-scraper/"
+    "URL_INTERFAZ", "https://statescraperv2.pages.dev"
 )
 # Holgura sobre la última detección. Una pasada tarda minutos, no horas,
 # pero el margen absorbe ejecuciones que se solapen o se retrasen.
-HORAS_NOVEDAD = int(os.environ.get("HORAS_NOVEDAD", "6"))
+# Ventana de novedad. Mayor que un día a propósito: el cron de GitHub
+# Actions se retrasa con frecuencia, y repetir una licitación un día es
+# mucho menos grave que perderla por un arranque tardío.
+HORAS_NOVEDAD = int(os.environ.get("HORAS_NOVEDAD", "26"))
 
 PROVINCIAS: dict[str, str] = {
     "01": "Álava", "02": "Albacete", "03": "Alicante", "04": "Almería",
@@ -128,32 +129,39 @@ def a_fecha(valor: str | None) -> datetime | None:
     return fecha if fecha.tzinfo else fecha.replace(tzinfo=ZONA_ESPANA)
 
 
-def novedades(cliente) -> list[dict]:
+def clientes_a_avisar(cliente) -> list[dict]:
     """
-    Oportunidades detectadas en la última pasada del robot.
+    Perfiles activos con correo y filtro listo.
 
-    El corte se toma respecto a la detección MÁS RECIENTE que hay en la
-    tabla, no respecto al reloj. Así el resultado es el mismo aunque el
-    correo se envíe con retraso, y coincide con lo que enseña la web.
+    Antes había una lista fija de direcciones en los secrets, herencia de
+    cuando el destinatario era uno solo. Con clientes de verdad cada uno
+    recibe LO SUYO, así que la lista sale de la base.
     """
     try:
-        filas = (cliente.table(VISTA).select("*").execute().data) or []
+        respuesta = cliente.rpc("perfiles_con_novedades",
+                                {"horas": HORAS_NOVEDAD}).execute()
+        return respuesta.data or []
     except Exception as error:
-        logging.error("No se pudo leer la vista '%s': %s", VISTA, error)
+        logging.error("No se pudo leer la lista de clientes: %s", error)
         sys.exit(1)
 
-    detecciones = [a_fecha(f.get("fecha_deteccion")) for f in filas]
-    detecciones = [d for d in detecciones if d]
-    if not detecciones:
+
+def novedades(cliente, perfil_id: str) -> list[dict]:
+    """
+    Lo que ha entrado para este cliente desde la última pasada.
+
+    La ventana es algo mayor que un día para absorber los retrasos del
+    cron, que no es puntual. Es preferible repetir una licitación un día
+    a que se pierda por un arranque tardío.
+    """
+    try:
+        respuesta = cliente.rpc("novedades_de_perfil",
+                                {"perfil": perfil_id,
+                                 "horas": HORAS_NOVEDAD}).execute()
+        return respuesta.data or []
+    except Exception as error:
+        logging.error("No se pudieron leer las novedades del perfil: %s", error)
         return []
-
-    corte = max(detecciones) - timedelta(hours=HORAS_NOVEDAD)
-    recientes = [f for f in filas
-                 if (d := a_fecha(f.get("fecha_deteccion"))) and d >= corte]
-
-    # Lo que vence antes, primero: es el orden en que hay que actuar.
-    recientes.sort(key=lambda f: f.get("fecha_limite") or "9999")
-    return recientes
 
 
 # ==============================================================
@@ -406,61 +414,94 @@ def main() -> int:
         description="State Scraper · Paso 5, alerta diaria por correo."
     )
     argumentos.add_argument("--simulacro", action="store_true",
-                            help="Muestra el correo por pantalla y NO lo envía.")
+                            help="Muestra los correos por pantalla y NO los envía.")
+    argumentos.add_argument("--solo", metavar="CIF",
+                            help="Envía únicamente a la empresa con ese CIF.")
     opciones = argumentos.parse_args()
 
     configurar_logging()
     logging.info("=" * 62)
-    logging.info("ALERTA DIARIA%s", "  ·  SIMULACRO" if opciones.simulacro else "")
+    logging.info("ALERTA DIARIA POR CLIENTE%s",
+                 "  ·  SIMULACRO" if opciones.simulacro else "")
     logging.info("=" * 62)
 
     cliente = obtener_cliente()
-    items = novedades(cliente)
+    perfiles = clientes_a_avisar(cliente)
 
-    if not items:
-        # Silencio deliberado: un correo que dice "hoy no hay nada" enseña
-        # a ignorar el remitente, y con él los días que sí importan.
-        logging.info("Sin novedades. No se envía ningún correo.")
+    if opciones.solo:
+        # Para probar con un cliente concreto sin escribir a los demás.
+        buscado = opciones.solo.strip().upper()
+        try:
+            fila = (cliente.table("perfiles").select("id")
+                    .eq("cif", buscado).limit(1).execute().data)
+            ids = {f["id"] for f in (fila or [])}
+        except Exception as error:
+            logging.error("No se pudo buscar ese CIF: %s", error)
+            return 1
+        perfiles = [p for p in perfiles if p["id"] in ids]
+        logging.info("Filtrado por CIF %s: %d perfil(es).", buscado, len(perfiles))
+
+    if not perfiles:
+        logging.info("No hay clientes activos con filtro listo.")
         return 0
 
-    logging.info("Novedades a enviar: %d", len(items))
-    asunto, cuerpo_html, cuerpo_texto = componer(items)
+    logging.info("Clientes con alerta activa: %d", len(perfiles))
 
-    if opciones.simulacro:
-        logging.info("Asunto: %s", asunto)
-        logging.info("--- versión en texto ---\n%s", cuerpo_texto)
-        logging.info("SIMULACRO: no se ha enviado nada.")
-        return 0
+    enviados = fallidos = sin_novedades = 0
 
-    destinatarios = [d.strip() for d in
-                     os.environ.get("DESTINATARIOS_ALERTA", "").split(",")
-                     if d.strip()]
-    if not destinatarios:
-        logging.error("Falta DESTINATARIOS_ALERTA. Sin destino no hay alerta.")
-        return 1
+    for perfil in perfiles:
+        nombre = perfil.get("empresa") or perfil.get("nombre") or "?"
+        items = novedades(cliente, perfil["id"])
 
-    # Se enmascara el destinatario: el registro de Actions es público en
-    # un repositorio público, pero hace falta ver si la dirección es la
-    # que se espera.
-    visibles = [d[:2] + "***@" + d.split("@")[-1] if "@" in d else "???"
-                for d in destinatarios]
-    logging.info("Enviando desde %s a: %s", REMITENTE, ", ".join(visibles))
+        if not items:
+            # Silencio deliberado: un correo que dice "hoy no hay nada"
+            # enseña a ignorar el remitente, y con él los días que sí
+            # importan.
+            sin_novedades += 1
+            continue
 
-    if not enviar(asunto, cuerpo_html, cuerpo_texto, destinatarios):
-        # Fallar en rojo: un envío fallido que termina en verde es
-        # indistinguible de un día sin novedades.
-        return 1
+        logging.info("[%s] %d novedades.", nombre, len(items))
+        asunto, cuerpo_html, cuerpo_texto = componer(items)
+
+        if opciones.simulacro:
+            logging.info("  Asunto: %s", asunto)
+            logging.info("  --- versión en texto ---\n%s", cuerpo_texto)
+            continue
+
+        destino = perfil.get("email", "").strip()
+        if not destino:
+            logging.warning("[%s] Sin correo. Se salta.", nombre)
+            fallidos += 1
+            continue
+
+        # Se enmascara: el registro de Actions es visible para quien tenga
+        # acceso al repositorio, y ahí hay correos de clientes.
+        visible = destino[:2] + "***@" + destino.split("@")[-1] \
+            if "@" in destino else "???"
+        logging.info("  Enviando a %s", visible)
+
+        if enviar(asunto, cuerpo_html, cuerpo_texto, [destino]):
+            enviados += 1
+        else:
+            fallidos += 1
+
+    logging.info("--- RESUMEN ---")
+    logging.info("Enviados: %d | sin novedades: %d | fallidos: %d",
+                 enviados, sin_novedades, fallidos)
 
     ruta = os.environ.get("GITHUB_STEP_SUMMARY")
     if ruta:
         try:
             with open(ruta, "a", encoding="utf-8") as fichero:
-                fichero.write(f"\n## Alerta enviada\n\n**{len(items)}** "
-                              f"novedades a {len(destinatarios)} destinatario(s).\n")
+                fichero.write(f"\n## Alerta diaria\n\n"
+                              f"**{enviados}** enviados · {sin_novedades} sin "
+                              f"novedades · {fallidos} fallidos\n")
         except OSError:
             pass
 
-    return 0
+    # Fallar en rojo si algún envío se cayó: un fallo silencioso deja al
+    # cliente sin su aviso y nadie se entera.
+    return 1 if fallidos else 0
 
 
 if __name__ == "__main__":
