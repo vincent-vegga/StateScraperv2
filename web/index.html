@@ -8,1415 +8,407 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
+/* Una sola página que cambia de pantalla según en qué punto esté el
+   perfil: registro, código, descripción, entrenamiento, espera o
+   resultados. Sin saltos ni recargas. */
 :root{
-  --fondo:#f3f5f7;
-  --superficie:#ffffff;
-  --texto:#172a3d;
-  --tenue:#637386;
-  --linea:#dbe2e8;
-  --fuerte:#96a4b1;
-  --si:#19745e;
-  --no:#b65347;
-  --urge:#bd6827;
-  --alto:48px;
-  --acento:#c78b35;
-  --sombra:0 10px 28px rgba(24,42,61,.08);
+  --fondo:#17171A; --superficie:#1F1F23; --texto:#E9E8E5; --tenue:#8B8B92;
+  --linea:rgba(233,232,229,.11); --fuerte:rgba(233,232,229,.28);
+  --si:#8FB89A; --no:#D98A72; --urge:#D98A72;
+  --alto:44px;
 }
-
 *{box-sizing:border-box}
-
-html{
-  color-scheme:light;
-  scroll-behavior:smooth;
-}
-
 body{
-  min-width:320px;
-  margin:0;
-  background:var(--fondo);
-  color:var(--texto);
-  font-family:'IBM Plex Sans',system-ui,sans-serif;
-  font-size:16px;
-  line-height:1.55;
-  -webkit-font-smoothing:antialiased;
-  overflow-x:hidden;
+  margin:0;background:var(--fondo);color:var(--texto);
+  font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
 }
+.envoltorio{max-width:640px;margin:0 auto;padding:0 20px 72px}
+.ancho{max-width:940px}
 
-body::before{
-  content:'';
-  position:fixed;
-  z-index:100;
-  top:0;
-  left:0;
-  right:0;
-  height:4px;
-  background:var(--acento);
-  pointer-events:none;
+h1{font-weight:600;font-size:clamp(1.6rem,4.5vw,2.2rem);line-height:1.25;
+   letter-spacing:-.02em;margin:0 0 14px}
+h2{font-weight:600;font-size:1.4rem;margin:0 0 12px}
+p.guia{color:var(--tenue);margin:0 0 20px;max-width:52ch}
+.centro{text-align:center;padding:56px 0}
+.centro p.guia{margin-left:auto;margin-right:auto}
+
+input[type=email],input[type=text],textarea{
+  width:100%;background:var(--superficie);color:var(--texto);
+  border:1px solid var(--linea);border-radius:3px;padding:12px 14px;
+  font:inherit;font-size:1rem;transition:border-color .15s;
 }
+input:focus,textarea:focus{border-color:var(--fuerte);outline:0}
+textarea{min-height:130px;resize:vertical;line-height:1.55}
+label{display:block;font-size:.9rem;color:var(--tenue);margin:0 0 7px}
+.campo{margin-bottom:18px;text-align:left}
 
-::selection{
-  background:rgba(199,139,53,.24);
-  color:var(--texto);
-}
-
-.envoltorio{
-  width:calc(100% - 40px);
-  max-width:680px;
-  margin:0 auto;
-  padding:64px 0 88px;
-}
-
-.ancho{
-  max-width:1120px;
-}
-
-h1{
-  margin:0 0 14px;
-  color:var(--texto);
-  font-size:clamp(1.85rem,4.5vw,2.7rem);
-  font-weight:650;
-  line-height:1.13;
-  letter-spacing:-.045em;
-}
-
-h2{
-  margin:0 0 12px;
-  color:var(--texto);
-  font-size:1.35rem;
-  font-weight:650;
-  line-height:1.25;
-  letter-spacing:-.025em;
-}
-
-h3{
-  color:var(--texto);
-}
-
-p{
-  margin-top:0;
-}
-
-p.guia{
-  max-width:54ch;
-  margin:0 0 24px;
-  color:var(--tenue);
-  line-height:1.62;
-}
-
-.centro{
-  padding:88px 0 64px;
-  text-align:center;
-}
-
-.centro p.guia{
-  margin-right:auto;
-  margin-left:auto;
-}
-
-input[type=email],
-input[type=text],
-textarea{
-  width:100%;
-  min-height:var(--alto);
-  padding:12px 14px;
-  border:1px solid var(--linea);
-  border-radius:8px;
-  background:var(--superficie);
-  color:var(--texto);
-  font:inherit;
-  font-size:1rem;
-  line-height:1.4;
-  box-shadow:0 1px 1px rgba(24,42,61,.03);
-  transition:border-color .16s,box-shadow .16s,background-color .16s;
-}
-
-input::placeholder,
-textarea::placeholder{
-  color:#91a0ad;
-  opacity:1;
-}
-
-input:focus,
-textarea:focus{
-  outline:0;
-  border-color:var(--acento);
-  box-shadow:0 0 0 3px rgba(199,139,53,.16);
-}
-
-textarea{
-  min-height:130px;
-  resize:vertical;
-  line-height:1.55;
-}
-
-label{
-  display:block;
-  margin:0 0 7px;
-  color:var(--tenue);
-  font-size:.78rem;
-  font-weight:650;
-  letter-spacing:.055em;
-  text-transform:uppercase;
-}
-
-.campo{
-  margin-bottom:20px;
-  text-align:left;
-}
-
-button{
-  font:inherit;
-  cursor:pointer;
-  -webkit-tap-highlight-color:transparent;
-}
-
-button:focus-visible,
-a:focus-visible,
-select:focus-visible,
-input:focus-visible,
-textarea:focus-visible{
-  outline:3px solid rgba(199,139,53,.3);
-  outline-offset:2px;
-}
-
+button{font:inherit;cursor:pointer}
 .principal{
-  display:inline-flex;
-  min-height:var(--alto);
-  align-items:center;
-  justify-content:center;
-  padding:12px 25px;
-  border:1px solid var(--texto);
-  border-radius:8px;
-  background:var(--texto);
-  color:#fff;
-  font-size:1rem;
-  font-weight:650;
-  line-height:1.2;
-  box-shadow:0 4px 10px rgba(23,42,61,.14);
-  transition:background-color .16s,border-color .16s,box-shadow .16s,transform .16s;
+  background:var(--texto);color:var(--fondo);border:0;border-radius:3px;
+  padding:13px 26px;font-weight:600;font-size:1rem;
 }
-
-.principal:hover{
-  border-color:#0d1d2d;
-  background:#0d1d2d;
-  box-shadow:0 6px 15px rgba(23,42,61,.2);
-  transform:translateY(-1px);
-}
-
-.principal:active{
-  box-shadow:none;
-  transform:translateY(0);
-}
-
-.principal:disabled{
-  opacity:.45;
-  cursor:default;
-  box-shadow:none;
-  transform:none;
-}
-
+.principal:disabled{opacity:.45;cursor:default}
 .secundario{
-  display:inline-flex;
-  min-height:var(--alto);
-  align-items:center;
-  justify-content:center;
-  padding:11px 21px;
-  border:1px solid var(--fuerte);
-  border-radius:8px;
-  background:var(--superficie);
-  color:var(--texto);
-  font-weight:600;
-  transition:background-color .16s,border-color .16s,color .16s;
+  background:none;color:var(--texto);border:1px solid var(--fuerte);
+  border-radius:3px;padding:12px 22px;font-weight:500;
 }
-
-.secundario:hover{
-  border-color:var(--texto);
-  background:#f8fafb;
-}
-
-.enlace{
-  padding:6px;
-  border:0;
-  background:none;
-  color:var(--tenue);
-  font-size:.88rem;
-  text-decoration:underline;
-  text-decoration-color:transparent;
-  text-underline-offset:3px;
-  transition:color .16s,text-decoration-color .16s;
-}
-
-.enlace:hover{
-  color:var(--texto);
-  text-decoration-color:currentColor;
-}
+.enlace{background:none;border:0;color:var(--tenue);text-decoration:underline;
+        font-size:.88rem;padding:6px}
+.enlace:hover{color:var(--texto)}
 
 .aviso{
-  margin:18px 0;
-  padding:13px 15px;
-  border:1px solid var(--linea);
-  border-radius:8px;
-  background:var(--superficie);
-  color:var(--tenue);
-  font-size:.92rem;
+  padding:12px 14px;border-radius:3px;margin:16px 0;font-size:.92rem;
+  border:1px solid var(--linea);background:var(--superficie);
 }
+.aviso.mal{border-color:rgba(217,138,114,.5);color:var(--no)}
+.aviso.bien{border-color:rgba(143,184,154,.5);color:var(--si)}
 
-.aviso.mal{
-  border-color:rgba(182,83,71,.42);
-  background:#fff9f7;
-  color:var(--no);
-}
-
-.aviso.bien{
-  border-color:rgba(25,116,94,.38);
-  background:#f5fbf8;
-  color:var(--si);
-}
-
-/* Propuesta de sectores */
-
-.propuesta{
-  margin:24px 0;
-}
-
+/* ---------- Propuesta de CPV ---------- */
+.propuesta{margin:22px 0}
 .familia{
-  display:flex;
-  gap:14px;
-  align-items:flex-start;
-  margin-bottom:9px;
-  padding:17px 18px;
-  border:1px solid var(--linea);
-  border-radius:10px;
-  background:var(--superficie);
-  text-align:left;
-  box-shadow:0 1px 2px rgba(24,42,61,.025);
+  display:flex;gap:14px;align-items:flex-start;padding:16px 0;
+  border-bottom:1px solid var(--linea);text-align:left;
 }
+.familia input{margin-top:5px;width:16px;height:16px;flex:0 0 16px;accent-color:var(--texto)}
+.familia .cuerpo{flex:1}
+.familia .que{font-size:.96rem;margin:0}
+.familia .aviso-corto{color:var(--no);font-size:.85rem;margin:5px 0 0}
+.familia .volumen{color:var(--tenue);font-size:.85rem;white-space:nowrap}
 
-.familia input{
-  width:17px;
-  height:17px;
-  flex:0 0 17px;
-  margin-top:3px;
-  accent-color:var(--si);
-}
+/* ---------- Baraja de entrenamiento ---------- */
+.avance{margin:20px 0 0}
+.barra{height:3px;background:var(--linea);border-radius:2px;overflow:hidden}
+.relleno{height:100%;background:var(--texto);width:0;transition:width .3s ease}
+.cuenta{display:flex;justify-content:space-between;margin-top:9px;
+        color:var(--tenue);font-size:.86rem}
 
-.familia .cuerpo{
-  min-width:0;
-  flex:1;
-}
-
-.familia .que{
-  margin:0;
-  color:var(--texto);
-  font-size:.96rem;
-  line-height:1.4;
-}
-
-.familia .aviso-corto{
-  margin:5px 0 0;
-  color:var(--no);
-  font-size:.85rem;
-}
-
-.familia .volumen{
-  flex:0 0 auto;
-  color:var(--tenue);
-  font-size:.84rem;
-  white-space:nowrap;
-}
-
-/* Baraja de entrenamiento */
-
-.avance{
-  margin:24px 0 0;
-}
-
-.barra{
-  height:5px;
-  overflow:hidden;
-  border-radius:99px;
-  background:var(--linea);
-}
-
-.relleno{
-  width:0;
-  height:100%;
-  border-radius:inherit;
-  background:var(--acento);
-  transition:width .3s ease;
-}
-
-.cuenta{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  margin-top:9px;
-  color:var(--tenue);
-  font-size:.84rem;
-  font-variant-numeric:tabular-nums;
-}
-
-.baraja{
-  position:relative;
-  height:410px;
-  margin-top:24px;
-  touch-action:pan-y;
-}
-
+.baraja{position:relative;height:390px;margin-top:22px;touch-action:pan-y}
 .carta{
-  position:absolute;
-  inset:0;
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-  padding:28px;
-  border:1px solid #d7dfe6;
-  border-radius:14px;
-  background:var(--superficie);
-  box-shadow:var(--sombra);
-  user-select:none;
-  -webkit-user-select:none;
-  will-change:transform;
+  position:absolute;inset:0;background:var(--superficie);
+  border:1px solid var(--linea);border-radius:8px;padding:24px;
+  display:flex;flex-direction:column;overflow:hidden;
+  will-change:transform;user-select:none;-webkit-user-select:none;
 }
-
-.carta.detras-1{
-  z-index:2;
-  transform:scale(.965) translateY(11px);
-  opacity:.58;
-  pointer-events:none;
-}
-
-.carta.detras-2{
-  z-index:1;
-  transform:scale(.93) translateY(22px);
-  opacity:.3;
-  pointer-events:none;
-}
-
-.carta.encima{
-  z-index:3;
-  cursor:grab;
-}
-
-.carta.arrastrando{
-  cursor:grabbing;
-}
-
-.carta.volando{
-  transition:transform .34s ease-out,opacity .34s ease-out;
-}
-
-.franja{
-  position:relative;
-  height:34px;
-  margin:-4px 0 11px;
-}
-
+.carta.detras-1{transform:scale(.96) translateY(10px);opacity:.55;pointer-events:none}
+.carta.detras-2{transform:scale(.92) translateY(20px);opacity:.3;pointer-events:none}
+.carta.encima{cursor:grab}
+.carta.arrastrando{cursor:grabbing}
+.carta.volando{transition:transform .32s ease-out,opacity .32s ease-out}
+/* Franja reservada: si el sello fuera sobre el texto, taparía justo lo
+   que hay que leer para decidir. */
+.franja{height:32px;margin:-4px 0 10px;position:relative}
 .sello{
-  position:absolute;
-  top:0;
-  padding:5px 12px;
-  border:2px solid;
-  border-radius:6px;
-  font-size:.78rem;
-  font-weight:750;
-  letter-spacing:.07em;
-  line-height:1.1;
-  opacity:0;
-  pointer-events:none;
-  transition:opacity .1s;
+  position:absolute;top:0;padding:5px 13px;border-radius:3px;
+  font-weight:700;font-size:.82rem;letter-spacing:.05em;opacity:0;
+  border:2px solid;pointer-events:none;transition:opacity .1s;
 }
+.sello.si{right:0;color:var(--si);border-color:var(--si)}
+.sello.no{left:0;color:var(--no);border-color:var(--no)}
+.carta .titulo{font-weight:500;font-size:1.05rem;line-height:1.45;margin:0 0 12px}
+.carta .datos{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--tenue);
+              font-size:.88rem;margin:0}
+.carta .ganador{margin-top:auto;padding-top:14px;border-top:1px solid var(--linea);
+                color:var(--tenue);font-size:.88rem}
+.carta .ganador strong{color:var(--texto);font-weight:500}
 
-.sello.si{
-  right:0;
-  border-color:var(--si);
-  background:#f2fbf7;
-  color:var(--si);
-}
-
-.sello.no{
-  left:0;
-  border-color:var(--no);
-  background:#fff7f5;
-  color:var(--no);
-}
-
-.carta .titulo{
-  max-width:55ch;
-  margin:0 0 13px;
-  color:var(--texto);
-  font-size:1.12rem;
-  font-weight:600;
-  line-height:1.42;
-}
-
-.carta .datos{
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px 18px;
-  margin:0;
-  color:var(--tenue);
-  font-size:.88rem;
-}
-
-.carta .ganador{
-  margin-top:auto;
-  padding-top:16px;
-  border-top:1px solid var(--linea);
-  color:var(--tenue);
-  font-size:.88rem;
-}
-
-.carta .ganador strong{
-  color:var(--texto);
-  font-weight:650;
-}
-
-.botones{
-  display:flex;
-  gap:12px;
-  margin-top:24px;
-}
-
+.botones{display:flex;gap:12px;margin-top:22px}
 .botones button{
-  flex:1;
-  min-height:50px;
-  padding:13px 14px;
-  border:1px solid var(--fuerte);
-  border-radius:8px;
-  background:var(--superficie);
-  color:var(--texto);
-  font-size:1rem;
-  font-weight:600;
-  transition:background-color .16s,border-color .16s,color .16s;
+  flex:1;padding:14px;border-radius:3px;border:1px solid var(--fuerte);
+  background:none;color:var(--texto);font-size:1rem;font-weight:500;
+  transition:background .15s,border-color .15s;
+}
+.botones .si:hover{background:rgba(143,184,154,.15);border-color:var(--si)}
+.botones .no:hover{background:rgba(217,138,114,.15);border-color:var(--no)}
+.atajos{margin-top:13px;color:var(--tenue);font-size:.82rem;text-align:center}
+kbd{background:var(--superficie);border:1px solid var(--linea);border-radius:3px;
+    padding:1px 6px;font-size:.8rem}
+.gestos{display:flex;gap:14px;justify-content:center;margin:28px 0 6px}
+.gesto{flex:1;max-width:180px;padding:16px 12px;border-radius:4px;
+       border:1px solid var(--linea);background:var(--superficie)}
+.gesto .flecha{font-size:1.6rem;line-height:1;display:block;margin-bottom:6px}
+.gesto.no .flecha{color:var(--no)}
+.gesto.si .flecha{color:var(--si)}
+.gesto strong{display:block;font-weight:600;font-size:.93rem}
+.gesto span{color:var(--tenue);font-size:.83rem}
+
+/* ---------- Resultados ---------- */
+.cabecera-app{display:flex;justify-content:space-between;align-items:center;
+              padding:22px 0;border-bottom:1px solid var(--linea);gap:14px}
+.cabecera-app .quien{color:var(--tenue);font-size:.86rem}
+.marcador{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin:26px 0 0}
+.marcador div{padding:16px 16px 16px 0}
+.marcador span{display:block;font-size:1.6rem;font-weight:600;line-height:1.1;
+               font-variant-numeric:tabular-nums;transition:opacity .18s}
+.marcador small{display:block;margin-top:5px;color:var(--tenue);font-size:.82rem}
+.marcador.cambiando span{opacity:.25}
+
+.filtros{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;
+         padding:18px 0;border-bottom:1px solid var(--linea);
+         position:sticky;top:0;background:var(--fondo);z-index:10}
+select,input[type=search]{
+  font:inherit;font-size:.94rem;color:var(--texto);line-height:1.2;
+  background:var(--superficie);border:1px solid var(--linea);border-radius:3px;
+  padding:0 12px;height:var(--alto);flex:1 1 240px;min-width:0;
+  transition:border-color .15s;
+}
+input[type=search]:focus,select:focus{border-color:var(--fuerte);outline:0}
+
+/* ---------- Panel de cuenta ---------- */
+.panel{padding:36px 0}
+.bloque{
+  border:1px solid var(--linea);border-radius:10px;padding:24px;
+  background:var(--superficie);box-shadow:0 1px 2px rgba(24,42,61,.025);
+}
+.bloque + .bloque{margin-top:16px}
+.bloque h3{margin:0 0 18px;font-size:1.02rem;font-weight:650}
+.bloque dl{display:grid;grid-template-columns:180px 1fr;gap:12px 22px;margin:0}
+.bloque dt{color:var(--tenue);font-size:.9rem}
+.bloque dd{margin:0;font-size:.95rem}
+.filtro-lista{margin:0;padding:0;list-style:none}
+.filtro-lista li{
+  padding:10px 0 10px 20px;position:relative;font-size:.95rem;line-height:1.5;
+}
+.filtro-lista li + li{border-top:1px solid var(--linea)}
+.filtro-lista li::before{
+  content:'';position:absolute;left:5px;top:19px;width:5px;height:5px;
+  border-radius:50%;background:var(--acento);
+}
+.peligro{border-color:rgba(182,83,71,.3)}
+.peligro h3{color:var(--no)}
+
+/* ---------- Menú de cuenta ----------
+   Un desplegable y no todo en la misma página: el panel crece con
+   sectores, órganos y lo que venga de inteligencia, y un muro de datos
+   se lee peor que una sección cada vez. */
+.menu-envoltorio{position:relative}
+.menu{
+  position:absolute;top:calc(100% + 8px);right:0;z-index:40;min-width:210px;
+  background:var(--superficie);border:1px solid var(--fuerte);border-radius:9px;
+  padding:5px;box-shadow:0 16px 35px rgba(24,42,61,.16);
+}
+.menu[hidden]{display:none !important}
+.menu button{
+  display:block;width:100%;min-height:38px;padding:0 12px;border:0;
+  border-radius:6px;background:none;color:var(--texto);font:inherit;
+  font-size:.92rem;text-align:left;cursor:pointer;transition:background-color .12s;
+}
+.menu button:hover{background:rgba(23,42,61,.06)}
+.menu button[aria-current="true"]{font-weight:650}
+.menu .separa{height:1px;margin:5px 8px;background:var(--linea)}
+.menu .peligroso{color:var(--no)}
+
+.seccion[hidden]{display:none !important}
+
+/* ---------- Barras comparativas ----------
+   Barras y no quesitos: en un reparto real un sector se lleva el 70 % y
+   seis quedan por debajo del 2 %. En un quesito esas porciones son
+   rayas que no se pueden ni etiquetar, y en el móvil menos.
+
+   Dos barras por fila —contratos e importe— porque no siempre
+   coinciden: se puede tener el 70 % de los contratos en un sector que
+   sea el 30 % de la facturación, y eso cambia dónde conviene mirar. */
+.barras{display:flex;flex-direction:column;gap:20px}
+.barra-fila .nombre{
+  display:flex;justify-content:space-between;gap:14px;align-items:baseline;
+  margin-bottom:8px;font-size:.93rem;font-weight:600;
+}
+.barra-fila .nombre span{
+  color:var(--tenue);font-weight:400;font-size:.85rem;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.pista{display:grid;grid-template-columns:76px 1fr;gap:11px;align-items:center}
+.pista + .pista{margin-top:6px}
+.pista .etiq{color:var(--tenue);font-size:.77rem}
+.pista .riel{height:9px;background:var(--linea);border-radius:99px;overflow:hidden}
+.pista .lleno{height:100%;border-radius:inherit;
+  transition:width .5s cubic-bezier(.4,0,.2,1)}
+.pista.contratos .lleno{background:var(--acento)}
+.pista.importe .lleno{background:var(--si)}
+
+.sin-datos{padding:34px 0;color:var(--tenue);text-align:center;font-size:.92rem}
+
+@media(max-width:720px){
+  .bloque{padding:19px}
+  .bloque dl{grid-template-columns:1fr;gap:3px}
+  .bloque dt{margin-top:9px}
+  .pista{grid-template-columns:64px 1fr;gap:9px}
 }
 
-.botones .si:hover{
-  border-color:var(--si);
-  background:#f1faf6;
-  color:var(--si);
-}
-
-.botones .no:hover{
-  border-color:var(--no);
-  background:#fff6f3;
-  color:var(--no);
-}
-
-.atajos{
-  margin-top:13px;
-  color:var(--tenue);
-  font-size:.82rem;
-  text-align:center;
-}
-
-kbd{
-  padding:2px 6px;
-  border:1px solid var(--linea);
-  border-bottom-color:var(--fuerte);
-  border-radius:5px;
-  background:var(--superficie);
-  color:var(--tenue);
-  font-size:.78rem;
-}
-
-.gestos{
-  display:flex;
-  gap:14px;
-  justify-content:center;
-  margin:30px 0 6px;
-}
-
-.gesto{
-  flex:1;
-  max-width:190px;
-  padding:16px 13px;
-  border:1px solid var(--linea);
-  border-radius:10px;
-  background:var(--superficie);
-  box-shadow:0 1px 2px rgba(24,42,61,.025);
-}
-
-.gesto .flecha{
-  display:block;
-  margin-bottom:6px;
-  font-size:1.55rem;
-  line-height:1;
-}
-
-.gesto.no .flecha{
-  color:var(--no);
-}
-
-.gesto.si .flecha{
-  color:var(--si);
-}
-
-.gesto strong{
-  display:block;
-  color:var(--texto);
-  font-size:.93rem;
-  font-weight:650;
-}
-
-.gesto span{
-  color:var(--tenue);
-  font-size:.83rem;
-}
-
-/* Aplicación y resumen */
-
-.cabecera-app{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:20px;
-  padding:24px 0 21px;
-  border-bottom:1px solid var(--linea);
-}
-
-.cabecera-app h1{
-  margin:0;
-  font-size:1.25rem;
-  letter-spacing:-.03em;
-}
-
-.cabecera-app .quien{
-  max-width:42ch;
-  overflow:hidden;
-  color:var(--tenue);
-  font-size:.86rem;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-.marcador{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  margin:28px 0 0;
-  overflow:hidden;
-  border:1px solid var(--linea);
-  border-radius:12px;
-  background:var(--superficie);
-  box-shadow:0 2px 7px rgba(24,42,61,.035);
-  transition:opacity .18s;
-}
-
-.marcador > div{
-  min-width:0;
-  padding:17px 18px 18px;
-}
-
-.marcador > div + div{
-  border-left:1px solid var(--linea);
-}
-
-.marcador span{
-  display:block;
-  color:var(--texto);
-  font-size:1.75rem;
-  font-weight:650;
-  line-height:1.05;
-  font-variant-numeric:tabular-nums;
-  letter-spacing:-.035em;
-  transition:opacity .18s;
-}
-
-.marcador small{
-  display:block;
-  margin-top:7px;
-  color:var(--tenue);
-  font-size:.79rem;
-  line-height:1.25;
-}
-
-.marcador.cambiando span{
-  opacity:.25;
-}
-
-/* Filtros y pestañas */
-
-.filtros{
-  position:sticky;
-  z-index:10;
-  top:0;
-  display:flex;
-  align-items:flex-start;
-  flex-wrap:wrap;
-  gap:10px;
-  padding:18px 0 16px;
-  border-bottom:1px solid var(--linea);
-  background:rgba(243,245,247,.94);
-  box-shadow:0 8px 18px rgba(24,42,61,.035);
-  backdrop-filter:blur(12px);
-}
-
-select,
-input[type=search]{
-  min-width:0;
-  height:var(--alto);
-  flex:1 1 220px;
-  padding:0 39px 0 13px;
-  border:1px solid var(--linea);
-  border-radius:8px;
-  background-color:var(--superficie);
-  color:var(--texto);
-  font:inherit;
-  font-size:.92rem;
-  line-height:1.2;
-  box-shadow:0 1px 1px rgba(24,42,61,.03);
-  transition:border-color .16s,box-shadow .16s;
-}
-
-select{
-  appearance:none;
-  background-image:
-    linear-gradient(45deg,transparent 50%,var(--tenue) 50%),
-    linear-gradient(135deg,var(--tenue) 50%,transparent 50%);
-  background-position:
-    calc(100% - 18px) 20px,
-    calc(100% - 13px) 20px;
-  background-size:5px 5px,5px 5px;
-  background-repeat:no-repeat;
-}
-
-input[type=search]{
-  padding-right:13px;
-}
-
-input[type=search]:focus,
-select:focus{
-  outline:0;
-  border-color:var(--acento);
-  box-shadow:0 0 0 3px rgba(199,139,53,.16);
-}
-
-.pestanas{
-  display:flex;
-  gap:27px;
-  margin-top:29px;
-  overflow-x:auto;
-  border-bottom:1px solid var(--linea);
-  scrollbar-width:none;
-}
-
-.pestanas::-webkit-scrollbar{
-  display:none;
-}
-
+/* ---------- Pestañas ---------- */
+.pestanas{display:flex;gap:26px;margin-top:30px;border-bottom:1px solid var(--linea)}
 .pestana{
-  position:relative;
-  flex:0 0 auto;
-  padding:0 0 13px;
-  border:0;
-  background:none;
-  color:var(--tenue);
-  font:inherit;
-  font-size:.96rem;
-  font-weight:600;
-  cursor:pointer;
-  transition:color .16s;
+  background:none;border:0;color:var(--tenue);font:inherit;font-size:.98rem;
+  font-weight:500;padding:0 0 13px;cursor:pointer;position:relative;
+  transition:color .15s;
 }
-
-.pestana:hover{
-  color:var(--texto);
-}
-
-.pestana[aria-selected="true"]{
-  color:var(--texto);
-}
-
+.pestana:hover{color:var(--texto)}
+.pestana[aria-selected="true"]{color:var(--texto)}
 .pestana[aria-selected="true"]::after{
-  content:'';
-  position:absolute;
-  right:0;
-  bottom:-1px;
-  left:0;
-  height:3px;
-  border-radius:3px 3px 0 0;
-  background:var(--acento);
+  content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;
+  background:var(--texto);
 }
+.pestana .cuantas{margin-left:7px;font-size:.82rem;color:var(--tenue);font-weight:400}
 
-.pestana .cuantas{
-  margin-left:6px;
-  color:var(--tenue);
-  font-size:.8rem;
-  font-weight:500;
-}
-
-/* Acciones de cada contrato */
-
+/* ---------- Corrección ---------- */
+/* Aparecen al pasar por encima de la fila: presentes cuando hacen falta,
+   invisibles mientras se lee. */
 .acciones{
-  display:flex;
-  gap:8px;
-  margin-top:11px;
-  opacity:0;
-  transition:opacity .15s;
+  display:flex;gap:8px;margin-top:10px;opacity:0;transition:opacity .15s;
 }
-
 .fila-envoltorio:hover .acciones,
-.fila-envoltorio:focus-within .acciones{
-  opacity:1;
-}
-
-@media(hover:none),(pointer:coarse){
-  .acciones{
-    opacity:1;
-  }
-}
-
+.fila-envoltorio:focus-within .acciones{opacity:1}
+@media(hover:none){ .acciones{opacity:1} }
 .accion{
-  min-height:29px;
-  padding:4px 10px;
-  border:1px solid var(--linea);
-  border-radius:6px;
-  background:var(--superficie);
-  color:var(--tenue);
-  font:inherit;
-  font-size:.78rem;
-  cursor:pointer;
-  transition:color .15s,border-color .15s,background-color .15s;
+  background:none;border:1px solid var(--linea);border-radius:3px;
+  color:var(--tenue);font:inherit;font-size:.8rem;padding:4px 11px;
+  cursor:pointer;transition:color .15s,border-color .15s;
 }
-
-.accion.si:hover{
-  border-color:var(--si);
-  background:#f2faf7;
-  color:var(--si);
-}
-
-.accion.no:hover{
-  border-color:var(--no);
-  background:#fff7f5;
-  color:var(--no);
-}
-
+.accion.si:hover{color:var(--si);border-color:var(--si)}
+.accion.no:hover{color:var(--no);border-color:var(--no)}
+/* Lo ya confirmado se marca en vez de volver a preguntarlo. */
 .confirmado{
-  display:inline-block;
-  margin-top:10px;
-  color:var(--si);
-  font-size:.79rem;
-  font-weight:600;
+  display:inline-block;margin-top:10px;color:var(--si);font-size:.8rem;
 }
+/* Aviso solo para lo que lleva MUCHO parado: más de noventa días.
+   Un expediente publicado que nadie toca no reaparece en el feed en
+   semanas, así que un umbral corto marcaría casi todos los contratos
+   normales. Un aviso que sale siempre no avisa: enseña a ignorarlo.
 
+   Y el mecanismo que de verdad protege es otro: cuando algo se
+   adjudica, el expediente se mueve, reaparece en el feed y su estado
+   deja de ser PUB. Esto solo cubre el caso raro de que el órgano no
+   publique ese cambio. */
 .sin-verificar{
-  display:inline-block;
-  margin-top:8px;
-  color:var(--no);
-  font-size:.78rem;
+  display:inline-block;margin-top:8px;color:var(--no);font-size:.78rem;
 }
 
 .explica{
-  margin:21px 0 0;
-  padding:15px 17px;
-  border:1px solid var(--linea);
-  border-radius:9px;
-  background:var(--superficie);
-  color:var(--tenue);
-  font-size:.9rem;
-  line-height:1.6;
+  margin:20px 0 0;padding:14px 16px;border:1px solid var(--linea);
+  border-radius:4px;background:var(--superficie);color:var(--tenue);
+  font-size:.9rem;line-height:1.6;
 }
+.explica strong{color:var(--texto);font-weight:600}
 
-.explica strong{
-  color:var(--texto);
-  font-weight:650;
-}
-
-/* Selector geográfico */
-
-.selector{
-  position:relative;
-  min-width:0;
-  flex:1 1 260px;
-  align-self:stretch;
-}
-
-.campo-geo{
-  display:flex;
-  min-height:var(--alto);
-  flex-wrap:wrap;
-  gap:6px;
-  align-items:center;
-  padding:6px 10px;
-  border:1px solid var(--linea);
-  border-radius:8px;
-  background:var(--superficie);
-  cursor:text;
-  box-shadow:0 1px 1px rgba(24,42,61,.03);
-  transition:border-color .16s,box-shadow .16s;
-}
-
-.campo-geo:focus-within{
-  border-color:var(--acento);
-  box-shadow:0 0 0 3px rgba(199,139,53,.16);
-}
-
-.campo-geo input{
-  min-width:130px;
-  min-height:28px;
-  flex:1 1 130px;
-  padding:4px 0;
-  border:0;
-  border-radius:0;
-  background:none;
-  box-shadow:none;
-  color:var(--texto);
-  font:inherit;
-  font-size:.92rem;
-  outline:0;
-}
-
-.campo-geo input:focus{
-  border:0;
-  box-shadow:none;
-}
-
-.campo-geo input::placeholder{
-  color:var(--tenue);
-}
-
-.etiqueta{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:4px 5px 4px 11px;
-  border:1px solid #b9c5ce;
-  border-radius:99px;
-  background:#f7f9fa;
-  color:var(--texto);
-  font-size:.81rem;
-  font-weight:600;
-  line-height:1.2;
-}
-
-.etiqueta button{
-  padding:0 3px;
-  border:0;
-  background:none;
-  color:var(--tenue);
-  cursor:pointer;
-  font-size:1rem;
-  line-height:1;
-  transition:color .15s;
-}
-
-.etiqueta button:hover{
-  color:var(--texto);
-}
-
-.desplegable{
-  position:absolute;
-  z-index:30;
-  top:calc(100% + 6px);
-  right:0;
-  left:0;
-  max-height:290px;
-  overflow-y:auto;
-  padding:5px;
-  border:1px solid var(--fuerte);
-  border-radius:9px;
-  background:var(--superficie);
-  box-shadow:0 16px 35px rgba(24,42,61,.16);
-}
-
-.desplegable[hidden]{
-  display:none !important;
-}
-
-.opcion{
-  display:flex;
-  width:100%;
-  min-height:38px;
-  align-items:center;
-  gap:11px;
-  padding:0 9px;
-  border:0;
-  border-radius:6px;
-  background:none;
-  color:var(--texto);
-  font:inherit;
-  font-size:.91rem;
-  text-align:left;
-  cursor:pointer;
-}
-
-.opcion:hover,
-.opcion.destacada{
-  background:#f1f5f7;
-}
-
-.opcion.raiz{
-  font-weight:650;
-}
-
-.opcion.hija{
-  padding-left:25px;
-  font-weight:400;
-}
-
-.casilla{
-  position:relative;
-  width:16px;
-  height:16px;
-  flex:0 0 16px;
-  border:1px solid var(--fuerte);
-  border-radius:4px;
-  background:var(--superficie);
-}
-
-.opcion[aria-selected="true"] .casilla{
-  border-color:var(--si);
-  background:var(--si);
-}
-
-.opcion[aria-selected="true"] .casilla::after{
-  content:'';
-  position:absolute;
-  top:1px;
-  left:4px;
-  width:4px;
-  height:8px;
-  border:solid #fff;
-  border-width:0 2px 2px 0;
-  transform:rotate(43deg);
-}
-
-.opcion .cuantas{
-  margin-left:auto;
-  color:var(--tenue);
-  font-size:.82rem;
-}
-
-.opcion .abarca{
-  color:var(--tenue);
-  font-size:.82rem;
-  font-weight:400;
-}
-
-.sinresultado{
-  padding:14px 10px;
-  color:var(--tenue);
-  font-size:.9rem;
-}
-
-#lista{
-  transition:opacity .16s ease;
-}
-
-#lista.cambiando{
-  opacity:0;
-}
-
-.fila{
-  display:grid;
-  width:100%;
-  min-width:0;
-  grid-template-columns:78px minmax(0,1fr) auto;
-  gap:23px;
-  align-items:start;
-  padding:21px 12px;
-  border:0;
-  border-bottom:1px solid var(--linea);
-  background:none;
-  color:inherit;
-  font:inherit;
-  text-align:left;
-  cursor:pointer;
-  animation:entrar .3s ease both;
-  transition:background-color .15s;
-}
-
-.fila:hover{
-  background:rgba(255,255,255,.55);
-}
-
-.fila:focus-visible{
-  position:relative;
-  z-index:1;
-  outline:3px solid rgba(199,139,53,.3);
-  outline-offset:-3px;
-}
-
-.fila:hover .t{
-  text-decoration:underline;
-  text-decoration-thickness:1px;
-  text-underline-offset:3px;
-}
-
-@keyframes entrar{
-  from{
-    opacity:0;
-    transform:translateY(6px);
-  }
-  to{
-    opacity:1;
-    transform:none;
-  }
-}
-
-.fecha{
-  min-height:66px;
-  padding:9px 9px 8px;
-  border:1px solid var(--linea);
-  border-top:3px solid var(--fuerte);
-  border-radius:8px;
-  background:var(--superficie);
-}
-
-.fecha .dia{
-  display:block;
-  color:var(--texto);
-  font-size:1.38rem;
-  font-weight:650;
-  line-height:1.08;
-  font-variant-numeric:tabular-nums;
-  letter-spacing:-.03em;
-}
-
-.fecha .cuenta-dias{
-  display:block;
-  margin-top:4px;
-  color:var(--tenue);
-  font-size:.74rem;
-  line-height:1.2;
-}
-
-.fecha.apura{
-  border-color:rgba(189,104,39,.35);
-  border-top-color:var(--urge);
-  background:#fff9f1;
-}
-
-.fecha.apura .dia,
-.fecha.apura .cuenta-dias{
-  color:var(--urge);
-}
-
-.fecha.sinplazo{
-  border-top-color:var(--linea);
-  background:transparent;
-}
-
-.fecha.sinplazo .dia{
-  color:var(--tenue);
-  font-size:.86rem;
-  font-weight:500;
-  letter-spacing:0;
-}
-
-.t{
-  max-width:64ch;
-  margin:0 0 5px;
-  color:var(--texto);
-  font-size:1rem;
-  font-weight:600;
-  line-height:1.42;
-}
-
-.meta{
-  margin:0;
-  color:var(--tenue);
-  font-size:.87rem;
-  line-height:1.45;
-}
-
-.derecha{
-  min-width:116px;
-  text-align:right;
-  white-space:nowrap;
-}
-
-.importe{
-  color:var(--texto);
-  font-weight:650;
-  font-variant-numeric:tabular-nums;
-}
-
-.marca{
-  display:block;
-  margin-top:5px;
-  color:var(--tenue);
-  font-size:.77rem;
-  line-height:1.25;
-}
-
-.marca.si{
-  color:var(--si);
-  font-weight:600;
-}
-
-.detalle{
-  display:none;
-  padding:3px 12px 28px 102px;
-  border-bottom:1px solid var(--linea);
-  background:rgba(255,255,255,.28);
-}
-
-.detalle.abierto{
-  display:block;
-}
-
-.detalle dl{
-  display:grid;
-  grid-template-columns:155px minmax(0,1fr);
-  gap:10px 22px;
-  margin:0 0 21px;
-}
-
-.detalle dt{
-  color:var(--tenue);
-  font-size:.86rem;
-}
-
-.detalle dd{
-  min-width:0;
-  margin:0;
-  color:var(--texto);
-  font-size:.93rem;
-}
-
-.cita{
-  max-width:66ch;
-  margin:0 0 21px;
-  padding:12px 16px;
-  border-left:3px solid var(--acento);
-  background:#fffaf2;
-  color:var(--tenue);
-  font-size:.92rem;
-}
-
-.ver{
-  display:inline-flex;
-  min-height:40px;
-  align-items:center;
-  padding:8px 17px;
-  border:1px solid var(--fuerte);
-  border-radius:7px;
-  color:var(--texto);
-  font-size:.9rem;
-  font-weight:600;
-  text-decoration:none;
-  transition:border-color .15s,background-color .15s;
-}
-
-.ver:hover{
-  border-color:var(--texto);
-  background:var(--superficie);
-}
-
-.vacio{
-  padding:72px 0;
-  color:var(--tenue);
-  text-align:center;
-}
-
-/* Modal */
-
+/* Diálogo del motivo. Se pregunta pero no se exige: una frase suya vale
+   más que diez rechazos sin explicar, y obligar a escribirla haría que
+   nadie corrigiera. */
 .velo{
-  position:fixed;
-  z-index:50;
-  inset:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:20px;
-  background:rgba(18,35,50,.58);
-  backdrop-filter:blur(3px);
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;
+  display:flex;align-items:center;justify-content:center;padding:20px;
 }
-
 .dialogo{
-  width:100%;
-  max-width:480px;
-  padding:28px;
-  border:1px solid rgba(255,255,255,.35);
-  border-radius:14px;
-  background:var(--superficie);
-  box-shadow:0 24px 60px rgba(13,29,45,.25);
+  background:var(--superficie);border:1px solid var(--fuerte);
+  border-radius:5px;padding:26px;max-width:460px;width:100%;
 }
-
-.dialogo h3{
-  margin:0 0 10px;
-  font-size:1.14rem;
-  font-weight:650;
-  line-height:1.3;
-}
-
-.dialogo p{
-  margin:0 0 17px;
-  color:var(--tenue);
-  font-size:.9rem;
-}
-
+.dialogo h3{margin:0 0 10px;font-size:1.1rem;font-weight:600}
+.dialogo p{color:var(--tenue);font-size:.9rem;margin:0 0 16px}
 .dialogo textarea{
-  min-height:92px;
-  background:var(--fondo);
-  font-size:.92rem;
+  width:100%;min-height:88px;background:var(--fondo);color:var(--texto);
+  border:1px solid var(--linea);border-radius:3px;padding:11px;
+  font:inherit;font-size:.92rem;resize:vertical;
 }
+.dialogo .botonera{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
 
-.dialogo .botonera{
-  display:flex;
-  gap:10px;
-  justify-content:flex-end;
-  margin-top:17px;
+/* Selector geográfico: campo con etiquetas y desplegable buscable.
+   Se usa esto y no una lista de botones porque hay 52 provincias, y
+   una fila de 52 botones es ruido visual que la vista se salta. */
+.selector{position:relative;flex:1 1 260px;min-width:0;align-self:stretch}
+.campo-geo{
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+  background:var(--superficie);border:1px solid var(--linea);
+  border-radius:3px;padding:6px 10px;min-height:var(--alto);cursor:text;
+  transition:border-color .15s;
 }
+.campo-geo:focus-within{border-color:var(--fuerte)}
+.campo-geo input{
+  flex:1 1 130px;min-width:130px;background:none;border:0;color:var(--texto);
+  font:inherit;font-size:.94rem;padding:4px 0;outline:0;
+}
+.campo-geo input::placeholder{color:var(--tenue)}
+.etiqueta{
+  display:inline-flex;align-items:center;gap:7px;background:none;
+  color:var(--texto);border:1px solid var(--fuerte);border-radius:100px;
+  padding:3px 5px 3px 12px;font-size:.83rem;font-weight:500;
+}
+.etiqueta button{
+  background:none;border:0;color:var(--tenue);cursor:pointer;
+  font-size:1.05rem;line-height:1;padding:0 4px;transition:color .15s;
+}
+.etiqueta button:hover{color:var(--texto)}
+.desplegable{
+  position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:30;
+  background:var(--superficie);border:1px solid var(--fuerte);
+  border-radius:3px;max-height:290px;overflow-y:auto;padding:5px;
+  box-shadow:0 12px 32px rgba(0,0,0,.45);
+}
+.desplegable[hidden]{display:none}
+.opcion{
+  display:flex;align-items:center;gap:11px;width:100%;min-height:36px;
+  background:none;border:0;color:var(--texto);font:inherit;font-size:.92rem;
+  padding:0 9px;cursor:pointer;text-align:left;border-radius:2px;
+}
+.opcion:hover,.opcion.destacada{background:rgba(233,232,229,.07)}
+.opcion.raiz{font-weight:600}
+.opcion.hija{padding-left:24px;font-weight:400}
+.casilla{
+  width:15px;height:15px;flex:0 0 15px;border:1px solid var(--fuerte);
+  border-radius:2px;position:relative;
+}
+.opcion[aria-selected="true"] .casilla{background:var(--texto);border-color:var(--texto)}
+.opcion[aria-selected="true"] .casilla::after{
+  content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;
+  border:solid var(--fondo);border-width:0 2px 2px 0;transform:rotate(43deg);
+}
+.opcion .cuantas{margin-left:auto;color:var(--tenue);font-size:.84rem}
+.opcion .abarca{color:var(--tenue);font-weight:400;font-size:.84rem}
+.sinresultado{padding:14px 10px;color:var(--tenue);font-size:.9rem}
 
-/* Responsive */
+#lista{transition:opacity .16s ease}
+#lista.cambiando{opacity:0}
+.fila{
+  display:grid;grid-template-columns:78px 1fr auto;gap:24px;align-items:start;
+  padding:22px 0;border-bottom:1px solid var(--linea);width:100%;
+  text-align:left;background:none;border-left:0;border-right:0;border-top:0;
+  color:inherit;font:inherit;animation:entrar .3s ease both;
+}
+@keyframes entrar{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.fila:hover .t{text-decoration:underline;text-underline-offset:3px}
+.fecha{border-top:1px solid var(--fuerte);padding-top:8px}
+.fecha .dia{display:block;font-size:1.35rem;font-weight:600;line-height:1.15;
+            font-variant-numeric:tabular-nums}
+.fecha .cuenta-dias{display:block;margin-top:2px;font-size:.78rem;color:var(--tenue)}
+.fecha.apura{border-top-color:var(--urge)}
+.fecha.apura .cuenta-dias{color:var(--urge)}
+.fecha.sinplazo .dia{font-size:.88rem;font-weight:400;color:var(--tenue)}
+.t{font-weight:500;margin:0 0 5px;font-size:1rem;line-height:1.45;max-width:60ch}
+.meta{color:var(--tenue);font-size:.88rem;margin:0}
+.derecha{text-align:right;white-space:nowrap}
+.importe{font-weight:600;font-variant-numeric:tabular-nums}
+.marca{display:block;margin-top:5px;font-size:.78rem;color:var(--tenue)}
+.marca.si{color:var(--si)}
+.detalle{display:none;padding:2px 0 28px 102px;border-bottom:1px solid var(--linea)}
+.detalle.abierto{display:block}
+.detalle dl{display:grid;grid-template-columns:150px 1fr;gap:10px 22px;margin:0 0 20px}
+.detalle dt{color:var(--tenue);font-size:.88rem}
+.detalle dd{margin:0;font-size:.94rem}
+.cita{border-left:1px solid var(--fuerte);padding-left:16px;margin:0 0 20px;max-width:64ch}
+.ver{display:inline-block;border:1px solid var(--fuerte);color:var(--texto);
+     padding:9px 18px;border-radius:3px;text-decoration:none;font-size:.92rem}
+.vacio{padding:64px 0;text-align:center;color:var(--tenue)}
 
 @media(max-width:720px){
-  .envoltorio{
-    width:calc(100% - 32px);
-    padding-top:48px;
-  }
-
-  .centro{
-    padding-top:62px;
-  }
-
-  .cabecera-app{
-    align-items:flex-start;
-    padding-top:19px;
-  }
-
-  .cabecera-app .quien{
-    max-width:45%;
-    text-align:right;
-  }
-
-  .marcador{
-    grid-template-columns:repeat(2,1fr);
-  }
-
-  .marcador > div:nth-child(3){
-    border-top:1px solid var(--linea);
-    border-left:0;
-  }
-
-  .marcador > div:nth-child(4){
-    border-top:1px solid var(--linea);
-  }
-
-  .filtros{
-    gap:9px;
-  }
-
-  .filtros > select,
-  .filtros > input[type=search],
-  .filtros > .selector{
-    flex-basis:100%;
-  }
-
-  .fila{
-    grid-template-columns:65px minmax(0,1fr);
-    gap:15px;
-    padding:18px 5px;
-  }
-
-  .derecha{
-    display:flex;
-    grid-column:2;
-    min-width:0;
-    align-items:baseline;
-    justify-content:space-between;
-    gap:12px;
-    text-align:left;
-  }
-
-  .marca{
-    margin-top:0;
-    text-align:right;
-  }
-
-  .detalle{
-    padding:3px 5px 25px;
-  }
-
-  .detalle dl{
-    grid-template-columns:1fr;
-    gap:4px;
-  }
-
-  .detalle dd{
-    margin-bottom:7px;
-  }
-
-  .baraja{
-    height:430px;
-  }
-
-  .carta{
-    padding:24px 21px;
-  }
-
-  .gestos{
-    gap:8px;
-  }
-
-  .gesto{
-    padding-right:9px;
-    padding-left:9px;
-  }
+  .fila{grid-template-columns:68px 1fr;gap:16px}
+  .derecha{grid-column:2;text-align:left}
+  .detalle{padding-left:0}
+  .detalle dl{grid-template-columns:1fr}
+  .marcador{grid-template-columns:repeat(2,1fr)}
 }
-
-@media(max-width:480px){
-  h1{
-    font-size:2rem;
-  }
-
-  .familia{
-    padding:15px;
-  }
-
-  .familia .volumen{
-    display:none;
-  }
-
-  .botones{
-    gap:8px;
-  }
-
-  .botones button{
-    padding-right:8px;
-    padding-left:8px;
-  }
-
-  .gestos{
-    display:none;
-  }
-
-  .dialogo{
-    padding:23px 19px;
-  }
-
-  .dialogo .botonera{
-    flex-direction:column-reverse;
-  }
-
-  .dialogo .botonera button{
-    width:100%;
-  }
-}
-
 @media(prefers-reduced-motion:reduce){
-  *,
-  *::before,
-  *::after{
-    scroll-behavior:auto !important;
-    animation-duration:.01ms !important;
-    animation-iteration-count:1 !important;
-    transition-duration:.01ms !important;
-  }
-
-  .carta,
-  .relleno,
-  #lista,
-  .marcador span{
-    transition:none;
-  }
-
-  .fila{
-    animation:none;
-  }
+  .carta,.relleno,#lista,.marcador span{transition:none}
+  .fila{animation:none}
 }
-  </style>
+</style>
 </head>
 <body>
 <div class="envoltorio" id="raiz"></div>
@@ -1466,7 +458,8 @@ window.addEventListener('popstate', async (ev) => {
   const perfil = perfiles?.[0];
   if (!perfil) return arrancar(true);
 
-  if (estado.vista === 'panel') return pantallaPanel(perfil, session, true);
+  if (estado.vista === 'panel')
+    return pantallaPanel(perfil, session, true, estado.seccion ?? 'cuenta');
   return pantallaOportunidades(perfil, session, true, estado.pestana);
 });
 
@@ -2111,8 +1104,8 @@ async function pantallaCribando(perfil, session, lectura) {
 // 6 · Panel de la cuenta
 // ============================================================
 
-async function pantallaPanel(perfil, session, volviendo = false) {
-  if (!volviendo) irA('panel');
+async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuenta') {
+  if (!volviendo) irA('panel', { seccion });
   raiz.className = 'envoltorio';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando...</p></div>`;
 
@@ -2127,84 +1120,166 @@ async function pantallaPanel(perfil, session, volviendo = false) {
     {timeZone:ZONA, day:'numeric', month:'long', year:'numeric'}) : '—';
   const buscamos = p.que_buscamos ?? [];
   const sectores = p.sectores ?? [];
+  const organos = p.organos ?? [];
 
-  raiz.innerHTML = `
-    <div class="cabecera-app">
-      <div><strong>Mi cuenta</strong>
-        <div class="quien">${esc(p.email ?? '')}</div></div>
-      <button class="enlace" id="volver">Volver a mis contratos</button>
-    </div>
+  // Barras comparativas. Cada una se mide contra el máximo de su propia
+  // magnitud: contratos con contratos, euros con euros. Compartir escala
+  // aplastaría una de las dos.
+  function barras(filas, campoNombre) {
+    if (!filas.length) return `<p class="sin-datos">Todavía no hay datos.</p>`;
+    const topN = Math.max(...filas.map(f => f.contratos || 0), 1);
+    const topE = Math.max(...filas.map(f => Number(f.importe) || 0), 1);
+    return `<div class="barras">${filas.map(f => {
+      const n = f.contratos || 0, e = Number(f.importe) || 0;
+      return `<div class="barra-fila">
+        <div class="nombre">${esc(f[campoNombre] ?? '—')}
+          <span>${n} ${n === 1 ? 'contrato' : 'contratos'}${
+            e ? ` · ${euros(e)}` : ''}</span></div>
+        <div class="pista contratos"><span class="etiq">Contratos</span>
+          <div class="riel"><div class="lleno" style="width:${n / topN * 100}%"></div></div></div>
+        ${e ? `<div class="pista importe"><span class="etiq">Importe</span>
+          <div class="riel"><div class="lleno" style="width:${e / topE * 100}%"></div></div></div>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+  }
 
-    <div class="panel">
+  const secciones = {
+    cuenta: `
       <div class="bloque">
         <h3>Tu empresa</h3>
         <dl>
           <dt>Nombre</dt><dd>${esc(p.empresa ?? '—')}</dd>
           <dt>CIF</dt><dd>${esc(p.cif ?? '—')}</dd>
-          <dt>Contratos ganados</dt><dd>${p.contratos_ganados ?? 0}${
-            p.importe_ganado ? ` · ${euros(Number(p.importe_ganado))}` : ''}</dd>
           <dt>Actividad</dt><dd>${esc(p.actividad ?? '—')}</dd>
+          <dt>Correo</dt><dd>${esc(p.email ?? '—')}</dd>
+          <dt>Cliente desde</dt><dd>${fecha(p.alta)}</dd>
         </dl>
       </div>
+      <div class="bloque">
+        <h3>Tu historial</h3>
+        <dl>
+          <dt>Contratos ganados</dt><dd>${p.contratos_ganados ?? 0}</dd>
+          <dt>Importe adjudicado</dt><dd>${
+            p.importe_ganado ? euros(Number(p.importe_ganado)) : '—'}</dd>
+          <dt>Contratos abiertos que te mostramos</dt><dd>${p.oportunidades ?? 0}</dd>
+        </dl>
+      </div>`,
 
+    filtro: `
       ${buscamos.length ? `
       <div class="bloque">
         <h3>Qué buscamos por ti</h3>
         <ul class="filtro-lista">
           ${buscamos.map(f => `<li>${esc(f)}</li>`).join('')}
         </ul>
-        <p class="guia" style="margin:14px 0 0;font-size:.88rem">
-        ¿Algo no encaja? Marca en tu lista los contratos que no te interesan
-        y lo ajustamos automáticamente.</p>
       </div>` : ''}
-
-      ${sectores.length ? `
       <div class="bloque">
-        <h3>Tus sectores</h3>
-        <div class="sectores">
-          ${sectores.map(s => `<div>${esc(s.sector ?? '—')}
-            <span>${s.contratos} contratos</span></div>`).join('')}
-        </div>
-      </div>` : ''}
-
-      <div class="bloque">
-        <h3>Tu filtro</h3>
+        <h3>Cómo va aprendiendo</h3>
         <dl>
-          <dt>Contratos que te mostramos</dt><dd>${p.oportunidades ?? 0}</dd>
           <dt>Correcciones que has hecho</dt><dd>${p.correcciones?.total ?? 0}${
             p.correcciones?.sin_aplicar
               ? ` · ${p.correcciones.sin_aplicar} sin aplicar todavía` : ''}</dd>
           <dt>Última actualización</dt><dd>${fecha(p.criterio_fecha)}</dd>
-          <dt>Cliente desde</dt><dd>${fecha(p.alta)}</dd>
         </dl>
+        <p class="guia" style="margin:18px 0 0;font-size:.88rem">
+        Marca en tu lista los contratos que no te interesan y ajustamos el
+        filtro automáticamente.</p>
       </div>
-
       <div class="bloque peligro">
         <h3>Empezar de cero</h3>
-        <p class="guia" style="margin:0 0 16px">Si tu negocio ha cambiado de
+        <p class="guia" style="margin:0 0 18px">Si tu negocio ha cambiado de
         rumbo —una línea nueva, o has dejado de hacer algo— es mejor rehacer
         el filtro que ir corrigiéndolo. Tarda un minuto y no se pierde nada:
         tu historial de contratos sigue ahí.</p>
         <button class="secundario" id="reiniciar">Rehacer mi filtro</button>
         <div id="resultado"></div>
-      </div>
-    </div>`;
+      </div>`,
 
-  // Retroceder en el historial en lugar de recomponer: así el gesto del
-  // botón y el del navegador hacen lo mismo.
+    sectores: `
+      <div class="bloque">
+        <h3>Dónde has ganado</h3>
+        <p class="guia" style="margin:0 0 22px;font-size:.9rem">Tus contratos
+        por sector, en número y en dinero. No siempre coinciden: el sector
+        donde más ganas no tiene por qué ser el que más factura.</p>
+        ${barras(sectores, 'sector')}
+      </div>`,
+
+    organos: `
+      <div class="bloque">
+        <h3>A quién le vendes</h3>
+        <p class="guia" style="margin:0 0 22px;font-size:.9rem">Los organismos
+        que más contratos te han adjudicado.</p>
+        ${barras(organos, 'organo')}
+      </div>`,
+  };
+
+  const titulos = {
+    cuenta: 'Mi cuenta', filtro: 'Mi filtro',
+    sectores: 'Mis sectores', organos: 'Mis organismos',
+  };
+
+  raiz.innerHTML = `
+    <div class="cabecera-app">
+      <div><strong>${esc(titulos[seccion] ?? 'Mi cuenta')}</strong>
+        <div class="quien">${esc(p.empresa || p.email || '')}</div></div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="menu-envoltorio">
+          <button class="enlace" id="abrir-menu" aria-haspopup="true"
+                  aria-expanded="false">Secciones</button>
+          <div class="menu" id="menu" role="menu" hidden>
+            ${Object.keys(titulos).map(k => `<button role="menuitem" data-ir="${k}"
+              aria-current="${k === seccion}">${titulos[k]}</button>`).join('')}
+            <div class="separa"></div>
+            <button role="menuitem" data-ir="contratos">Mis contratos</button>
+            <button role="menuitem" class="peligroso" id="salir-menu">Salir</button>
+          </div>
+        </div>
+        <button class="enlace" id="volver">Volver</button>
+      </div>
+    </div>
+    <div class="panel">${secciones[seccion] ?? secciones.cuenta}</div>`;
+
   alPulsar('volver', () => history.back());
 
-  document.getElementById('reiniciar').onclick = async () => {
+  // ---------- Menú ----------
+  const menu = document.getElementById('menu');
+  const abrir = document.getElementById('abrir-menu');
+  const cerrarMenu = () => {
+    menu.hidden = true;
+    abrir.setAttribute('aria-expanded', 'false');
+  };
+  alPulsar('abrir-menu', () => {
+    menu.hidden = !menu.hidden;
+    abrir.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  document.addEventListener('click', ev => {
+    if (!ev.target.closest('.menu-envoltorio')) cerrarMenu();
+  });
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape') cerrarMenu();
+  });
+
+  menu.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => {
+    cerrarMenu();
+    const donde = b.dataset.ir;
+    if (donde === 'contratos') return history.back();
+    // Cada sección deja su marca: atrás devuelve a la anterior.
+    pantallaPanel(perfil, session, false, donde);
+  });
+  alPulsar('salir-menu', () => sb.auth.signOut());
+
+  // ---------- Rehacer el filtro ----------
+  alPulsar('reiniciar', () => {
     const zona = document.getElementById('resultado');
     zona.innerHTML = `
       <div class="aviso">¿Seguro? Se borrará tu filtro actual y volverás a
       empezar desde tu CIF.
-      <div style="margin-top:12px;display:flex;gap:10px">
+      <div style="margin-top:14px;display:flex;gap:10px">
         <button class="secundario" id="no">Cancelar</button>
         <button class="principal" id="si">Sí, rehacerlo</button>
       </div></div>`;
-    document.getElementById('no').onclick = () => zona.innerHTML = '';
-    document.getElementById('si').onclick = async () => {
+    alPulsar('no', () => zona.innerHTML = '');
+    alPulsar('si', async () => {
       zona.innerHTML = `<div class="aviso">Preparando...</div>`;
       try {
         await llamar('reiniciar');
@@ -2212,8 +1287,8 @@ async function pantallaPanel(perfil, session, volviendo = false) {
       } catch {
         zona.innerHTML = `<div class="aviso mal">No se ha podido. Inténtalo de nuevo.</div>`;
       }
-    };
-  };
+    });
+  });
 }
 
 // ============================================================
