@@ -2330,9 +2330,21 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   // Los segmentos por debajo del 2 % se agrupan: por separado serían
   // hilos de dos píxeles imposibles de señalar, y su cifra sigue
   // apareciendo en la leyenda.
-  const PALETA = ['#c78b35','#19745e','#3d6a8f','#8a5a7a','#6b7f3f',
-                  '#b0653a','#4a7c8c','#8c7a4a'];
-  const COLOR_OTROS = '#a8b4bf';
+  // Paleta fría, sin rojos ni naranjas.
+  //
+  // En la interfaz el color ya significa algo: --no y --urge son rojizos,
+  // y --acento marca lo que reclama atención. Pintar con esos tonos una
+  // categoría neutra hace que el gráfico parezca una alarma: media barra
+  // naranja se lee como "algo va mal" aunque solo diga "equipamiento
+  // médico".
+  //
+  // La regla habitual en sistemas de diseño: los colores con significado
+  // se reservan, y las categorías usan una escala cualitativa aparte.
+  // Aquí, azules y verdeazulados que descienden en tono, lo bastante
+  // distintos entre sí para no confundirse.
+  const PALETA = ['#2d5f8a','#3f8f8c','#5c7fb8','#6aa88b','#7a6ea8',
+                  '#4a8fa8','#8a9a5b','#5e7a94'];
+  const COLOR_OTROS = '#aab6c2';
 
   function apilada(filas, campoNombre, campoValor, unidad) {
     const total = filas.reduce((s, f) => s + (Number(f[campoValor]) || 0), 0);
