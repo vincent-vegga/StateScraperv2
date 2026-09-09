@@ -43,7 +43,7 @@ body{
 }
 
 ::selection{
-  background:rgba(199,139,53,.24);
+  background:rgba(45,95,138,.18);
   color:var(--texto);
 }
 
@@ -131,8 +131,8 @@ textarea::placeholder{
 input:focus,
 textarea:focus{
   outline:0;
-  border-color:var(--acento);
-  box-shadow:0 0 0 3px rgba(199,139,53,.16);
+  border-color:var(--fuerte);
+  box-shadow:0 0 0 3px rgba(23,42,61,.09);
 }
 
 textarea{
@@ -167,7 +167,7 @@ a:focus-visible,
 select:focus-visible,
 input:focus-visible,
 textarea:focus-visible{
-  outline:3px solid rgba(199,139,53,.3);
+  outline:2px solid var(--fuerte);
   outline-offset:2px;
 }
 
@@ -652,8 +652,8 @@ input[type=search]{
 input[type=search]:focus,
 select:focus{
   outline:0;
-  border-color:var(--acento);
-  box-shadow:0 0 0 3px rgba(199,139,53,.16);
+  border-color:var(--fuerte);
+  box-shadow:0 0 0 3px rgba(23,42,61,.09);
 }
 
 /* ---------- Panel de cuenta ---------- */
@@ -696,7 +696,7 @@ select:focus{
   transition:border-color .15s,background-color .15s;
 }
 .boton-cuenta:hover{border-color:var(--fuerte);background:#f8fafb}
-.boton-cuenta[aria-expanded="true"]{border-color:var(--acento)}
+.boton-cuenta[aria-expanded="true"]{border-color:var(--fuerte);background:#f8fafb}
 .boton-cuenta .flechita{
   color:var(--tenue);font-size:.7rem;line-height:1;transition:transform .18s;
 }
@@ -946,8 +946,8 @@ select:focus{
 }
 
 .campo-geo:focus-within{
-  border-color:var(--acento);
-  box-shadow:0 0 0 3px rgba(199,139,53,.16);
+  border-color:var(--fuerte);
+  box-shadow:0 0 0 3px rgba(23,42,61,.09);
 }
 
 .campo-geo input{
@@ -1132,7 +1132,7 @@ select:focus{
 .fila:focus-visible{
   position:relative;
   z-index:1;
-  outline:3px solid rgba(199,139,53,.3);
+  outline:2px solid var(--fuerte);
   outline-offset:-3px;
 }
 
@@ -2650,7 +2650,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         </dl>
         ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
       </section></div>`).join('')
-      : `<p class="vacio">Ningún contrato encaja con estos filtros.</p>`;
+      : pestana === 'hoy'
+        ? `<p class="vacio">Estás al día. Aquí aparecerá lo que entre
+           a partir de ahora.</p>`
+        : `<p class="vacio">Ningún contrato encaja con estos filtros.</p>`;
 
     raiz.querySelectorAll('.fila').forEach(f => f.onclick = ev => {
       // Los botones de corrección viven dentro de la fila para que
@@ -2917,14 +2920,24 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // Los contadores ignoran los filtros: dicen cuánto hay en total en cada
   // una. Si mostraran el resultado filtrado, cambiar de pestaña sería un
   // salto a ciegas.
-  document.getElementById('c-hoy').textContent = DATOS.filter(o => o.es_novedad).length;
+  // Sin número cuando no hay ninguna: un cero al lado de "Novedades"
+  // ocupa sitio para decir que no hay nada que ver.
+  const nuevas = DATOS.filter(o => o.es_novedad).length;
+  document.getElementById('c-hoy').textContent = nuevas || '';
   document.getElementById('c-todo').textContent = DATOS.length;
 
   function cambiarPestana(cual, volviendo = false) {
     // Al salir de novedades se marca la visita: lo que ha visto deja de
     // serlo. Si se marcara al entrar, recargar vaciaría la lista que
     // está mirando.
-    if (pestana === 'hoy' && cual !== 'hoy') sb.rpc('marcar_visita');
+    if (pestana === 'hoy' && cual !== 'hoy') {
+      sb.rpc('marcar_visita');
+      // Y se refleja aquí mismo. Antes solo se guardaba en la base, así
+      // que el contador seguía diciendo 23 hasta recargar la página:
+      // marcaba como pendiente algo que el cliente acababa de ver.
+      DATOS.forEach(o => o.es_novedad = false);
+      document.getElementById('c-hoy').textContent = '';
+    }
     pestana = cual;
     // Cambiar de pestaña también es navegar: atrás debe devolver a la
     // anterior, no sacar de la web.
