@@ -66,6 +66,10 @@ body::before{
   padding:64px 0 88px;
 }
 
+/* En las pantallas con cabecera de servicio el margen superior sobra:
+   la barra ya separa lo suficiente. */
+.envoltorio.ancho{padding-top:18px}
+
 .ancho{
   max-width:1120px;
 }
@@ -571,7 +575,9 @@ kbd{
   align-items:center;
   justify-content:space-between;
   gap:20px;
-  padding:24px 0 21px;
+  /* Ajustada: es una barra de servicio, no una portada. El espacio que
+     ocupaba empujaba hacia abajo lo que el cliente viene a ver. */
+  padding:14px 0 13px;
   border-bottom:1px solid var(--linea);
 }
 
@@ -692,7 +698,7 @@ select:focus{
 }
 
 /* ---------- Panel de cuenta ---------- */
-.panel{padding:36px 0}
+.panel{max-width:720px;padding:30px 0}
 .bloque{
   border:1px solid var(--linea);border-radius:10px;padding:24px;
   background:var(--superficie);box-shadow:0 1px 2px rgba(24,42,61,.025);
@@ -719,6 +725,23 @@ select:focus{
    sectores, órganos y lo que venga de inteligencia, y un muro de datos
    se lee peor que una sección cada vez. */
 .menu-envoltorio{position:relative}
+
+/* Botón de cuenta con forma de botón. Como enlace subrayado pasaba
+   desapercibido, y es la puerta a todo lo demás. */
+.boton-cuenta{
+  display:inline-flex;align-items:center;gap:8px;min-height:36px;
+  padding:0 13px;border:1px solid var(--linea);border-radius:8px;
+  background:var(--superficie);color:var(--texto);font:inherit;
+  font-size:.88rem;font-weight:600;cursor:pointer;
+  box-shadow:0 1px 1px rgba(24,42,61,.03);
+  transition:border-color .15s,background-color .15s;
+}
+.boton-cuenta:hover{border-color:var(--fuerte);background:#f8fafb}
+.boton-cuenta[aria-expanded="true"]{border-color:var(--acento)}
+.boton-cuenta .flechita{
+  color:var(--tenue);font-size:.7rem;line-height:1;transition:transform .18s;
+}
+.boton-cuenta[aria-expanded="true"] .flechita{transform:rotate(180deg)}
 .menu{
   position:absolute;top:calc(100% + 8px);right:0;z-index:40;min-width:210px;
   background:var(--superficie);border:1px solid var(--fuerte);border-radius:9px;
@@ -2194,9 +2217,63 @@ async function pantallaCribando(perfil, session, lectura) {
 // 6 · Panel de la cuenta
 // ============================================================
 
+// Menú de cuenta. Vive en la cabecera de las dos pantallas —contratos y
+// panel— para que llegar a cualquier sección sea un solo clic. Antes
+// había que entrar al panel y buscar otro botón dentro, y algo que se
+// usa a diario no puede estar a dos pasos.
+const SECCIONES = {
+  cuenta: 'Mi cuenta',
+  filtro: 'Mi filtro',
+  sectores: 'Mis sectores',
+  organos: 'Mis organismos',
+};
+
+function menuCuenta(actual = null) {
+  return `
+    <div class="menu-envoltorio">
+      <button class="boton-cuenta" id="abrir-menu" aria-haspopup="true"
+              aria-expanded="false">Mi cuenta<span class="flechita">▾</span></button>
+      <div class="menu" id="menu" role="menu" hidden>
+        ${Object.keys(SECCIONES).map(k => `<button role="menuitem" data-ir="${k}"
+          aria-current="${k === actual}">${SECCIONES[k]}</button>`).join('')}
+        <div class="separa"></div>
+        <button role="menuitem" class="peligroso" id="salir-menu">Salir</button>
+      </div>
+    </div>`;
+}
+
+function activarMenu(perfil, session) {
+  const menu = document.getElementById('menu');
+  const abrir = document.getElementById('abrir-menu');
+  if (!menu || !abrir) return;
+
+  const cerrar = () => {
+    menu.hidden = true;
+    abrir.setAttribute('aria-expanded', 'false');
+  };
+  abrir.onclick = ev => {
+    ev.stopPropagation();
+    menu.hidden = !menu.hidden;
+    abrir.setAttribute('aria-expanded', String(!menu.hidden));
+  };
+  document.addEventListener('click', ev => {
+    if (!ev.target.closest('.menu-envoltorio')) cerrar();
+  });
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape') cerrar();
+  });
+
+  menu.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => {
+    cerrar();
+    pantallaPanel(perfil, session, false, b.dataset.ir);
+  });
+  alPulsar('salir-menu', () => sb.auth.signOut());
+}
+
+
 async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuenta') {
   if (!volviendo) irA('panel', { seccion });
-  raiz.className = 'envoltorio';
+  raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando...</p></div>`;
 
   const { data: p, error } = await sb.rpc('mi_panel');
@@ -2303,60 +2380,19 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
       </div>`,
   };
 
-  const titulos = {
-    cuenta: 'Mi cuenta', filtro: 'Mi filtro',
-    sectores: 'Mis sectores', organos: 'Mis organismos',
-  };
-
   raiz.innerHTML = `
     <div class="cabecera-app">
-      <div><strong>${esc(titulos[seccion] ?? 'Mi cuenta')}</strong>
+      <div><strong>${esc(SECCIONES[seccion] ?? 'Mi cuenta')}</strong>
         <div class="quien">${esc(p.empresa || p.email || '')}</div></div>
       <div style="display:flex;gap:12px;align-items:center">
-        <div class="menu-envoltorio">
-          <button class="enlace" id="abrir-menu" aria-haspopup="true"
-                  aria-expanded="false">Secciones</button>
-          <div class="menu" id="menu" role="menu" hidden>
-            ${Object.keys(titulos).map(k => `<button role="menuitem" data-ir="${k}"
-              aria-current="${k === seccion}">${titulos[k]}</button>`).join('')}
-            <div class="separa"></div>
-            <button role="menuitem" data-ir="contratos">Mis contratos</button>
-            <button role="menuitem" class="peligroso" id="salir-menu">Salir</button>
-          </div>
-        </div>
+        ${menuCuenta(seccion)}
         <button class="enlace" id="volver">Volver</button>
       </div>
     </div>
     <div class="panel">${secciones[seccion] ?? secciones.cuenta}</div>`;
 
   alPulsar('volver', () => history.back());
-
-  // ---------- Menú ----------
-  const menu = document.getElementById('menu');
-  const abrir = document.getElementById('abrir-menu');
-  const cerrarMenu = () => {
-    menu.hidden = true;
-    abrir.setAttribute('aria-expanded', 'false');
-  };
-  alPulsar('abrir-menu', () => {
-    menu.hidden = !menu.hidden;
-    abrir.setAttribute('aria-expanded', String(!menu.hidden));
-  });
-  document.addEventListener('click', ev => {
-    if (!ev.target.closest('.menu-envoltorio')) cerrarMenu();
-  });
-  document.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape') cerrarMenu();
-  });
-
-  menu.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => {
-    cerrarMenu();
-    const donde = b.dataset.ir;
-    if (donde === 'contratos') return history.back();
-    // Cada sección deja su marca: atrás devuelve a la anterior.
-    pantallaPanel(perfil, session, false, donde);
-  });
-  alPulsar('salir-menu', () => sb.auth.signOut());
+  activarMenu(perfil, session);
 
   // ---------- Rehacer el filtro ----------
   alPulsar('reiniciar', () => {
@@ -2406,10 +2442,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     <div class="cabecera-app">
       <div><strong>Tus contratos</strong>
         <div class="quien">${esc(perfil.email ?? '')}</div></div>
-      <div style="display:flex;gap:14px">
-        <button class="enlace" id="panel">Mi cuenta</button>
-        <button class="enlace" id="salir">Salir</button>
-      </div>
+      ${menuCuenta()}
     </div>
     <h1 id="titular" style="margin-top:30px"></h1>
     <div class="marcador" id="marcador">
@@ -2447,8 +2480,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     la lista con lo que de verdad te encaja.</p>
     <main id="lista"></main>`;
 
-  alPulsar('salir', () => sb.auth.signOut());
-  alPulsar('panel', () => pantallaPanel(perfil, session));
+  activarMenu(perfil, session);
 
   const bloqueFecha = o => {
     if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo publicado</span></div>`;
