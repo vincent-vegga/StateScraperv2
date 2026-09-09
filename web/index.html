@@ -221,6 +221,42 @@ label{
   text-align:left;
 }
 
+/* ---------- Pantallas de entrada ----------
+   Registro, código, CIF y nombre comparten estructura: un titular, una
+   explicación, un campo y un botón. Repetirlas con estilos en línea las
+   dejaba ligeramente distintas entre sí —el botón pegado al campo en
+   una, separado en otra— y el recorrido se notaba desigual. */
+.paso{max-width:420px;margin:0 auto;padding:76px 0 64px;text-align:center}
+.paso.ancha{max-width:560px}
+.paso h1{font-size:clamp(1.6rem,4vw,2.15rem)}
+.paso p.guia{margin-left:auto;margin-right:auto}
+
+.paso .campo{
+  margin:30px 0 0;text-align:left;
+}
+.paso .campo input{text-align:center}
+/* Salvo en las pantallas de texto largo, donde centrar una descripción
+   la haría ilegible. */
+.paso[style*="left"] .campo input,
+.paso[style*="left"] .campo textarea{text-align:left}
+.paso[style*="left"] p.guia{margin-left:0;margin-right:0}
+.paso[style*="left"] .enlace{margin-left:0}
+/* Códigos y CIF se leen mejor espaciados y en mayúsculas. */
+.paso .campo input.clave{
+  text-transform:uppercase;letter-spacing:.09em;font-weight:600;
+}
+
+.paso .principal{margin-top:18px;min-width:180px}
+/* La salida secundaria va debajo y separada: es una alternativa, no el
+   camino previsto. */
+.paso .enlace{display:block;margin:18px auto 0}
+.paso .aviso{text-align:left}
+
+@media(max-width:520px){
+  .paso{padding-top:52px}
+  .paso .principal{width:100%}
+}
+
 button{
   font:inherit;
   cursor:pointer;
@@ -2016,17 +2052,17 @@ sb.auth.onAuthStateChange((evento, sesion) => {
 function pantallaEntrar() {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
-    <div class="centro">
+    <div class="paso ancha">
       <h1>Los contratos públicos que te interesan, sin buscarlos</h1>
-      <p class="guia">Te enviamos cada mañana solo las licitaciones que encajan
+      <p class="guia">Cada mañana te enviamos solo las licitaciones que encajan
       con tu negocio. Nada de listas de mil contratos entre los que rebuscar.</p>
-      <div class="campo" style="max-width:380px;margin:28px auto 0">
-        <label for="correo">Tu correo</label>
-        <input type="email" id="correo" placeholder="nombre@empresa.es" autocomplete="email">
+      <div class="campo">
+        <input type="email" id="correo" placeholder="nombre@empresa.es"
+               autocomplete="email" aria-label="Tu correo">
       </div>
       <button class="principal" id="enviar">Entrar</button>
-      <p class="guia" style="margin-top:16px;font-size:.88rem">
-      Te mandamos un enlace para entrar. Sin contraseñas que recordar.</p>
+      <p class="guia" style="margin-top:20px;font-size:.87rem">
+      Te mandamos un enlace al correo. Sin contraseñas que recordar.</p>
       <div id="resultado"></div>
     </div>`;
 
@@ -2062,17 +2098,17 @@ function pantallaEntrar() {
 function pantallaCodigo(session) {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
-    <div class="centro">
-      <h1>Introduce tu código de acceso</h1>
-      <p class="guia">Es el código que te hemos facilitado al contratar el
-      servicio. Solo hace falta esta vez.</p>
-      <div class="campo" style="max-width:340px;margin:26px auto 0">
-        <input type="text" id="codigo" placeholder="CÓDIGO" autocomplete="off"
-               style="text-align:center;letter-spacing:.08em">
+    <div class="paso">
+      <h1>Tu código de acceso</h1>
+      <p class="guia">El que te hemos facilitado al contratar el servicio.
+      Solo hace falta esta vez.</p>
+      <div class="campo">
+        <input type="text" id="codigo" class="clave" placeholder="CÓDIGO"
+               autocomplete="off" aria-label="Código de acceso">
       </div>
       <button class="principal" id="canjear">Continuar</button>
       <div id="resultado"></div>
-      <button class="enlace" id="salir" style="margin-top:26px">Salir</button>
+      <button class="enlace" id="salir">Salir</button>
     </div>`;
 
   const boton = document.getElementById('canjear');
@@ -2108,14 +2144,14 @@ function pantallaCodigo(session) {
 function pantallaEmpresa(perfil, session) {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
-    <div style="padding:52px 0">
+    <div class="paso">
       <h1>¿Cuál es el CIF de tu empresa?</h1>
       <p class="guia">Con él encontramos los contratos públicos que ya has
       ganado. De ahí sabemos a qué te presentas, sin que tengas que
       explicárnoslo.</p>
-      <div class="campo" style="max-width:280px">
-        <input type="text" id="cif" placeholder="B12345678" autocomplete="off"
-               style="text-transform:uppercase;letter-spacing:.04em">
+      <div class="campo">
+        <input type="text" id="cif" class="clave" placeholder="B12345678"
+               autocomplete="off" aria-label="CIF de tu empresa">
       </div>
       <button class="principal" id="buscar">Buscar</button>
       <button class="enlace" id="sin-cif">No tengo contratos públicos todavía</button>
@@ -2159,11 +2195,14 @@ function pantallaEmpresa(perfil, session) {
 
 function pantallaPorNombre(perfil, session) {
   raiz.innerHTML = `
-    <div style="padding:52px 0">
+    <div class="paso">
       <h1>¿Cómo se llama tu empresa?</h1>
       <p class="guia">Tal como aparecería en un contrato público. No hace
       falta que incluyas la forma societaria.</p>
-      <div class="campo"><input type="text" id="nombre" placeholder="Confecciones Ibéricas"></div>
+      <div class="campo">
+        <input type="text" id="nombre" placeholder="Confecciones Ibéricas"
+               aria-label="Nombre de tu empresa">
+      </div>
       <button class="principal" id="buscar">Buscar</button>
       <button class="enlace" id="sin-historial">No encuentro mi empresa</button>
       <div id="resultado"></div>
@@ -2212,10 +2251,12 @@ function pantallaConfirmar(perfil, empresa, ultimos, session) {
 
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
-    <div style="padding:52px 0">
-      <h1>${esc(empresa.nombre)}</h1>
-      <p class="guia">Hemos encontrado <strong>${empresa.contratos}</strong>
-      contratos públicos adjudicados a tu empresa${
+    <div class="paso ancha" style="text-align:left">
+      <p class="guia" style="margin:0 0 6px;font-size:.85rem;
+         letter-spacing:.06em;text-transform:uppercase">Hemos encontrado</p>
+      <h1 style="margin-bottom:10px">${esc(empresa.nombre)}</h1>
+      <p class="guia"><strong>${empresa.contratos}</strong> contratos públicos
+      adjudicados a tu empresa${
         empresa.importe_total ? `, por un total de ${euro(empresa.importe_total)}` : ''}.</p>
 
       ${sectores.length ? `
@@ -2267,7 +2308,7 @@ function pantallaConfirmar(perfil, empresa, ultimos, session) {
 function pantallaDescribir(perfil, session) {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
-    <div style="padding:52px 0">
+    <div class="paso ancha" style="text-align:left">
       <h1>¿A qué se dedica tu empresa?</h1>
       <p class="guia">Escríbelo con tus palabras, como se lo contarías a
       alguien. No hace falta que uses términos técnicos ni que conozcas los
@@ -2304,7 +2345,7 @@ function pantallaDescribir(perfil, session) {
 function pantallaFamilias(perfil, propuesta, session) {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
-    <div style="padding:52px 0">
+    <div class="paso ancha" style="text-align:left">
       <h1>Esto es lo que vamos a buscar por ti</h1>
       <p class="guia">${esc(propuesta.resumen)} Desmarca lo que no encaje.
       Es preferible dejar de más: el siguiente paso afina el resultado.</p>
@@ -2373,7 +2414,7 @@ async function pantallaEntrenar(perfil, prefijos, session, items) {
   const intro = () => {
     raiz.className = 'envoltorio';
     raiz.innerHTML = `
-      <div class="centro">
+      <div class="paso ancha">
         <h1>¿Cuáles de estos contratos te interesan?</h1>
         <p class="guia">Son licitaciones reales de tu sector. Con tus respuestas
         construimos tu filtro: a partir de ahí solo verás lo que encaje.</p>
@@ -2491,8 +2532,8 @@ async function pantallaEntrenar(perfil, prefijos, session, items) {
   });
 
   async function finalizar() {
-    raiz.innerHTML = `<div class="centro">
-      <h2>Construyendo tu filtro</h2>
+    raiz.innerHTML = `<div class="paso">
+      <h1>Construyendo tu filtro</h1>
       <p class="guia">Un momento...</p></div>`;
     try {
       await llamar('guardar', { respuestas });
@@ -2514,15 +2555,16 @@ async function pantallaEntrenar(perfil, prefijos, session, items) {
 async function pantallaCribando(perfil, session, lectura) {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
-    <div class="centro">
-      <h2>Estamos revisando los contratos abiertos</h2>
+    <div class="paso ancha">
+      <h1>Estamos revisando los contratos abiertos</h1>
       ${lectura?.actividad ? `<p class="guia">Hemos entendido que te dedicas a
-      <strong>${esc(lectura.actividad.toLowerCase())}</strong>. Estamos buscando
+      <strong>${esc(lectura.actividad.toLowerCase())}</strong>. Ahora buscamos
       contratos abiertos que encajen.</p>` : `
       <p class="guia">Aplicamos tu filtro a todas las licitaciones que siguen
       abiertas ahora mismo.</p>`}
-      <p class="guia">Puede tardar unos minutos; no cierres esta página.</p>
-      <div class="avance" style="max-width:340px;margin:30px auto 0">
+      <p class="guia" style="font-size:.9rem">Puede tardar unos minutos.
+      No cierres esta página.</p>
+      <div class="avance" style="margin-top:30px">
         <div class="barra"><div class="relleno" id="relleno"></div></div>
         <div class="cuenta"><span id="progreso">Empezando...</span><span></span></div>
       </div>
