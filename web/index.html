@@ -124,7 +124,9 @@ textarea{
 
 input::placeholder,
 textarea::placeholder{
-  color:#91a0ad;
+  /* El mismo tono en los tres filtros. Antes cada campo usaba un gris
+     distinto y la fila parecía desalineada sin motivo. */
+  color:var(--tenue);
   opacity:1;
 }
 
@@ -1110,7 +1112,7 @@ select:focus{
   display:grid;
   width:100%;
   min-width:0;
-  grid-template-columns:78px minmax(0,1fr) auto;
+  grid-template-columns:86px minmax(0,1fr) auto;
   gap:23px;
   align-items:start;
   padding:21px 12px;
@@ -1154,8 +1156,13 @@ select:focus{
 }
 
 .fecha{
-  min-height:66px;
-  padding:9px 9px 8px;
+  /* Altura fija, no mínima: así todas las celdas miden lo mismo y la
+     lista mantiene el ritmo aunque el texto cambie. */
+  height:64px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding:0 8px;
   border:1px solid var(--linea);
   border-top:3px solid var(--fuerte);
   border-radius:8px;
@@ -1165,31 +1172,39 @@ select:focus{
 .fecha .dia{
   display:block;
   color:var(--texto);
-  font-size:1.38rem;
+  font-size:1.22rem;
   font-weight:650;
-  line-height:1.08;
+  line-height:1.15;
   font-variant-numeric:tabular-nums;
   letter-spacing:-.03em;
+  /* En una línea siempre. Con "9 sep" cabía y con "10 sep" se partía en
+     dos, así que unas celdas quedaban más altas que otras y la lista
+     perdía el ritmo. */
+  white-space:nowrap;
 }
 
 .fecha .cuenta-dias{
   display:block;
-  margin-top:4px;
+  margin-top:5px;
   color:var(--tenue);
-  font-size:.74rem;
+  font-size:.76rem;
   line-height:1.2;
+  white-space:nowrap;
 }
 
-/* Marcado, no pintado. Un bloque de color por fila convierte la lista
-   en un semáforo; una línea superior basta para que el ojo lo encuentre
-   sin que la pantalla grite. */
+/* Sin color de alarma.
+   Siempre hay algo venciendo, así que un aviso naranja permanente
+   reclama una acción que no se puede tomar: el ojo aprende a
+   ignorarlo y deja de servir. El texto ya dice "vence hoy"; basta con
+   una línea superior más marcada y la cuenta en negrita para que la
+   fila se encuentre al recorrer la lista. */
 .fecha.apura{
-  border-top-color:var(--urge);
+  border-top-color:var(--texto);
 }
 
 .fecha.apura .cuenta-dias{
-  color:var(--urge);
-  font-weight:600;
+  color:var(--texto);
+  font-weight:650;
 }
 
 .fecha.sinplazo{
@@ -1393,7 +1408,7 @@ select:focus{
   }
 
   .fila{
-    grid-template-columns:65px minmax(0,1fr);
+    grid-template-columns:78px minmax(0,1fr);
     gap:15px;
     padding:18px 5px;
   }
@@ -2567,10 +2582,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   activarMenu(perfil, session);
 
   const bloqueFecha = o => {
-    if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo publicado</span></div>`;
+    if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo</span></div>`;
     const p = partes(o.fecha_limite);
-    const c = o.dias < 0 ? 'vencido' : o.dias === 0 ? 'vence hoy'
-            : o.dias === 1 ? 'queda 1 día' : `quedan ${o.dias} días`;
+    // Corto para que quepa en una línea: con "quedan 5 días" la celda
+    // crecía a dos y rompía el ritmo de la lista. La fecha está justo
+    // encima, así que "hoy" o "en 5 días" se entiende igual.
+    const c = o.dias < 0 ? 'vencido'
+            : o.dias === 0 ? 'hoy'
+            : o.dias === 1 ? 'mañana'
+            : `en ${o.dias} días`;
     // Tres días, no siete. Con siete se marcaba media lista, y un aviso
     // que sale en la mayoría de las filas deja de avisar: se convierte
     // en ruido y enseña a ignorarlo.
