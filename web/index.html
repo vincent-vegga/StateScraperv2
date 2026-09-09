@@ -812,8 +812,19 @@ select:focus{
 }
 
 /* ---------- Mercado ---------- */
-.buscador-cif{display:flex;gap:9px;margin:26px 0 8px;flex-wrap:wrap}
+.buscador-cif{display:flex;gap:9px;margin:26px 0 8px;flex-wrap:wrap;
+  align-items:center}
 .buscador-cif input{flex:1 1 220px;text-transform:uppercase;letter-spacing:.03em}
+.buscador-cif .principal,
+.buscador-cif .secundario{flex:0 0 auto;white-space:nowrap}
+/* Separado del par buscar/CIF: es otra acción, no una variante de la
+   búsqueda. */
+.buscador-cif #ver-mia{margin-left:6px}
+
+@media(max-width:520px){
+  .buscador-cif > *{flex:1 1 100%}
+  .buscador-cif #ver-mia{margin-left:0}
+}
 
 .tarjeta-empresa{
   border:1px solid var(--linea);border-radius:10px;padding:24px;
@@ -2741,8 +2752,8 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       <input type="text" id="cif-buscar" placeholder="CIF de una empresa"
              autocomplete="off">
       <button class="principal" id="buscar-cif">Buscar</button>
-      ${perfil.cif ? `<button class="enlace" id="ver-mia">o ver
-        ${esc(perfil.empresa || 'mi empresa')}</button>` : ''}
+      ${perfil.cif ? `<button class="secundario" id="ver-mia">Ver mi
+        empresa</button>` : ''}
     </div>
 
     <div id="zona" style="margin-top:22px"></div>`;
