@@ -760,31 +760,64 @@ select:focus{
 
 .seccion[hidden]{display:none !important}
 
-/* ---------- Barras comparativas ----------
-   Barras y no quesitos: en un reparto real un sector se lleva el 70 % y
-   seis quedan por debajo del 2 %. En un quesito esas porciones son
-   rayas que no se pueden ni etiquetar, y en el móvil menos.
+/* ---------- Barras apiladas ----------
+   Apiladas y no en paralelo: una barra que se llena al 100 % porque es
+   la mayor no dice nada —no sabes si ese sector es la mitad del negocio
+   o el 90 %—. Aquí la línea ES el total, así que cada segmento se lee
+   como la parte que representa.
 
-   Dos barras por fila —contratos e importe— porque no siempre
-   coinciden: se puede tener el 70 % de los contratos en un sector que
-   sea el 30 % de la facturación, y eso cambia dónde conviene mirar. */
-.barras{display:flex;flex-direction:column;gap:20px}
-.barra-fila .nombre{
-  display:flex;justify-content:space-between;gap:14px;align-items:baseline;
-  margin-bottom:8px;font-size:.93rem;font-weight:600;
+   Y dos líneas, contratos e importe, porque no coinciden: si un sector
+   ocupa un tercio arriba y dos tercios abajo, ahí está el dinero. */
+
+.reparto + .reparto{margin-top:28px}
+.reparto > h4{
+  margin:0 0 11px;font-size:.83rem;font-weight:650;color:var(--tenue);
+  letter-spacing:.05em;text-transform:uppercase;
 }
-.barra-fila .nombre span{
-  color:var(--tenue);font-weight:400;font-size:.85rem;
-  font-variant-numeric:tabular-nums;white-space:nowrap;
+.apilada{
+  display:flex;width:100%;height:34px;border-radius:7px;overflow:hidden;
+  background:var(--linea);
 }
-.pista{display:grid;grid-template-columns:76px 1fr;gap:11px;align-items:center}
-.pista + .pista{margin-top:6px}
-.pista .etiq{color:var(--tenue);font-size:.77rem}
-.pista .riel{height:9px;background:var(--linea);border-radius:99px;overflow:hidden}
-.pista .lleno{height:100%;border-radius:inherit;
-  transition:width .5s cubic-bezier(.4,0,.2,1)}
-.pista.contratos .lleno{background:var(--acento)}
-.pista.importe .lleno{background:var(--si)}
+.apilada .trozo{
+  min-width:3px;border:0;padding:0;cursor:pointer;
+  transition:opacity .15s,filter .15s;
+}
+.apilada .trozo:hover,
+.apilada .trozo:focus-visible,
+.apilada .trozo.activo{filter:brightness(1.12)}
+.apilada:hover .trozo:not(:hover){opacity:.45}
+.apilada .trozo + .trozo{border-left:1px solid var(--superficie)}
+
+/* Lo que se muestra al pasar por encima o tocar. Reserva su altura para
+   que la leyenda no dé un salto al aparecer. */
+.detalle-trozo{
+  display:flex;align-items:baseline;gap:10px;min-height:26px;
+  margin-top:11px;font-size:.9rem;
+}
+.detalle-trozo .punto{
+  width:10px;height:10px;flex:0 0 10px;border-radius:3px;
+  transform:translateY(1px);
+}
+.detalle-trozo .cual{font-weight:600}
+.detalle-trozo .cuanto{color:var(--tenue);font-variant-numeric:tabular-nums}
+.detalle-trozo.callado{color:var(--tenue);font-size:.85rem}
+
+.leyenda{
+  display:flex;flex-wrap:wrap;gap:9px 20px;margin-top:14px;
+  padding-top:14px;border-top:1px solid var(--linea);
+}
+.leyenda button{
+  display:flex;align-items:center;gap:8px;padding:2px 0;border:0;
+  background:none;color:var(--texto);font:inherit;font-size:.87rem;
+  cursor:pointer;text-align:left;
+}
+.leyenda .punto{
+  width:10px;height:10px;flex:0 0 10px;border-radius:3px;
+}
+.leyenda .pct{
+  color:var(--tenue);font-variant-numeric:tabular-nums;
+}
+.leyenda button:hover .cual{text-decoration:underline;text-underline-offset:3px}
 
 .sin-datos{padding:34px 0;color:var(--tenue);text-align:center;font-size:.92rem}
 
@@ -792,7 +825,8 @@ select:focus{
   .bloque{padding:19px}
   .bloque dl{grid-template-columns:1fr;gap:3px}
   .bloque dt{margin-top:9px}
-  .pista{grid-template-columns:64px 1fr;gap:9px}
+  .apilada{height:30px}
+  .leyenda{gap:8px 16px}
 }
 
 
@@ -2289,25 +2323,78 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   const sectores = p.sectores ?? [];
   const organos = p.organos ?? [];
 
-  // Barras comparativas. Cada una se mide contra el máximo de su propia
-  // magnitud: contratos con contratos, euros con euros. Compartir escala
-  // aplastaría una de las dos.
-  function barras(filas, campoNombre) {
-    if (!filas.length) return `<p class="sin-datos">Todavía no hay datos.</p>`;
-    const topN = Math.max(...filas.map(f => f.contratos || 0), 1);
-    const topE = Math.max(...filas.map(f => Number(f.importe) || 0), 1);
-    return `<div class="barras">${filas.map(f => {
-      const n = f.contratos || 0, e = Number(f.importe) || 0;
-      return `<div class="barra-fila">
-        <div class="nombre">${esc(f[campoNombre] ?? '—')}
-          <span>${n} ${n === 1 ? 'contrato' : 'contratos'}${
-            e ? ` · ${euros(e)}` : ''}</span></div>
-        <div class="pista contratos"><span class="etiq">Contratos</span>
-          <div class="riel"><div class="lleno" style="width:${n / topN * 100}%"></div></div></div>
-        ${e ? `<div class="pista importe"><span class="etiq">Importe</span>
-          <div class="riel"><div class="lleno" style="width:${e / topE * 100}%"></div></div></div>` : ''}
+  // Barras apiladas: la línea entera es el total, y cada segmento la
+  // parte que representa. Una barra que se llena al 100 % por ser la
+  // mayor no dice nada; ésta responde a "cuánto de mi negocio es esto".
+  //
+  // Los segmentos por debajo del 2 % se agrupan: por separado serían
+  // hilos de dos píxeles imposibles de señalar, y su cifra sigue
+  // apareciendo en la leyenda.
+  const PALETA = ['#c78b35','#19745e','#3d6a8f','#8a5a7a','#6b7f3f',
+                  '#b0653a','#4a7c8c','#8c7a4a'];
+  const COLOR_OTROS = '#a8b4bf';
+
+  function apilada(filas, campoNombre, campoValor, unidad) {
+    const total = filas.reduce((s, f) => s + (Number(f[campoValor]) || 0), 0);
+    if (!total) return '';
+
+    const conValor = filas
+      .map((f, i) => ({
+        nombre: String(f[campoNombre] ?? '—'),
+        valor: Number(f[campoValor]) || 0,
+        color: PALETA[i % PALETA.length],
+      }))
+      .filter(x => x.valor > 0)
+      .sort((a, b) => b.valor - a.valor);
+
+    const grandes = conValor.filter(x => x.valor / total >= 0.02);
+    const chicos = conValor.filter(x => x.valor / total < 0.02);
+    const trozos = [...grandes];
+    if (chicos.length) {
+      trozos.push({
+        nombre: chicos.length === 1 ? chicos[0].nombre
+              : `Otros ${chicos.length} ${unidad === 'euros' ? '' : ''}`.trim(),
+        valor: chicos.reduce((s, x) => s + x.valor, 0),
+        color: COLOR_OTROS,
+        agrupa: chicos,
+      });
+    }
+
+    const comoTexto = v => unidad === 'euros' ? euros(v)
+      : `${v} ${v === 1 ? 'contrato' : 'contratos'}`;
+    const pct = v => {
+      const p = v / total * 100;
+      return p >= 10 ? `${Math.round(p)} %` : `${p.toFixed(1).replace('.', ',')} %`;
+    };
+
+    const id = 'r' + Math.random().toString(36).slice(2, 8);
+    return `
+      <div class="reparto" data-reparto="${id}">
+        <h4>${unidad === 'euros' ? 'Por importe' : 'Por número de contratos'}</h4>
+        <div class="apilada">
+          ${trozos.map((t, i) => `<button class="trozo" data-i="${i}"
+            style="width:${t.valor / total * 100}%;background:${t.color}"
+            data-valor="${esc(comoTexto(t.valor))}"
+            aria-label="${esc(t.nombre)}: ${pct(t.valor)}"></button>`).join('')}
+        </div>
+        <div class="detalle-trozo callado" data-hueco>
+          Pasa por encima o toca para ver el detalle
+        </div>
+        <div class="leyenda">
+          ${trozos.map((t, i) => `<button data-i="${i}">
+            <span class="punto" style="background:${t.color}"></span>
+            <span class="cual">${esc(t.nombre)}</span>
+            <span class="pct">${pct(t.valor)}</span>
+          </button>`).join('')}
+        </div>
       </div>`;
-    }).join('')}</div>`;
+  }
+
+  // Devuelve las dos barras de una misma dimensión.
+  function reparto(filas, campoNombre) {
+    if (!filas.length) return `<p class="sin-datos">Todavía no hay datos.</p>`;
+    return apilada(filas, campoNombre, 'contratos', 'contratos')
+         + apilada(filas, campoNombre, 'importe', 'euros');
   }
 
   const secciones = {
@@ -2368,7 +2455,7 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         <p class="guia" style="margin:0 0 22px;font-size:.9rem">Tus contratos
         por sector, en número y en dinero. No siempre coinciden: el sector
         donde más ganas no tiene por qué ser el que más factura.</p>
-        ${barras(sectores, 'sector')}
+        ${reparto(sectores, 'sector')}
       </div>`,
 
     organos: `
@@ -2376,7 +2463,7 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         <h3>A quién le vendes</h3>
         <p class="guia" style="margin:0 0 22px;font-size:.9rem">Los organismos
         que más contratos te han adjudicado.</p>
-        ${barras(organos, 'organo')}
+        ${reparto(organos, 'organo')}
       </div>`,
   };
 
@@ -2393,6 +2480,51 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
 
   alPulsar('volver', () => history.back());
   activarMenu(perfil, session);
+
+  // ---------- Detalle de cada segmento ----------
+  //
+  // Al pasar por encima o tocar, la línea de debajo dice qué es y cuánto
+  // vale. En el móvil no hay cursor, así que el toque es la única forma
+  // de leer un segmento estrecho.
+  raiz.querySelectorAll('[data-reparto]').forEach(caja => {
+    const hueco = caja.querySelector('[data-hueco]');
+    const trozos = [...caja.querySelectorAll('.apilada .trozo')];
+    const reposo = hueco.innerHTML;
+
+    const mostrar = i => {
+      const t = trozos[i];
+      if (!t) return;
+      const etiqueta = t.getAttribute('aria-label');
+      const corte = etiqueta.lastIndexOf(': ');
+      hueco.className = 'detalle-trozo';
+      hueco.innerHTML = `
+        <span class="punto" style="background:${t.style.background}"></span>
+        <span class="cual">${esc(etiqueta.slice(0, corte))}</span>
+        <span class="cuanto">${esc(etiqueta.slice(corte + 2))} · ${
+          esc(t.dataset.valor ?? '')}</span>`;
+      trozos.forEach((x, j) => x.classList.toggle('activo', j === +i));
+    };
+    const soltar = () => {
+      hueco.className = 'detalle-trozo callado';
+      hueco.innerHTML = reposo;
+      trozos.forEach(x => x.classList.remove('activo'));
+    };
+
+    trozos.forEach(t => {
+      t.onmouseenter = () => mostrar(t.dataset.i);
+      t.onfocus = () => mostrar(t.dataset.i);
+      // En táctil el clic es lo único que hay: se queda fijo hasta que
+      // se toque otro.
+      t.onclick = () => mostrar(t.dataset.i);
+    });
+    caja.querySelector('.apilada').onmouseleave = soltar;
+
+    caja.querySelectorAll('.leyenda button').forEach(b => {
+      b.onmouseenter = () => mostrar(b.dataset.i);
+      b.onclick = () => mostrar(b.dataset.i);
+    });
+    caja.querySelector('.leyenda').onmouseleave = soltar;
+  });
 
   // ---------- Rehacer el filtro ----------
   alPulsar('reiniciar', () => {
