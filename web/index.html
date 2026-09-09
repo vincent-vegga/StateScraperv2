@@ -2913,7 +2913,13 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const marcarLaVisita = () => {
     if (yaMarcada) return;
     yaMarcada = true;
-    sb.rpc('marcar_visita');
+    // El `.then` no es decorativo: la librería de Supabase no envía la
+    // petición hasta que alguien espera el resultado. Llamarla y soltarla
+    // no hacía nada, y el fallo era invisible porque tampoco daba error.
+    sb.rpc('marcar_visita').then(
+      ({ error }) => { if (error) console.warn('No se marcó la visita:', error); },
+      error => console.warn('No se marcó la visita:', error),
+    );
   };
 
   function pintar() {
