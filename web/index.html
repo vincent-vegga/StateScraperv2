@@ -584,49 +584,63 @@ kbd{
   white-space:nowrap;
 }
 
-.marcador{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  margin:28px 0 0;
-  overflow:hidden;
-  border:1px solid var(--linea);
-  border-radius:12px;
-  background:var(--superficie);
-  box-shadow:0 2px 7px rgba(24,42,61,.035);
+/* Lista sencilla de pares nombre-cifra. La usa la pantalla de
+   confirmación para enseñar los sectores de la empresa encontrada. */
+.listado{
+  margin:24px 0;border:1px solid var(--linea);border-radius:10px;
+  padding:4px 18px;background:var(--superficie);
+}
+.listado > div{
+  display:flex;justify-content:space-between;gap:16px;padding:12px 0;
+  font-size:.94rem;
+}
+.listado > div + div{border-top:1px solid var(--linea)}
+.listado > div > span:last-child{
+  color:var(--tenue);font-variant-numeric:tabular-nums;
+}
+
+/* ---------- Resumen accionable ----------
+   Antes eran cuatro recuadros con números: uno repetía el titular y los
+   otros tres no llevaban a ninguna parte. Ahora son atajos —al pulsarlos
+   se filtra la lista— así que el número deja de ser decoración y pasa a
+   ser la navegación. */
+.resumen{
+  display:flex;flex-wrap:wrap;gap:9px;align-items:center;
+  margin:18px 0 0;
   transition:opacity .18s;
 }
+.resumen.cambiando{opacity:.35}
 
-.marcador > div{
-  min-width:0;
-  padding:17px 18px 18px;
+.atajo{
+  display:inline-flex;align-items:baseline;gap:7px;
+  min-height:36px;padding:0 14px;
+  border:1px solid var(--linea);border-radius:99px;
+  background:var(--superficie);color:var(--texto);
+  font:inherit;font-size:.9rem;cursor:pointer;
+  box-shadow:0 1px 1px rgba(24,42,61,.03);
+  transition:border-color .15s,background-color .15s;
 }
+.atajo:hover{border-color:var(--fuerte);background:#f8fafb}
+.atajo[aria-pressed="true"]{
+  border-color:var(--texto);background:var(--texto);color:#fff;
+}
+.atajo[aria-pressed="true"] .rotulo{color:rgba(255,255,255,.72)}
+.atajo strong{
+  font-weight:650;font-variant-numeric:tabular-nums;
+}
+.atajo .rotulo{color:var(--tenue);font-size:.86rem}
 
-.marcador > div + div{
-  border-left:1px solid var(--linea);
-}
+/* El de plazo lleva el color de urgencia solo cuando hay algo que
+   corra prisa; con cero, es un atajo más y no debe destacar. */
+.atajo.urge:not([aria-pressed="true"]) strong{color:var(--urge)}
 
-.marcador span{
-  display:block;
-  color:var(--texto);
-  font-size:1.75rem;
-  font-weight:650;
-  line-height:1.05;
-  font-variant-numeric:tabular-nums;
-  letter-spacing:-.035em;
-  transition:opacity .18s;
+/* Dato de contexto, sin acción: no se pulsa, así que no parece un botón. */
+.dato{
+  display:inline-flex;align-items:baseline;gap:7px;
+  padding:0 4px;color:var(--tenue);font-size:.9rem;
 }
-
-.marcador small{
-  display:block;
-  margin-top:7px;
-  color:var(--tenue);
-  font-size:.79rem;
-  line-height:1.25;
-}
-
-.marcador.cambiando span{
-  opacity:.25;
-}
+.dato strong{color:var(--texto);font-weight:650;
+  font-variant-numeric:tabular-nums}
 
 /* Filtros y pestañas */
 
@@ -859,9 +873,11 @@ select:focus{
   right:0;
   bottom:-1px;
   left:0;
-  height:3px;
-  border-radius:3px 3px 0 0;
-  background:var(--acento);
+  height:2px;
+  border-radius:2px 2px 0 0;
+  /* Del color del texto, no del acento: marca dónde estás sin reclamar
+     atención. El acento se reserva para lo que sí la necesita. */
+  background:var(--texto);
 }
 
 .pestana .cuantas{
@@ -1409,19 +1425,6 @@ select:focus{
     text-align:right;
   }
 
-  .marcador{
-    grid-template-columns:repeat(2,1fr);
-  }
-
-  .marcador > div:nth-child(3){
-    border-top:1px solid var(--linea);
-    border-left:0;
-  }
-
-  .marcador > div:nth-child(4){
-    border-top:1px solid var(--linea);
-  }
-
   .filtros{
     gap:9px;
   }
@@ -1536,7 +1539,8 @@ select:focus{
   .carta,
   .relleno,
   #lista,
-  .marcador span{
+  .resumen,
+  .pista .lleno{
     transition:none;
   }
 
@@ -1901,13 +1905,10 @@ function pantallaConfirmar(perfil, empresa, ultimos, session) {
         empresa.importe_total ? `, por un total de ${euro(empresa.importe_total)}` : ''}.</p>
 
       ${sectores.length ? `
-        <div class="marcador" style="grid-template-columns:1fr;gap:0;margin:26px 0">
+        <div class="listado">
           ${sectores.slice(0, 5).map(s => `
-            <div style="display:flex;justify-content:space-between;padding:11px 0;
-                        border-bottom:1px solid var(--linea)">
-              <span>${esc(s.sector ?? '—')}</span>
-              <span style="color:var(--tenue)">${s.contratos}</span>
-            </div>`).join('')}
+            <div><span>${esc(s.sector ?? '—')}</span>
+              <span>${s.contratos}</span></div>`).join('')}
         </div>` : ''}
 
       ${ultimos && ultimos.length ? `
@@ -2574,16 +2575,11 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>Tus contratos</strong>
-        <div class="quien">${esc(perfil.email ?? '')}</div></div>
+        <div class="quien">${esc(perfil.empresa || perfil.email || '')}</div></div>
       ${menuCuenta()}
     </div>
     <h1 id="titular" style="margin-top:30px"></h1>
-    <div class="marcador" id="marcador">
-      <div><span id="m-total">—</span><small>abiertos</small></div>
-      <div><span id="m-si">—</span><small>encaje claro</small></div>
-      <div><span id="m-importe">—</span><small>en juego</small></div>
-      <div><span id="m-urge">—</span><small>vencen esta semana</small></div>
-    </div>
+    <div class="resumen" id="marcador"></div>
     <div class="pestanas" role="tablist">
       <button class="pestana" role="tab" id="p-hoy" aria-selected="false">
         Novedades<span class="cuantas" id="c-hoy"></span></button>
@@ -2636,18 +2632,51 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     return `${fechaLarga(s)}, a las ${p.hour}:${p.minute} (hora peninsular)`;
   };
 
+  // Atajo activo. Null es "sin atajo", que no es lo mismo que ninguno
+  // seleccionado en los filtros de abajo: son dos capas distintas.
+  let atajo = null;
+
   function marcador(lista) {
-    const total = lista.reduce((s,o) => s + (o.presupuesto || 0), 0);
-    const n = lista.length;
+    // Los contadores se calculan sobre TODO lo que hay, no sobre lo ya
+    // filtrado: si dijeran el resultado del filtro actual, pulsarlos
+    // sería un salto a ciegas y volver atrás no tendría número.
+    const base = DATOS.filter(o =>
+      (pestana === 'todo' || o.es_novedad) &&
+      (elegidas.size === 0 || elegidas.has(o.provincia)));
+
+    const n = base.length;
+    const conEncaje = base.filter(o => o.veredicto === 'si').length;
+    const urgentes = base.filter(o => o.dias != null && o.dias >= 0 && o.dias <= 7).length;
+    const total = base.reduce((s, o) => s + (o.presupuesto || 0), 0);
+
     document.getElementById('titular').textContent = n === 0
       ? 'Ahora mismo no hay contratos abiertos para ti'
       : `Hay ${n} ${n === 1 ? 'contrato abierto' : 'contratos abiertos'} para ti`;
-    document.getElementById('m-total').textContent = n;
-    document.getElementById('m-si').textContent = lista.filter(o => o.veredicto === 'si').length;
-    document.getElementById('m-importe').textContent = new Intl.NumberFormat('es-ES',
-      {notation:'compact',style:'currency',currency:'EUR',maximumFractionDigits:1}).format(total);
-    document.getElementById('m-urge').textContent =
-      lista.filter(o => o.dias != null && o.dias >= 0 && o.dias <= 7).length;
+
+    const compacto = v => new Intl.NumberFormat('es-ES',
+      {notation:'compact', style:'currency', currency:'EUR',
+       maximumFractionDigits:1}).format(v);
+
+    document.getElementById('marcador').innerHTML = `
+      ${conEncaje ? `<button class="atajo" data-atajo="si"
+        aria-pressed="${atajo === 'si'}">
+        <strong>${conEncaje}</strong><span class="rotulo">con encaje claro</span>
+      </button>` : ''}
+      ${urgentes ? `<button class="atajo urge" data-atajo="urge"
+        aria-pressed="${atajo === 'urge'}">
+        <strong>${urgentes}</strong><span class="rotulo">${
+          urgentes === 1 ? 'vence esta semana' : 'vencen esta semana'}</span>
+      </button>` : ''}
+      ${total ? `<span class="dato"><strong>${compacto(total)}</strong>
+        <span>en juego</span></span>` : ''}`;
+
+    document.getElementById('marcador').querySelectorAll('[data-atajo]')
+      .forEach(b => b.onclick = () => {
+        // Volver a pulsarlo lo desactiva: es un interruptor, no un
+        // destino sin salida.
+        atajo = atajo === b.dataset.atajo ? null : b.dataset.atajo;
+        repintar();
+      });
   }
 
   // Provincias elegidas. Vacío es "toda España", no "ninguna": es lo que
@@ -2661,6 +2690,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const vistos = DATOS.filter(o =>
       (pestana === 'todo' || o.es_novedad) &&
       (elegidas.size === 0 || elegidas.has(o.provincia)) &&
+      (atajo !== 'si' || o.veredicto === 'si') &&
+      (atajo !== 'urge' || (o.dias != null && o.dias >= 0 && o.dias <= 7)) &&
       (!ver || o.veredicto === ver) &&
       (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
 
