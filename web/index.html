@@ -745,6 +745,24 @@ select:focus{
    se lee peor que una sección cada vez. */
 .menu-envoltorio{position:relative}
 
+/* Campana de avisos. Sin animación: una campana que vibra significa
+   "hay algo nuevo", no "el aviso está encendido", y si vibrase siempre
+   dejaría de decir nada. Encendido es el estado normal; apagado se
+   marca tachándola. */
+.campana{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:36px;height:36px;padding:0;
+  border:1px solid var(--linea);border-radius:8px;
+  background:var(--superficie);color:var(--texto);cursor:pointer;
+  box-shadow:var(--sombra-corta);
+  transition:border-color .15s,background-color .15s,color .15s;
+}
+.campana:hover{border-color:var(--fuerte);background:var(--hover)}
+.campana svg{width:17px;height:17px;display:block}
+.campana[aria-pressed="false"]{color:var(--tenue)}
+.campana[aria-pressed="false"] .tachado{display:block}
+.campana .tachado{display:none}
+
 /* Botón de cuenta con forma de botón. Como enlace subrayado pasaba
    desapercibido, y es la puerta a todo lo demás. */
 .boton-cuenta{
@@ -2339,6 +2357,52 @@ const SECCIONES = {
   organos: 'Mis organismos',
 };
 
+// La campana enciende y apaga el correo diario. Va suelta y no dentro
+// del menú porque su estado tiene que verse de un vistazo: si alguien
+// apagó los avisos hace un mes, debe notarlo sin abrir nada.
+function campanaAvisos() {
+  return `
+    <button class="campana" id="campana" aria-pressed="true"
+            aria-label="Avisos por correo" title="Avisos por correo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.7 21a2 2 0 0 1-3.4 0"/>
+        <line class="tachado" x1="3" y1="3" x2="21" y2="21"/>
+      </svg>
+    </button>`;
+}
+
+function activarCampana(yaSabido = null) {
+  const boton = document.getElementById('campana');
+  if (!boton) return;
+
+  const pintar = encendido => {
+    boton.setAttribute('aria-pressed', String(encendido));
+    boton.title = encendido
+      ? 'Recibes el aviso diario. Pulsa para dejar de recibirlo.'
+      : 'No recibes el aviso diario. Pulsa para volver a recibirlo.';
+  };
+
+  // El panel ya ha consultado mi_panel, así que se le pasa el dato en
+  // vez de repetir la llamada.
+  if (yaSabido !== null) pintar(yaSabido !== false);
+  else sb.rpc('mi_panel').then(({ data }) => pintar(data?.avisos !== false));
+
+  boton.onclick = async () => {
+    const quiero = boton.getAttribute('aria-pressed') !== 'true';
+    // Se pinta al instante: el cliente no debe esperar al servidor para
+    // ver que su decisión se ha registrado.
+    pintar(quiero);
+    try {
+      const { data } = await sb.rpc('cambiar_avisos', { quiero });
+      pintar(data !== false);
+    } catch {
+      pintar(!quiero);
+    }
+  };
+}
+
 function menuCuenta(actual = null) {
   return `
     <div class="menu-envoltorio">
@@ -2575,7 +2639,8 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
     <div class="cabecera-app">
       <div><strong>${esc(SECCIONES[seccion] ?? 'Mi cuenta')}</strong>
         <div class="quien">${esc(p.empresa || p.email || '')}</div></div>
-      <div style="display:flex;gap:12px;align-items:center">
+      <div style="display:flex;gap:9px;align-items:center">
+        ${campanaAvisos()}
         ${menuCuenta(seccion)}
         <button class="enlace" id="volver">Mis contratos</button>
       </div>
@@ -2588,6 +2653,7 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   // pulsar varias veces.
   alPulsar('volver', () => pantallaOportunidades(perfil, session));
   activarMenu(perfil, session);
+  activarCampana(p.avisos);
 
   // Si ocultó la explicación de la lista, aquí puede recuperarla.
   const hueco = document.getElementById('recuperar');
@@ -2697,7 +2763,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     <div class="cabecera-app">
       <div><strong>Tus contratos</strong>
         <div class="quien">${esc(perfil.empresa || perfil.email || '')}</div></div>
-      ${menuCuenta()}
+      <div style="display:flex;gap:9px;align-items:center">
+        ${campanaAvisos()}
+        ${menuCuenta()}
+      </div>
     </div>
     <h1 id="titular" style="margin-top:30px"></h1>
     <div class="pestanas" role="tablist">
@@ -2732,6 +2801,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     <main id="lista"></main>`;
 
   activarMenu(perfil, session);
+  activarCampana();
 
   // ---------- La explicación se puede ocultar ----------
   //
