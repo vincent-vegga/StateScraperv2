@@ -943,16 +943,25 @@ select:focus{
    la barra se apartaba del cursor: el ratón salía, el texto volvía a su
    sitio, la barra regresaba bajo el cursor y otra vez. Un bucle que se
    veía como una vibración. */
-/* La altura da para las tres líneas que se permiten: 3 × 1.4 × 13,3 px
-   más el hueco de arriba. Con 64 px el texto se cortaba a media línea. */
+/* Título y contexto en bloques separados.
+   Recortando el conjunto, un título largo se llevaba las tres líneas y
+   el órgano y el importe quedaban fuera. Ahora el título se recorta a
+   dos líneas con puntos suspensivos y la segunda línea está siempre. */
 .detalle-tramo{
-  height:78px;margin-top:14px;padding-top:13px;
+  height:76px;margin-top:14px;padding-top:13px;
   border-top:1px solid var(--linea);
-  color:var(--tenue);font-size:.83rem;line-height:1.45;
-  overflow:hidden;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  color:var(--tenue);font-size:.83rem;line-height:1.4;
+  display:flex;flex-direction:column;gap:4px;overflow:hidden;
 }
-.detalle-tramo strong{color:var(--texto);font-weight:600}
+.detalle-tramo .titulo-tramo{
+  color:var(--texto);font-weight:600;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.detalle-tramo .meta-tramo{
+  margin-top:auto;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
 
 @media(max-width:720px){
   .dos-columnas{grid-template-columns:1fr}
@@ -3030,8 +3039,9 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
           </li>`;
         }).join('')}</ol>
         <div class="detalle-tramo" data-hueco-ranking>
-          Cada barra es el reparto de ese dinero entre sus contratos.
-          Pasa por encima de un tramo para ver cuál es.
+          <span class="titulo-tramo" style="font-weight:400;color:var(--tenue)">
+            Cada barra es el reparto de ese dinero entre sus contratos.
+            Pasa por encima de un tramo para ver cuál es.</span>
         </div>
       </div>`;
   }
@@ -3110,9 +3120,11 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
     const tramos = [...caja.querySelectorAll('.tramo')];
 
     const mostrar = t => {
-      hueco.innerHTML = `<strong>${esc(t.dataset.titulo)}</strong>` +
-        (t.dataset.quien ? `<br>${esc(t.dataset.quien)}` : '') +
-        (t.dataset.importe ? ` · ${esc(t.dataset.importe)}` : '');
+      const contexto = [t.dataset.quien, t.dataset.importe]
+        .filter(Boolean).join(' · ');
+      hueco.innerHTML =
+        `<span class="titulo-tramo">${esc(t.dataset.titulo)}</span>` +
+        (contexto ? `<span class="meta-tramo">${esc(contexto)}</span>` : '');
       tramos.forEach(x => x.classList.toggle('activo', x === t));
     };
     const soltar = () => {
