@@ -847,6 +847,62 @@ select:focus{
   padding:8px 0 4px;color:var(--tenue);font-size:.92rem;line-height:1.6;
 }
 
+/* ---------- Movimientos del mercado ----------
+   Arriba, el titular a la izquierda y las cifras del mes a la derecha;
+   debajo, la lista de lo adjudicado. */
+.cabeza-movimientos{
+  display:grid;grid-template-columns:1fr 320px;gap:26px;align-items:start;
+  margin-top:26px;
+}
+.pulso{
+  border:1px solid var(--linea);border-radius:10px;padding:20px;
+  background:var(--superficie);box-shadow:var(--sombra-baja);
+}
+.pulso h4{
+  margin:0 0 16px;font-size:.79rem;font-weight:650;color:var(--tenue);
+  letter-spacing:.05em;text-transform:uppercase;
+}
+.pulso dl{display:grid;grid-template-columns:1fr auto;gap:11px 14px;margin:0}
+.pulso dt{color:var(--tenue);font-size:.88rem}
+.pulso dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;
+  text-align:right}
+.pulso .destacado{
+  margin-top:16px;padding-top:14px;border-top:1px solid var(--linea);
+  color:var(--tenue);font-size:.86rem;line-height:1.55;
+}
+.pulso .destacado strong{color:var(--texto)}
+
+.movimiento{
+  display:grid;grid-template-columns:1fr 150px;gap:20px;align-items:start;
+  padding:17px 0;border-bottom:1px solid var(--linea);
+}
+.movimiento:last-child{border-bottom:0}
+.movimiento .gano{font-size:.86rem;font-weight:650;margin:0 0 4px}
+.movimiento .que{margin:0 0 4px;font-size:.95rem;line-height:1.42}
+.movimiento .donde{color:var(--tenue);font-size:.85rem}
+.movimiento .cifra{text-align:right;white-space:nowrap}
+.movimiento .cifra strong{font-variant-numeric:tabular-nums}
+.movimiento .baja{
+  display:block;margin-top:3px;color:var(--tenue);font-size:.8rem;
+}
+/* Lo propio y lo de las empresas que sigue se distinguen del resto: son
+   las dos líneas que el cliente busca al recorrer la lista. */
+.movimiento.mia{
+  margin-left:-14px;padding-left:14px;border-left:3px solid var(--si);
+}
+.movimiento.mia .gano{color:var(--si)}
+.movimiento.sigo .gano{color:var(--acento)}
+
+.marca-mia{
+  margin-left:8px;font-size:.74rem;font-weight:400;color:var(--tenue);
+}
+
+@media(max-width:720px){
+  .cabeza-movimientos{grid-template-columns:1fr}
+  .movimiento{grid-template-columns:1fr;gap:6px}
+  .movimiento .cifra{text-align:left}
+}
+
 /* ---------- Mercado ---------- */
 .buscador-cif{display:flex;gap:9px;margin:26px 0 8px;flex-wrap:wrap;
   align-items:center}
@@ -1946,6 +2002,8 @@ window.addEventListener('popstate', async (ev) => {
   const perfil = perfiles?.[0];
   if (!perfil) return arrancar(true);
 
+  if (estado.vista === 'movimientos')
+    return pantallaMovimientos(perfil, session, true);
   if (estado.vista === 'mercado')
     return pantallaMercado(perfil, session, true, estado.cif ?? null);
   if (estado.vista === 'panel')
@@ -2758,7 +2816,8 @@ function navPrincipal(donde) {
   return `
     <div class="principales">
       <button data-nav="contratos" aria-current="${donde === 'contratos'}">Contratos</button>
-      <button data-nav="mercado" aria-current="${donde === 'mercado'}">Mercado</button>
+      <button data-nav="movimientos" aria-current="${donde === 'movimientos'}">Movimientos</button>
+      <button data-nav="mercado" aria-current="${donde === 'mercado'}">Empresas</button>
     </div>`;
 }
 
@@ -2766,8 +2825,96 @@ function activarNav(perfil, session, donde) {
   document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => {
     if (b.dataset.nav === donde) return;
     if (b.dataset.nav === 'mercado') pantallaMercado(perfil, session);
+    else if (b.dataset.nav === 'movimientos') pantallaMovimientos(perfil, session);
     else pantallaOportunidades(perfil, session);
   });
+}
+
+// ---------- Movimientos del mercado ----------
+//
+// Los contratos que se han adjudicado en su sector durante el último mes.
+//
+// Va en la web y no en el correo: el correo es para lo que caduca —una
+// licitación que cierra el jueves exige acción hoy— y una adjudicación ya
+// cerrada no. Meterla ahí le restaría urgencia a lo que sí la tiene.
+async function pantallaMovimientos(perfil, session, volviendo = false) {
+  if (!volviendo) irA('movimientos');
+  raiz.className = 'envoltorio ancho';
+  raiz.innerHTML = `
+    <div class="cabecera-app">
+      <div><strong>Movimientos</strong>
+        <div class="quien">${esc(perfil.empresa || '')}</div>
+        ${navPrincipal('movimientos')}</div>
+      <div style="display:flex;gap:9px;align-items:center">
+        ${campanaAvisos()}
+        ${menuCuenta()}
+      </div>
+    </div>
+    <div id="zona"><p class="guia" style="margin-top:30px">Cargando...</p></div>`;
+
+  activarMenu(perfil, session);
+  activarCampana();
+  activarNav(perfil, session, 'movimientos');
+
+  const [mov, pul] = await Promise.all([
+    sb.rpc('movimientos_mercado', { dias: 30 }),
+    sb.rpc('pulso_mercado', { dias: 30 }),
+  ]);
+  const lista = mov.data ?? [];
+  const p = pul.data ?? {};
+
+  const fecha = s => s ? new Date(s).toLocaleDateString('es-ES',
+    { timeZone: ZONA, day: 'numeric', month: 'short' }) : '';
+
+  const cuerpo = lista.length ? lista.map(m => {
+    let baja = '';
+    const pres = Number(m.presupuesto) || 0, adj = Number(m.importe) || 0;
+    if (pres > 0 && adj > 0 && adj / pres <= 3) {
+      baja = `${Math.round(adj / pres * 100)} % del presupuesto`;
+    }
+    return `<div class="movimiento ${m.es_mia ? 'mia' : m.la_sigo ? 'sigo' : ''}">
+      <div>
+        <p class="gano">${esc(m.empresa ?? '—')}${
+          m.es_mia ? '<span class="marca-mia">tu empresa</span>'
+          : m.la_sigo ? '<span class="marca-mia">la sigues</span>' : ''}</p>
+        <p class="que">${esc(m.titulo ?? '')}</p>
+        <span class="donde">${esc([m.organo, m.provincia].filter(Boolean).join(' · '))}</span>
+      </div>
+      <div class="cifra">
+        <strong>${m.importe ? euros(Number(m.importe)) : '—'}</strong>
+        ${baja ? `<span class="baja">${baja}</span>` : ''}
+        <span class="baja">${esc(fecha(m.fecha))}</span>
+      </div>
+    </div>`;
+  }).join('') : `<p class="vacio">Todavía no hay adjudicaciones registradas en
+    tus sectores este mes.</p>`;
+
+  document.getElementById('zona').innerHTML = `
+    <div class="cabeza-movimientos">
+      <div>
+        <h1 style="margin:0 0 12px">Qué se ha adjudicado en tu sector</h1>
+        <p class="guia" style="margin:0">Los contratos que se han cerrado en
+        los últimos treinta días con los mismos códigos que los tuyos. Quién
+        los ganó, de qué organismo y a qué precio respecto al presupuesto de
+        salida.</p>
+      </div>
+
+      <div class="pulso">
+        <h4>El mes en tu sector</h4>
+        <dl>
+          <dt>Contratos adjudicados</dt><dd>${p.contratos ?? 0}</dd>
+          <dt>Importe total</dt><dd>${
+            p.importe ? euros(Number(p.importe)) : '—'}</dd>
+          <dt>Empresas distintas</dt><dd>${p.empresas ?? 0}</dd>
+          ${p.porcentaje_medio ? `<dt>Se cierran de media al</dt>
+            <dd>${p.porcentaje_medio} %</dd>` : ''}
+        </dl>
+        ${p.mias ? `<p class="destacado">De ellos, <strong>${p.mias}</strong>
+          ${p.mias === 1 ? 'lo has ganado tú' : 'los has ganado tú'}.</p>` : ''}
+      </div>
+    </div>
+
+    <div style="margin-top:32px">${cuerpo}</div>`;
 }
 
 async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
