@@ -847,6 +847,97 @@ select:focus{
   padding:8px 0 4px;color:var(--tenue);font-size:.92rem;line-height:1.6;
 }
 
+/* ---------- Selector de años ----------
+   Dos asas sobre una línea de años: lo que queda entre ellas se suma.
+   Se puede recortar por los dos extremos, no solo por el principio. */
+.anios{
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  margin:22px 0 0;padding:16px 20px;
+  border:1px solid var(--linea);border-radius:10px;
+  background:var(--superficie);box-shadow:var(--sombra-baja);
+}
+.anios .rotulo{color:var(--tenue);font-size:.86rem;white-space:nowrap}
+.anios .pista-anios{
+  position:relative;flex:1 1 240px;min-width:200px;height:34px;
+}
+.anios .riel-anios{
+  position:absolute;top:15px;left:0;right:0;height:4px;
+  background:var(--linea);border-radius:99px;
+}
+.anios .tramo-elegido{
+  position:absolute;top:15px;height:4px;background:var(--texto);
+  border-radius:99px;
+}
+.anios input[type=range]{
+  position:absolute;top:0;left:0;width:100%;height:34px;
+  margin:0;background:none;appearance:none;pointer-events:none;
+}
+.anios input[type=range]::-webkit-slider-thumb{
+  appearance:none;pointer-events:auto;width:18px;height:18px;
+  border-radius:50%;background:var(--superficie);
+  border:2px solid var(--texto);cursor:grab;
+  box-shadow:var(--sombra-corta);
+}
+.anios input[type=range]::-moz-range-thumb{
+  pointer-events:auto;width:18px;height:18px;border-radius:50%;
+  background:var(--superficie);border:2px solid var(--texto);cursor:grab;
+}
+.anios .marcas{
+  position:absolute;top:26px;left:0;right:0;
+  display:flex;justify-content:space-between;
+  color:var(--tenue);font-size:.72rem;pointer-events:none;
+}
+.anios .elegido{
+  font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums;
+}
+
+/* ---------- Organismos ---------- */
+.organo-fila{
+  display:grid;grid-template-columns:1fr 170px 210px;gap:20px;
+  align-items:center;padding:16px 0;
+  border-bottom:1px solid var(--linea);
+}
+.organo-fila:last-child{border-bottom:0}
+.organo-fila .quien{font-size:.96rem;line-height:1.4;margin:0 0 3px}
+.organo-fila .donde{color:var(--tenue);font-size:.84rem}
+.organo-fila .numeros{
+  text-align:right;font-size:.88rem;white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.organo-fila .numeros strong{display:block;font-weight:650}
+.organo-fila .numeros span{color:var(--tenue);font-size:.83rem}
+
+/* El reparto, en una barra: cuánto del dinero se lleva quien más gana
+   ahí. Llena significa un proveedor de referencia; repartida, hueco. */
+.reparto-organo .titular{
+  display:flex;justify-content:space-between;gap:10px;align-items:baseline;
+  font-size:.83rem;margin-bottom:6px;
+}
+.reparto-organo .titular .quien-lider{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.reparto-organo .titular .pct{color:var(--tenue);white-space:nowrap}
+.reparto-organo .riel{
+  height:8px;background:var(--linea);border-radius:99px;overflow:hidden;
+}
+.reparto-organo .lleno{height:100%;border-radius:inherit}
+.reparto-organo.cerrado .lleno{background:var(--no)}
+.reparto-organo.repartido .lleno{background:var(--si)}
+.reparto-organo.medio .lleno{background:var(--acento)}
+.reparto-organo.mio .quien-lider{color:var(--si);font-weight:650}
+
+.leyenda-reparto{
+  display:flex;gap:20px;flex-wrap:wrap;margin-top:18px;
+  color:var(--tenue);font-size:.83rem;
+}
+.leyenda-reparto span{display:flex;align-items:center;gap:7px}
+.leyenda-reparto i{width:10px;height:10px;border-radius:3px;display:block}
+
+@media(max-width:860px){
+  .organo-fila{grid-template-columns:1fr;gap:10px}
+  .organo-fila .numeros{text-align:left}
+}
+
 /* ---------- Movimientos del mercado ----------
    Arriba, el titular a la izquierda y las cifras del mes a la derecha;
    debajo, la lista de lo adjudicado. */
@@ -2097,6 +2188,8 @@ window.addEventListener('popstate', async (ev) => {
   const perfil = perfiles?.[0];
   if (!perfil) return arrancar(true);
 
+  if (estado.vista === 'organismos')
+    return pantallaOrganismos(perfil, session, true);
   if (estado.vista === 'movimientos')
     return pantallaMovimientos(perfil, session, true);
   if (estado.vista === 'mercado')
@@ -2913,6 +3006,7 @@ function navPrincipal(donde) {
       <button data-nav="contratos" aria-current="${donde === 'contratos'}">Contratos</button>
       <button data-nav="movimientos" aria-current="${donde === 'movimientos'}">Movimientos</button>
       <button data-nav="mercado" aria-current="${donde === 'mercado'}">Empresas</button>
+      <button data-nav="organismos" aria-current="${donde === 'organismos'}">Organismos</button>
     </div>`;
 }
 
@@ -2921,8 +3015,164 @@ function activarNav(perfil, session, donde) {
     if (b.dataset.nav === donde) return;
     if (b.dataset.nav === 'mercado') pantallaMercado(perfil, session);
     else if (b.dataset.nav === 'movimientos') pantallaMovimientos(perfil, session);
+    else if (b.dataset.nav === 'organismos') pantallaOrganismos(perfil, session);
     else pantallaOportunidades(perfil, session);
   });
+}
+
+// ---------- Organismos ----------
+//
+// Quién compra en su sector y si reparte o tiene un proveedor fijo.
+// Va en pestaña propia porque responde a otra pregunta: Movimientos es
+// ponerse al día, esto es estudiar el terreno antes de decidir dónde
+// presentarse. No se consulta cada semana.
+async function pantallaOrganismos(perfil, session, volviendo = false) {
+  if (!volviendo) irA('organismos');
+  raiz.className = 'envoltorio ancho';
+  raiz.innerHTML = `
+    <div class="cabecera-app">
+      <div><strong>Organismos</strong>
+        <div class="quien">${esc(perfil.empresa || '')}</div>
+        ${navPrincipal('organismos')}</div>
+      <div style="display:flex;gap:9px;align-items:center">
+        ${campanaAvisos()}
+        ${menuCuenta()}
+      </div>
+    </div>
+
+    <h1 style="margin-top:26px">Quién compra en tu sector</h1>
+    <p class="guia" style="max-width:70ch">Los organismos que han adjudicado
+    contratos con tus mismos códigos, y qué parte del dinero se lleva su
+    proveedor principal. Donde uno solo se lo lleva casi todo hay poco que
+    hacer; donde está repartido, hay hueco.</p>
+
+    <div id="selector-anios"></div>
+    <div id="zona"><p class="guia" style="margin-top:24px">Cargando...</p></div>`;
+
+  activarMenu(perfil, session);
+  activarCampana();
+  activarNav(perfil, session, 'organismos');
+
+  // Qué años tienen datos. El selector no debe ofrecer años vacíos.
+  const { data: anios } = await sb.rpc('anios_disponibles');
+  const disponibles = (anios ?? []).map(a => a.anio).sort((a, b) => a - b);
+
+  if (!disponibles.length) {
+    document.getElementById('zona').innerHTML =
+      `<p class="vacio">Todavía no hay adjudicaciones en tus sectores.</p>`;
+    return;
+  }
+
+  let desde = disponibles[0];
+  let hasta = disponibles[disponibles.length - 1];
+
+  function pintarSelector() {
+    // Con un solo año no hay nada que elegir.
+    if (disponibles.length < 2) {
+      document.getElementById('selector-anios').innerHTML = '';
+      return;
+    }
+    const min = disponibles[0], max = disponibles[disponibles.length - 1];
+    const pos = a => (a - min) / (max - min) * 100;
+
+    document.getElementById('selector-anios').innerHTML = `
+      <div class="anios">
+        <span class="rotulo">Periodo</span>
+        <div class="pista-anios">
+          <div class="riel-anios"></div>
+          <div class="tramo-elegido" style="left:${pos(desde)}%;
+               width:${pos(hasta) - pos(desde)}%"></div>
+          <input type="range" id="a-desde" min="${min}" max="${max}" step="1"
+                 value="${desde}" aria-label="Desde el año">
+          <input type="range" id="a-hasta" min="${min}" max="${max}" step="1"
+                 value="${hasta}" aria-label="Hasta el año">
+          <div class="marcas">${disponibles.map(a =>
+            `<span>${a}</span>`).join('')}</div>
+        </div>
+        <span class="elegido">${desde === hasta ? desde : `${desde} – ${hasta}`}</span>
+      </div>`;
+
+    const dDesde = document.getElementById('a-desde');
+    const dHasta = document.getElementById('a-hasta');
+    const mover = () => {
+      // Las asas no se cruzan: la izquierda nunca pasa de la derecha.
+      let a = +dDesde.value, b = +dHasta.value;
+      if (a > b) { if (document.activeElement === dDesde) b = a; else a = b; }
+      desde = a; hasta = b;
+      pintarSelector();
+      cargar();
+    };
+    dDesde.onchange = mover;
+    dHasta.onchange = mover;
+    // Mientras se arrastra solo se actualiza la vista, no los datos.
+    const previsualizar = () => {
+      let a = +dDesde.value, b = +dHasta.value;
+      if (a > b) [a, b] = [b, a];
+      const tramo = document.querySelector('.tramo-elegido');
+      if (tramo) {
+        tramo.style.left = pos(a) + '%';
+        tramo.style.width = (pos(b) - pos(a)) + '%';
+      }
+      const texto = document.querySelector('.anios .elegido');
+      if (texto) texto.textContent = a === b ? a : `${a} – ${b}`;
+    };
+    dDesde.oninput = previsualizar;
+    dHasta.oninput = previsualizar;
+  }
+
+  async function cargar() {
+    const zona = document.getElementById('zona');
+    zona.innerHTML = `<p class="guia" style="margin-top:24px">Cargando...</p>`;
+    const { data, error } = await sb.rpc('organismos_del_sector',
+      { desde, hasta });
+    if (error) {
+      zona.innerHTML = `<div class="aviso mal">No hemos podido cargarlo.</div>`;
+      return;
+    }
+    const filas = data ?? [];
+    if (!filas.length) {
+      zona.innerHTML = `<p class="vacio">No hay adjudicaciones en tus sectores
+        en ese periodo.</p>`;
+      return;
+    }
+
+    zona.innerHTML = `
+      <div class="seccion-mercado" style="margin-top:18px">
+        ${filas.map(o => {
+          const c = o.concentracion ?? 0;
+          // Tres tramos con significado: uno se lo lleva casi todo, está
+          // repartido, o punto medio.
+          const clase = c >= 70 ? 'cerrado' : c <= 40 ? 'repartido' : 'medio';
+          return `<div class="organo-fila">
+            <div>
+              <p class="quien">${esc(o.organo)}</p>
+              <span class="donde">${esc(o.provincia ?? '')}</span>
+            </div>
+            <div class="numeros">
+              <strong>${o.importe ? euros(Number(o.importe)) : '—'}</strong>
+              <span>${o.contratos} ${o.contratos === 1 ? 'contrato' : 'contratos'}
+                · ${o.empresas} ${o.empresas === 1 ? 'empresa' : 'empresas'}</span>
+            </div>
+            <div class="reparto-organo ${clase} ${o.lider_es_mio ? 'mio' : ''}">
+              <div class="titular">
+                <span class="quien-lider">${esc(o.lider ?? '—')}</span>
+                <span class="pct">${c} %</span>
+              </div>
+              <div class="riel"><div class="lleno" style="width:${c}%"></div></div>
+            </div>
+          </div>`;
+        }).join('')}
+
+        <div class="leyenda-reparto">
+          <span><i style="background:var(--no)"></i>Un proveedor domina</span>
+          <span><i style="background:var(--acento)"></i>Reparto desigual</span>
+          <span><i style="background:var(--si)"></i>Repartido</span>
+        </div>
+      </div>`;
+  }
+
+  pintarSelector();
+  cargar();
 }
 
 // ---------- Movimientos del mercado ----------
