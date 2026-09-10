@@ -872,6 +872,41 @@ select:focus{
 }
 .pulso .destacado strong{color:var(--texto)}
 
+/* Dos columnas de estadísticas entre la explicación y la lista: ese
+   hueco estaba vacío y son datos que orientan antes de bajar al detalle. */
+.dos-columnas{
+  display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:26px;
+}
+.ranking{
+  border:1px solid var(--linea);border-radius:10px;padding:20px;
+  background:var(--superficie);box-shadow:var(--sombra-baja);
+}
+.ranking h4{
+  margin:0 0 14px;font-size:.79rem;font-weight:650;color:var(--tenue);
+  letter-spacing:.05em;text-transform:uppercase;
+}
+.ranking ol{margin:0;padding:0;list-style:none;counter-reset:puesto}
+.ranking li{
+  display:grid;grid-template-columns:20px 1fr auto;gap:11px;
+  align-items:baseline;padding:9px 0;font-size:.9rem;
+}
+.ranking li + li{border-top:1px solid var(--linea)}
+.ranking li::before{
+  counter-increment:puesto;content:counter(puesto);
+  color:var(--tenue);font-size:.8rem;font-variant-numeric:tabular-nums;
+}
+.ranking .cual{min-width:0;word-break:break-word}
+.ranking .cuanto{
+  color:var(--tenue);font-size:.84rem;white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.ranking li.mia .cual{color:var(--si);font-weight:650}
+.ranking li.sigo .cual{font-weight:650}
+
+@media(max-width:720px){
+  .dos-columnas{grid-template-columns:1fr}
+}
+
 .movimiento{
   display:grid;grid-template-columns:1fr 150px;gap:20px;align-items:start;
   padding:17px 0;border-bottom:1px solid var(--linea);
@@ -2856,22 +2891,30 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
   activarCampana();
   activarNav(perfil, session, 'movimientos');
 
-  const [mov, pul] = await Promise.all([
+  const [mov, pul, rank] = await Promise.all([
     sb.rpc('movimientos_mercado', { dias: 30 }),
     sb.rpc('pulso_mercado', { dias: 30 }),
+    sb.rpc('ranking_mercado', { dias: 30 }),
   ]);
   const lista = mov.data ?? [];
   const p = pul.data ?? {};
+  const r = rank.data ?? {};
 
   const fecha = s => s ? new Date(s).toLocaleDateString('es-ES',
     { timeZone: ZONA, day: 'numeric', month: 'short' }) : '';
 
+  // Sin el porcentaje sobre el presupuesto.
+  //
+  // Medido sobre 263.412 contratos: la media salía en 4.896 % y 100.862
+  // estaban por encima del presupuesto. Los dos campos no comparan lo
+  // mismo —importes de acuerdos marco frente a presupuestos de contratos
+  // basados, lotes sueltos frente al expediente entero— y publicarlo
+  // sería peor que no dar el dato: alguien podría calcular una oferta con
+  // él.
+  //
+  // Para recuperarlo hay que extraer el número de lotes y el tipo de
+  // contrato al procesar el histórico.
   const cuerpo = lista.length ? lista.map(m => {
-    let baja = '';
-    const pres = Number(m.presupuesto) || 0, adj = Number(m.importe) || 0;
-    if (pres > 0 && adj > 0 && adj / pres <= 3) {
-      baja = `${Math.round(adj / pres * 100)} % del presupuesto`;
-    }
     return `<div class="movimiento ${m.es_mia ? 'mia' : m.la_sigo ? 'sigo' : ''}">
       <div>
         <p class="gano">${esc(m.empresa ?? '—')}${
@@ -2882,7 +2925,6 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
       </div>
       <div class="cifra">
         <strong>${m.importe ? euros(Number(m.importe)) : '—'}</strong>
-        ${baja ? `<span class="baja">${baja}</span>` : ''}
         <span class="baja">${esc(fecha(m.fecha))}</span>
       </div>
     </div>`;
@@ -2906,13 +2948,39 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
           <dt>Importe total</dt><dd>${
             p.importe ? euros(Number(p.importe)) : '—'}</dd>
           <dt>Empresas distintas</dt><dd>${p.empresas ?? 0}</dd>
-          ${p.porcentaje_medio ? `<dt>Se cierran de media al</dt>
-            <dd>${p.porcentaje_medio} %</dd>` : ''}
+          ${p.importe_medio ? `<dt>Importe medio</dt>
+            <dd>${euros(Number(p.importe_medio))}</dd>` : ''}
         </dl>
         ${p.mias ? `<p class="destacado">De ellos, <strong>${p.mias}</strong>
           ${p.mias === 1 ? 'lo has ganado tú' : 'los has ganado tú'}.</p>` : ''}
       </div>
     </div>
+
+    ${(r.empresas?.length || r.organos?.length) ? `
+    <div class="dos-columnas">
+      ${r.empresas?.length ? `
+        <div class="ranking">
+          <h4>Quién ha ganado más este mes</h4>
+          <ol>${r.empresas.map(e => `
+            <li class="${e.es_mia ? 'mia' : e.la_sigo ? 'sigo' : ''}">
+              <span class="cual">${esc(e.nombre ?? '—')}</span>
+              <span class="cuanto">${e.contratos}${
+                e.importe ? ` · ${euros(Number(e.importe))}` : ''}</span>
+            </li>`).join('')}</ol>
+        </div>` : ''}
+
+      ${r.organos?.length ? `
+        <div class="ranking">
+          <h4>Quién ha adjudicado más</h4>
+          <ol>${r.organos.map(o => `
+            <li>
+              <span class="cual">${esc(o.organo ?? '—')}${
+                o.provincia ? `<span class="cuanto"> · ${esc(o.provincia)}</span>` : ''}</span>
+              <span class="cuanto">${o.contratos}${
+                o.importe ? ` · ${euros(Number(o.importe))}` : ''}</span>
+            </li>`).join('')}</ol>
+        </div>` : ''}
+    </div>` : ''}
 
     <div style="margin-top:32px">${cuerpo}</div>`;
 }
