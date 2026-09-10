@@ -360,16 +360,10 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
             titulo = acortar(it.get("titulo") or "") or "(sin título)"
             organo = it.get("organo") or ""
             importe = euros(it.get("importe"))
-            # La baja respecto al presupuesto dice mucho más que el
-            # importe suelto: es a cuánto se cerró el contrato.
+            # Sin el porcentaje sobre el presupuesto: medido sobre 263.412
+            # contratos, los dos campos no comparan lo mismo y el resultado
+            # era disparatado. Está explicado en migracion-movimientos.sql.
             baja = ""
-            try:
-                pres = float(it.get("presupuesto") or 0)
-                adj = float(it.get("importe") or 0)
-                if pres > 0 and adj > 0:
-                    baja = f" · {adj / pres * 100:.0f} % del presupuesto"
-            except (TypeError, ValueError):
-                pass
             enlace = it.get("enlace") or URL_INTERFAZ
 
             filas.append(f"""
