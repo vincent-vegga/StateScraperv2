@@ -856,9 +856,9 @@ select:focus{
    etiquetas no caían donde se clavaba el asa. */
 .anios{
   display:flex;align-items:center;gap:16px;flex-wrap:wrap;
-  margin:0;padding:10px 16px;
+  margin:0;padding:8px 14px;
   border:1px solid var(--linea);border-radius:8px;
-  background:var(--superficie);
+  background:var(--fondo);
 }
 .anios .rotulo{color:var(--tenue);font-size:.82rem;white-space:nowrap}
 .anios .pista-anios{position:relative;flex:1 1 200px;min-width:170px;height:26px}
@@ -894,7 +894,7 @@ select:focus{
 }
 
 /* ---------- Buscador de organismo ---------- */
-.buscar-organo{position:relative;max-width:520px;margin-top:22px}
+.buscar-organo{position:relative;max-width:760px;margin-top:22px}
 .sugerencias{
   position:absolute;z-index:30;top:calc(100% + 5px);left:0;right:0;
   max-height:300px;overflow-y:auto;padding:5px;
@@ -913,10 +913,18 @@ select:focus{
 }
 
 /* ---------- Ficha de organismo ---------- */
-.ficha-organo{margin-top:22px}
+/* Una sola tarjeta con todo dentro: cabecera, periodo, gráfico y
+   contratos. Repartirlo en varias hacía que el periodo pareciera un
+   control de la página y no de la ficha. */
+.ficha-organo{
+  margin-top:22px;padding:24px;
+  border:1px solid var(--linea);border-radius:10px;
+  background:var(--superficie);box-shadow:var(--sombra-baja);
+}
 .ficha-organo .arriba{
   display:flex;justify-content:space-between;gap:20px;align-items:flex-start;
-  flex-wrap:wrap;margin-bottom:18px;
+  flex-wrap:wrap;padding-bottom:18px;margin-bottom:18px;
+  border-bottom:1px solid var(--linea);
 }
 .ficha-organo h2{margin:0 0 6px;font-size:1.3rem}
 .ficha-organo .cifras{
@@ -931,9 +939,16 @@ select:focus{
   display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   gap:14px;margin-top:18px;align-items:start;
 }
-.panel-organo{
-  border:1px solid var(--linea);border-radius:10px;padding:20px;
-  background:var(--superficie);box-shadow:var(--sombra-baja);
+/* Dentro de la tarjeta, los paneles solo se separan con una línea. */
+.panel-organo{padding:0}
+.dos-paneles > .panel-organo + .panel-organo{
+  padding-left:24px;border-left:1px solid var(--linea);
+}
+@media(max-width:860px){
+  .dos-paneles > .panel-organo + .panel-organo{
+    padding-left:0;padding-top:22px;border-left:0;
+    border-top:1px solid var(--linea);
+  }
 }
 .panel-organo h4{
   margin:0 0 14px;font-size:.79rem;font-weight:650;color:var(--tenue);
@@ -944,6 +959,8 @@ select:focus{
   padding:11px 0;border-bottom:1px solid var(--linea);align-items:baseline;
 }
 .lista-empresas > div:last-child{border-bottom:0}
+.lista-empresas > div{cursor:default;transition:background-color .12s}
+.lista-empresas > div:hover{background:var(--hover)}
 .lista-empresas .quien{font-size:.93rem;word-break:break-word}
 .lista-empresas .cuanto{
   text-align:right;white-space:nowrap;font-size:.88rem;
@@ -2885,7 +2902,8 @@ const PALETA = ['#2d5f8a','#3f8f8c','#5c7fb8','#6aa88b','#7a6ea8',
                 '#4a8fa8','#8a9a5b','#5e7a94'];
 const COLOR_OTROS = '#aab6c2';
 
-function apilada(filas, campoNombre, campoValor, unidad, rotulo = true) {
+function apilada(filas, campoNombre, campoValor, unidad, rotulo = true,
+                 campoClave = null, conLeyenda = true) {
   const total = filas.reduce((s, f) => s + (Number(f[campoValor]) || 0), 0);
   if (!total) return '';
 
@@ -2894,6 +2912,9 @@ function apilada(filas, campoNombre, campoValor, unidad, rotulo = true) {
       nombre: String(f[campoNombre] ?? '—'),
       valor: Number(f[campoValor]) || 0,
       color: PALETA[i % PALETA.length],
+      // Para que quien dibuje el gráfico pueda saber a qué fila
+      // corresponde cada porción y reaccionar al señalarla.
+      clave: campoClave ? String(f[campoClave] ?? '') : '',
     }))
     .filter(x => x.valor > 0)
     .sort((a, b) => b.valor - a.valor);
@@ -2933,7 +2954,8 @@ function apilada(filas, campoNombre, campoValor, unidad, rotulo = true) {
     grafico = `<svg class="quesito" viewBox="0 0 160 160" role="img">
       ${trozos.map((t, i) => {
         const parte = t.valor / total;
-        const trazo = `<circle class="trozo" data-i="${i}" cx="80" cy="80" r="${R}"
+        const trazo = `<circle class="trozo" data-i="${i}" data-clave="${esc(t.clave ?? '')}"
+          cx="80" cy="80" r="${R}"
           stroke="${t.color}"
           stroke-dasharray="${(parte * C).toFixed(2)} ${C.toFixed(2)}"
           stroke-dashoffset="${(-recorrido * C).toFixed(2)}"
@@ -2946,7 +2968,7 @@ function apilada(filas, campoNombre, campoValor, unidad, rotulo = true) {
     </svg>`;
   } else {
     grafico = `<div class="apilada">
-      ${trozos.map((t, i) => `<button class="trozo" data-i="${i}"
+      ${trozos.map((t, i) => `<button class="trozo" data-i="${i}" data-clave="${esc(t.clave ?? '')}"
         style="width:${t.valor / total * 100}%;background:${t.color}"
         data-valor="${esc(comoTexto(t.valor))}"
         aria-label="${esc(t.nombre)}: ${pct(t.valor)}"></button>`).join('')}
@@ -2961,13 +2983,13 @@ function apilada(filas, campoNombre, campoValor, unidad, rotulo = true) {
       <div class="detalle-trozo callado" data-hueco>
         Pasa por encima o toca para ver el detalle
       </div>
-      <div class="leyenda">
+      ${conLeyenda === false ? '' : `<div class="leyenda">
         ${trozos.map((t, i) => `<button data-i="${i}">
           <span class="punto" style="background:${t.color}"></span>
           <span class="cual">${esc(t.nombre)}</span>
           <span class="pct">${pct(t.valor)}</span>
         </button>`).join('')}
-      </div>
+      </div>`}
     </div>`;
 }
 
@@ -3206,10 +3228,11 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
                   aria-pressed="${formaActual() === 'quesito'}">Quesito</button>
               </div>
             </div>
-            ${apilada(empresas, 'nombre', 'contratos', 'contratos', false)}
+            ${apilada(empresas, 'nombre', 'contratos', 'contratos', false,
+                      'cif', false)}
             <div class="lista-empresas" style="margin-top:18px">
               ${empresas.slice(0, 10).map(e => `
-                <div class="${e.es_mia ? 'mia' : ''}">
+                <div class="${e.es_mia ? 'mia' : ''}" data-cif="${esc(e.cif ?? '')}">
                   <span class="quien">${esc(e.nombre ?? '—')}</span>
                   <span class="cuanto">${e.contratos}
                     <span>${e.importe ? euros(Number(e.importe)) : '—'}</span></span>
@@ -3218,18 +3241,51 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
           </div>
 
           <div class="panel-organo">
-            <h4>Sus contratos</h4>
-            <div class="contratos-organo">
-              ${contratos.slice(0, 12).map(c => `
-                <div class="${c.es_mia ? 'mia' : ''}">
-                  <p class="que">${esc(c.titulo ?? '')}</p>
-                  <span class="quien">${esc(c.empresa ?? '')}${
-                    c.importe ? ` · ${euros(Number(c.importe))}` : ''}</span>
-                </div>`).join('')}
-            </div>
+            <h4 id="rotulo-contratos">Sus contratos</h4>
+            <div class="contratos-organo" id="contratos-organo"></div>
           </div>
         </div>
       </div>`;
+
+    // ---------- Los contratos siguen a lo que señalas ----------
+    //
+    // Al pasar por encima de una empresa —en el gráfico o en la lista—,
+    // la columna de la derecha enseña SUS contratos. Sin eso el gráfico
+    // solo dice cuánto se lleva cada una; con eso dice qué le ha
+    // comprado.
+    const cajaContratos = document.getElementById('contratos-organo');
+    const rotulo = document.getElementById('rotulo-contratos');
+
+    const pintarContratos = (cifs, quien) => {
+      const filtrados = cifs
+        ? contratos.filter(c => cifs.includes(c.cif))
+        : contratos;
+      rotulo.textContent = quien ? `Contratos de ${quien}` : 'Sus contratos';
+      cajaContratos.innerHTML = filtrados.length
+        ? filtrados.slice(0, 14).map(c => `
+            <div class="${c.es_mia ? 'mia' : ''}">
+              <p class="que">${esc(c.titulo ?? '')}</p>
+              <span class="quien">${esc(c.empresa ?? '')}${
+                c.importe ? ` · ${euros(Number(c.importe))}` : ''}</span>
+            </div>`).join('')
+        : `<p class="sin-datos">Sin contratos en el periodo elegido.</p>`;
+    };
+    pintarContratos(null, null);
+
+    const señalar = el => {
+      const clave = el.dataset.clave ?? el.dataset.cif ?? '';
+      if (!clave) return pintarContratos(null, null);
+      const cifs = clave.split(',').filter(Boolean);
+      const suya = empresas.find(e => e.cif === cifs[0]);
+      pintarContratos(cifs, cifs.length === 1 ? (suya?.nombre ?? null) : null);
+    };
+
+    zona.addEventListener('mouseover', ev => {
+      const el = ev.target.closest('.trozo, .lista-empresas [data-cif]');
+      if (el) señalar(el);
+    });
+    zona.querySelector('.panel-organo')
+      ?.addEventListener('mouseleave', () => pintarContratos(null, null));
 
     activarBarras(zona);
 
