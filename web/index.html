@@ -876,6 +876,9 @@ select:focus{
    hueco estaba vacío y son datos que orientan antes de bajar al detalle. */
 .dos-columnas{
   display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:26px;
+  /* Cada tarjeta con su altura natural: estirarlas dejaba un hueco
+     vacío en la más corta. */
+  align-items:start;
 }
 .ranking{
   border:1px solid var(--linea);border-radius:10px;padding:20px;
@@ -914,7 +917,9 @@ select:focus{
   background:var(--linea);
 }
 .barra-tramos .tramo{
-  border:0;padding:0;min-width:3px;cursor:pointer;
+  /* Puede encoger: con anchos fijos la suma se pasaba del 100 % y los
+     últimos tramos quedaban cortados fuera de la barra. */
+  border:0;padding:0;flex:0 1 auto;min-width:7px;cursor:pointer;
   transition:opacity .15s;
 }
 .barra-tramos .tramo.activo{opacity:1}
@@ -927,9 +932,9 @@ select:focus{
    sitio, la barra regresaba bajo el cursor y otra vez. Un bucle que se
    veía como una vibración. */
 .detalle-tramo{
-  height:56px;margin-top:12px;padding-top:11px;
+  height:64px;margin-top:14px;padding-top:12px;
   border-top:1px solid var(--linea);
-  color:var(--tenue);font-size:.84rem;line-height:1.4;
+  color:var(--tenue);font-size:.83rem;line-height:1.4;
   overflow:hidden;
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
 }
@@ -2966,8 +2971,22 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
         <ol>${filas.map((f, i) => {
           // Cada contrato, un tramo. Los muy pequeños se ven porque hay
           // un ancho mínimo.
-          const tramos = [...f.contratos]
+          // Tres tramos y el resto agrupado. Con diez o quince, los
+          // pequeños quedaban en hilos de dos píxeles imposibles de
+          // señalar, y uno grande se comía la barra entera.
+          const ordenados = [...f.contratos]
             .sort((a, b) => (Number(b.importe) || 0) - (Number(a.importe) || 0));
+          const cabeza = ordenados.slice(0, 3);
+          const cola = ordenados.slice(3);
+          const tramos = [...cabeza];
+          if (cola.length) {
+            tramos.push({
+              titulo: `Otros ${cola.length} ${cola.length === 1 ? 'contrato' : 'contratos'}`,
+              organo: '', empresa: '',
+              importe: cola.reduce((s, c) => s + (Number(c.importe) || 0), 0),
+              agrupado: true,
+            });
+          }
           return `<li class="${f.es_mia ? 'mia' : f.la_sigo ? 'sigo' : ''}">
             <div class="fila-ranking">
               <span class="cual">${esc(f.nombre)}${
@@ -2978,9 +2997,10 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
             <div class="barra-tramos" style="width:${f.euros / tope * 100}%">
               ${tramos.map((c, j) => `<button class="tramo"
                 style="width:${(Number(c.importe) || 0) / f.euros * 100}%;
-                       background:${PALETA[(i + j) % PALETA.length]}"
+                       background:${c.agrupado ? COLOR_OTROS : PALETA[(i + j) % PALETA.length]}"
                 data-titulo="${esc(c.titulo ?? '')}"
-                data-quien="${esc(id === 'organos' ? (c.empresa ?? '') : (c.organo ?? ''))}"
+                data-quien="${esc(c.agrupado ? ''
+                  : (id === 'organos' ? (c.empresa ?? '') : (c.organo ?? '')))}"
                 data-importe="${esc(euros(Number(c.importe)) ?? '')}"
                 aria-label="${esc(c.titulo ?? '')}"></button>`).join('')}
             </div>
