@@ -146,6 +146,39 @@ def clientes_a_avisar(cliente) -> list[dict]:
         sys.exit(1)
 
 
+def adjudicaciones_seguidas(cliente, perfil_id: str) -> list[dict]:
+    """
+    Lo que han ganado las empresas de su lista de seguimiento.
+
+    Es información que no da nadie: que tu competencia acaba de cerrar un
+    contrato, con qué organismo y a qué porcentaje del presupuesto.
+    """
+    try:
+        respuesta = cliente.rpc("adjudicaciones_seguidas",
+                                {"perfil": perfil_id,
+                                 "horas": HORAS_NOVEDAD}).execute()
+        return respuesta.data or []
+    except Exception as error:
+        logging.error("No se pudieron leer las adjudicaciones seguidas: %s", error)
+        return []
+
+
+def marcar_avisadas(cliente, perfil_id: str, expedientes: list[str]) -> None:
+    """
+    Deja constancia de lo ya avisado.
+
+    Un expediente reaparece en el feed con cada cambio de estado, así que
+    sin esto la misma adjudicación se enviaría varios días seguidos.
+    """
+    if not expedientes:
+        return
+    try:
+        cliente.rpc("marcar_avisadas",
+                    {"perfil": perfil_id, "expedientes": expedientes}).execute()
+    except Exception as error:
+        logging.error("No se pudo marcar lo avisado: %s", error)
+
+
 def novedades(cliente, perfil_id: str) -> list[dict]:
     """
     Lo que ha entrado para este cliente desde la última pasada.
@@ -257,16 +290,30 @@ def provincia_de(codigo_postal: str | None) -> str:
     return PROVINCIAS.get(cp[:2], "") if len(cp) >= 2 else ""
 
 
-def componer(items: list[dict]) -> tuple[str, str, str]:
+def componer(items: list[dict], seguidas: list[dict] | None = None,
+             empresa: str = "") -> tuple[str, str, str]:
     """
     Devuelve (asunto, cuerpo HTML, cuerpo en texto plano).
 
     Se envían las dos versiones: hay clientes de correo que no muestran
     HTML, y un mensaje que llega en blanco es peor que no llegar.
+
+    `seguidas` son adjudicaciones ganadas por empresas que el cliente
+    vigila. Van en el mismo correo y no en uno aparte: dos correos al día
+    del mismo remitente se convierten en uno que se ignora.
     """
+    seguidas = seguidas or []
     n = len(items)
-    asunto = (f"{n} contrato nuevo para ti" if n == 1
-              else f"{n} contratos nuevos para ti")
+
+    if n and seguidas:
+        asunto = (f"{n} {'contrato nuevo' if n == 1 else 'contratos nuevos'} "
+                  f"y movimientos de tu competencia")
+    elif n:
+        asunto = (f"{n} contrato nuevo para ti" if n == 1
+                  else f"{n} contratos nuevos para ti")
+    else:
+        asunto = ("Tu competencia ha ganado un contrato" if len(seguidas) == 1
+                  else f"Tu competencia ha ganado {len(seguidas)} contratos")
 
     filas_html, filas_texto = [], []
     for it in items:
@@ -301,6 +348,77 @@ def componer(items: list[dict]) -> tuple[str, str, str]:
             f"  {enlace}\n"
         )
 
+    # ---- Lo que ha ganado la competencia ----
+    #
+    # Debajo de las oportunidades: lo primero es a qué puede presentarse
+    # él; esto es contexto de mercado, no una tarea.
+    bloque_seguidas_html = bloque_seguidas_texto = ""
+    if seguidas:
+        filas = []
+        for it in seguidas:
+            quien = it.get("empresa") or "?"
+            titulo = acortar(it.get("titulo") or "") or "(sin título)"
+            organo = it.get("organo") or ""
+            importe = euros(it.get("importe"))
+            # La baja respecto al presupuesto dice mucho más que el
+            # importe suelto: es a cuánto se cerró el contrato.
+            baja = ""
+            try:
+                pres = float(it.get("presupuesto") or 0)
+                adj = float(it.get("importe") or 0)
+                if pres > 0 and adj > 0:
+                    baja = f" · {adj / pres * 100:.0f} % del presupuesto"
+            except (TypeError, ValueError):
+                pass
+            enlace = it.get("enlace") or URL_INTERFAZ
+
+            filas.append(f"""
+            <tr><td style="padding:16px 0;border-bottom:1px solid #E4E2DD;">
+              <div style="color:#17171A;font-size:14px;font-weight:600;">{html.escape(quien)}</div>
+              <a href="{html.escape(enlace, quote=True)}"
+                 style="color:#17171A;font-size:15px;text-decoration:none;
+                        line-height:1.45;display:block;margin-top:4px;">{html.escape(titulo)}</a>
+              <div style="color:#6E6E75;font-size:13px;margin-top:5px;">
+                {html.escape(organo)}</div>
+              <div style="color:#17171A;font-size:14px;margin-top:6px;">
+                <strong>{importe}</strong><span style="color:#6E6E75;">{html.escape(baja)}</span>
+              </div>
+            </td></tr>""")
+
+            bloque_seguidas_texto += (
+                f"- {quien}: {titulo}\n"
+                f"  {organo}\n"
+                f"  {importe}{baja}\n"
+                f"  {enlace}\n"
+            )
+
+        bloque_seguidas_html = f"""
+    <tr><td style="padding-top:30px;">
+      <h2 style="margin:0 0 4px;font-size:16px;font-weight:600;color:#17171A;">
+        Lo que ha ganado tu competencia</h2>
+      <p style="margin:0 0 4px;color:#6E6E75;font-size:14px;line-height:1.6;">
+        Empresas de tu lista de seguimiento.</p>
+      <table width="100%" cellpadding="0" cellspacing="0">{''.join(filas)}</table>
+    </td></tr>"""
+        bloque_seguidas_texto = (
+            "\nLO QUE HA GANADO TU COMPETENCIA\n"
+            "(empresas de tu lista de seguimiento)\n\n" + bloque_seguidas_texto)
+
+    # Las partes que dependen de si hay una cosa u otra se preparan aquí:
+    # meterlas dentro de la plantilla con condicionales la vuelve
+    # ilegible.
+    intro_html = ""
+    lista_html = ""
+    if items:
+        quien = html.escape(empresa) if empresa else "tu negocio"
+        intro_html = (
+            '<p style="margin:0 0 8px;color:#6E6E75;font-size:15px;'
+            'line-height:1.6;">Licitaciones abiertas que encajan con '
+            f'{quien}, detectadas esta madrugada.</p>'
+        )
+        lista_html = ('<tr><td><table width="100%" cellpadding="0" '
+                      f'cellspacing="0">{"".join(filas_html)}</table></td></tr>')
+
     cuerpo_html = f"""<!DOCTYPE html>
 <html lang="es"><body style="margin:0;padding:0;background:#F5F4F1;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F5F4F1;padding:32px 16px;">
@@ -312,12 +430,10 @@ def componer(items: list[dict]) -> tuple[str, str, str]:
       <h1 style="margin:0 0 8px;font-size:22px;font-weight:600;color:#17171A;line-height:1.3;">
         {asunto}
       </h1>
-      <p style="margin:0 0 8px;color:#6E6E75;font-size:15px;line-height:1.6;">
-        Contratos públicos de música, artes escénicas, producción y servicios
-        técnicos de espectáculo, detectados esta madrugada.
-      </p>
+      {intro_html}
     </td></tr>
-    <tr><td><table width="100%" cellpadding="0" cellspacing="0">{''.join(filas_html)}</table></td></tr>
+    {lista_html}
+    {bloque_seguidas_html}
     <tr><td style="padding-top:28px;">
       <a href="{html.escape(URL_INTERFAZ)}"
          style="display:inline-block;background:#17171A;color:#FFFFFF;
@@ -333,11 +449,16 @@ def componer(items: list[dict]) -> tuple[str, str, str]:
 </td></tr></table>
 </body></html>"""
 
+    intro_texto = ""
+    if items:
+        intro_texto = ("Licitaciones abiertas que encajan con tu negocio,\n"
+                       "detectadas esta madrugada.\n\n"
+                       + "\n".join(filas_texto))
+
     cuerpo_texto = (
         f"{asunto}\n\n"
-        "Contratos públicos de música, artes escénicas, producción y servicios\n"
-        "técnicos de espectáculo, detectados esta madrugada.\n\n"
-        + "\n".join(filas_texto)
+        + intro_texto
+        + bloque_seguidas_texto
         + f"\nVer todos los contratos abiertos: {URL_INTERFAZ}\n"
     )
 
@@ -452,6 +573,10 @@ def main() -> int:
     for perfil in perfiles:
         nombre = perfil.get("empresa") or perfil.get("nombre") or "?"
         items = novedades(cliente, perfil["id"])
+        # Las adjudicaciones de la competencia NO van por correo: el correo
+        # es para lo que caduca, y una adjudicación ya cerrada no exige
+        # actuar hoy. Están en la pestaña de Movimientos.
+        seguidas = []
 
         if not items:
             # Silencio deliberado: un correo que dice "hoy no hay nada"
@@ -461,7 +586,7 @@ def main() -> int:
             continue
 
         logging.info("[%s] %d novedades.", nombre, len(items))
-        asunto, cuerpo_html, cuerpo_texto = componer(items)
+        asunto, cuerpo_html, cuerpo_texto = componer(items, seguidas, nombre)
 
         if opciones.simulacro:
             logging.info("  Asunto: %s", asunto)
