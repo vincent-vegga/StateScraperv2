@@ -888,10 +888,10 @@ select:focus{
 /* La tarjeta se estira con la rejilla; la lista ocupa lo que sobre para
    que las dos columnas terminen a la misma altura. */
 .ranking{display:flex;flex-direction:column}
-.ranking ol{
-  margin:0;padding:0;list-style:none;flex:1;
-  display:flex;flex-direction:column;justify-content:space-between;gap:2px;
-}
+/* Sin repartir el espacio sobrante entre las filas: al cambiar el
+   detalle de abajo se recolocaban todas y la barra se escapaba del
+   cursor. */
+.ranking ol{margin:0;padding:0;list-style:none;flex:1}
 .ranking li{padding:9px 0;font-size:.9rem}
 .ranking li + li{border-top:1px solid var(--linea)}
 .ranking .fila-ranking{
@@ -914,16 +914,24 @@ select:focus{
   background:var(--linea);
 }
 .barra-tramos .tramo{
-  border:0;padding:0;min-width:2px;cursor:pointer;
+  border:0;padding:0;min-width:3px;cursor:pointer;
   transition:opacity .15s;
 }
+.barra-tramos .tramo.activo{opacity:1}
 .barra-tramos .tramo + .tramo{border-left:1px solid var(--superficie)}
 .barra-tramos:hover .tramo:not(:hover){opacity:.4}
 
+/* Altura FIJA, no mínima.
+   Con altura variable el texto crecía al aparecer, la tarjeta con él, y
+   la barra se apartaba del cursor: el ratón salía, el texto volvía a su
+   sitio, la barra regresaba bajo el cursor y otra vez. Un bucle que se
+   veía como una vibración. */
 .detalle-tramo{
-  min-height:34px;margin-top:12px;padding-top:11px;
+  height:56px;margin-top:12px;padding-top:11px;
   border-top:1px solid var(--linea);
-  color:var(--tenue);font-size:.84rem;line-height:1.45;
+  color:var(--tenue);font-size:.84rem;line-height:1.4;
+  overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
 }
 .detalle-tramo strong{color:var(--texto);font-weight:600}
 
@@ -3061,14 +3069,25 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
       hueco.innerHTML = `<strong>${esc(t.dataset.titulo)}</strong>` +
         (t.dataset.quien ? `<br>${esc(t.dataset.quien)}` : '') +
         (t.dataset.importe ? ` · ${esc(t.dataset.importe)}` : '');
+      tramos.forEach(x => x.classList.toggle('activo', x === t));
     };
+    const soltar = () => {
+      hueco.innerHTML = reposo;
+      tramos.forEach(x => x.classList.remove('activo'));
+    };
+
+    // Se escucha en la tarjeta entera y no tramo a tramo: así el detalle
+    // solo se borra al salir de la tarjeta, no cada vez que el cursor
+    // cruza de un tramo al siguiente.
+    caja.addEventListener('mouseover', ev => {
+      const t = ev.target.closest('.tramo');
+      if (t) mostrar(t);
+    });
+    caja.addEventListener('mouseleave', soltar);
     tramos.forEach(t => {
-      t.onmouseenter = () => mostrar(t);
       t.onfocus = () => mostrar(t);
       t.onclick = () => mostrar(t);
     });
-    caja.querySelector('.barra-tramos')?.closest('ol')
-      ?.addEventListener('mouseleave', () => { hueco.innerHTML = reposo; });
   });
 }
 
