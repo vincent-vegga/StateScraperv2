@@ -3126,39 +3126,73 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
   const zona = document.getElementById('zona');
 
   // ---------- Buscador ----------
-  let esperando;
-  async function buscar() {
-    const texto = campo.value.trim();
-    const { data } = await sb.rpc('buscar_organismo', { texto });
-    const filas = data ?? [];
-    if (!filas.length) {
-      caja.innerHTML = `<p class="sinresultado">Ningún organismo con ese
-        nombre ha adjudicado contratos de tu sector.</p>`;
-      caja.hidden = false;
-      return;
-    }
-    caja.innerHTML = filas.map(o => `<button data-organo="${esc(o.organo)}">
-      ${esc(o.organo)}
-      <span class="cuantos">${esc(o.provincia ?? '')}${o.provincia ? ' · ' : ''}${
-        o.contratos} ${o.contratos === 1 ? 'contrato' : 'contratos'}${
-        o.importe ? ` · ${euros(Number(o.importe))}` : ''}</span>
-    </button>`).join('');
+  //
+  // La lista se pide UNA vez al entrar y se filtra en el navegador.
+  // Consultando en cada tecla, cada búsqueda tardaba segundos: agrupar
+  // por organismo sobre decenas de miles de filas no es instantáneo, y
+  // hacerlo cinco veces mientras se escribe una palabra menos.
+  let TODOS = [];
+  campo.disabled = true;
+  campo.placeholder = 'Cargando organismos...';
+
+  sb.rpc('buscar_organismo', { texto: '' }).then(({ data }) => {
+    TODOS = data ?? [];
+    campo.disabled = false;
+    campo.placeholder = 'Ayuntamiento, diputación, consejería...';
+  });
+
+  const sinAcentos = s => String(s ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  function buscar() {
+    const q = sinAcentos(campo.value.trim());
+    const filas = (q ? TODOS.filter(o => sinAcentos(o.organo).includes(q)) : TODOS)
+      .slice(0, 30);
+
+    caja.innerHTML = filas.length
+      ? filas.map(o => `<button data-organo="${esc(o.organo)}">
+          ${esc(o.organo)}
+          <span class="cuantos">${esc(o.provincia ?? '')}${o.provincia ? ' · ' : ''}${
+            o.contratos} ${o.contratos === 1 ? 'contrato' : 'contratos'}${
+            o.importe ? ` · ${euros(Number(o.importe))}` : ''}</span>
+        </button>`).join('')
+      : `<p class="sinresultado">Ningún organismo con ese nombre ha
+         adjudicado contratos de tu sector.</p>`;
     caja.hidden = false;
-    caja.querySelectorAll('[data-organo]').forEach(b => b.onclick = () => {
-      caja.hidden = true;
-      campo.value = b.dataset.organo;
-      abrir(b.dataset.organo);
-    });
   }
 
-  campo.oninput = () => { clearTimeout(esperando); esperando = setTimeout(buscar, 220); };
+  campo.oninput = buscar;
   campo.onfocus = buscar;
+  caja.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-organo]');
+    if (!b) return;
+    caja.hidden = true;
+    campo.value = b.dataset.organo;
+    abrir(b.dataset.organo);
+  });
   document.addEventListener('click', ev => {
     if (!ev.target.closest('.buscar-organo')) caja.hidden = true;
   });
 
   // ---------- Ficha ----------
   let desde = null, hasta = null, disponibles = [];
+  let ultimoOrgano = null, ultimaFicha = null;
+  let ultimasEmpresas = [], ultimosContratos = [];
+  let señalarAhora = null, limpiarAhora = null;
+
+  // Enganchados una sola vez sobre el contenedor, que no se sustituye.
+  zona.addEventListener('mouseover', ev => {
+    const el = ev.target.closest('.trozo, .lista-empresas [data-cif]');
+    if (el && señalarAhora) señalarAhora(el);
+  });
+  zona.addEventListener('mouseleave', () => { if (limpiarAhora) limpiarAhora(); });
+  zona.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-forma]');
+    if (!b || !ultimaFicha) return;
+    if (b.getAttribute('aria-pressed') === 'true') return;
+    ponerForma(b.dataset.forma);
+    pintar(ultimoOrgano, ultimaFicha);
+  });
 
   async function abrir(cual, conservarAnios = false) {
     zona.innerHTML = `<p class="guia" style="margin-top:24px">Cargando...</p>`;
@@ -3241,7 +3275,7 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
                 <button data-forma="barras"
                   aria-pressed="${formaActual() !== 'quesito'}">Barras</button>
                 <button data-forma="quesito"
-                  aria-pressed="${formaActual() === 'quesito'}">Quesito</button>
+                  aria-pressed="${formaActual() === 'quesito'}">Circular</button>
               </div>
             </div>
             ${apilada(empresas, 'nombre', 'contratos', 'contratos', false,
@@ -3262,6 +3296,9 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
           </div>
         </div>
       </div>`;
+
+    ultimoOrgano = cual; ultimaFicha = d; ultimasEmpresas = empresas;
+    ultimosContratos = contratos;
 
     // ---------- Los contratos siguen a lo que señalas ----------
     //
@@ -3296,20 +3333,14 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
       pintarContratos(cifs, cifs.length === 1 ? (suya?.nombre ?? null) : null);
     };
 
-    zona.addEventListener('mouseover', ev => {
-      const el = ev.target.closest('.trozo, .lista-empresas [data-cif]');
-      if (el) señalar(el);
-    });
-    zona.querySelector('.panel-organo')
-      ?.addEventListener('mouseleave', () => pintarContratos(null, null));
+    // El detalle y el interruptor se atienden por delegación desde
+    // `zona`, enganchados UNA vez al abrir la pantalla. Volver a
+    // engancharlos en cada dibujado los duplicaba y bastaba con que uno
+    // fallara para que el botón dejara de responder.
+    señalarAhora = señalar;
+    limpiarAhora = () => pintarContratos(null, null);
 
     activarBarras(zona);
-
-    zona.querySelectorAll('[data-forma]').forEach(b => b.onclick = () => {
-      if (b.getAttribute('aria-pressed') === 'true') return;
-      ponerForma(b.dataset.forma);
-      pintar(cual, d);
-    });
 
     // El selector recarga la ficha con el periodo nuevo.
     const dDesde = document.getElementById('a-desde');
@@ -3610,6 +3641,18 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   // junto al buscador y no abajo con las listas.
   alPulsar('ver-mia', () => verEmpresa(perfil.cif));
 
+  // Cambiar de forma repinta la ficha y guarda la elección para todos los
+  // gráficos. Enganchado una sola vez sobre el contenedor, que no se
+  // sustituye al redibujar.
+  let ultimaEmpresa = null;
+  zona.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-forma]');
+    if (!b || !ultimaEmpresa) return;
+    if (b.getAttribute('aria-pressed') === 'true') return;
+    ponerForma(b.dataset.forma);
+    pintarFicha(ultimaEmpresa);
+  });
+
   // ---------- Estado: listas ----------
   async function verListas() {
     zona.innerHTML = `<p class="guia">Cargando...</p>`;
@@ -3777,7 +3820,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
               <button data-forma="barras"
                 aria-pressed="${formaActual() !== 'quesito'}">Barras</button>
               <button data-forma="quesito"
-                aria-pressed="${formaActual() === 'quesito'}">Quesito</button>
+                aria-pressed="${formaActual() === 'quesito'}">Circular</button>
             </div>
           </div>
           <div style="margin-bottom:26px">${reparto(sectores, 'sector')}</div>` : ''}
@@ -3810,13 +3853,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     activarBarras(zona);
     alPulsar('volver-listas', () => history.back());
 
-    // Cambiar de forma repinta la ficha con la nueva y guarda la elección
-    // para todos los gráficos, aquí y en las demás pantallas.
-    zona.querySelectorAll('[data-forma]').forEach(b => b.onclick = () => {
-      if (b.getAttribute('aria-pressed') === 'true') return;
-      ponerForma(b.dataset.forma);
-      pintarFicha(e);
-    });
+    // El interruptor se atiende por delegación, más abajo: volver a
+    // engancharlo en cada dibujado lo duplicaba.
+    ultimaEmpresa = e;
 
     alPulsar('seguir', async () => {
       const b = document.getElementById('seguir');
