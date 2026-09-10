@@ -885,15 +885,18 @@ select:focus{
   margin:0 0 14px;font-size:.79rem;font-weight:650;color:var(--tenue);
   letter-spacing:.05em;text-transform:uppercase;
 }
-.ranking ol{margin:0;padding:0;list-style:none;counter-reset:puesto}
-.ranking li{
-  display:grid;grid-template-columns:20px 1fr auto;gap:11px;
-  align-items:baseline;padding:9px 0;font-size:.9rem;
+/* La tarjeta se estira con la rejilla; la lista ocupa lo que sobre para
+   que las dos columnas terminen a la misma altura. */
+.ranking{display:flex;flex-direction:column}
+.ranking ol{
+  margin:0;padding:0;list-style:none;flex:1;
+  display:flex;flex-direction:column;justify-content:space-between;gap:2px;
 }
+.ranking li{padding:9px 0;font-size:.9rem}
 .ranking li + li{border-top:1px solid var(--linea)}
-.ranking li::before{
-  counter-increment:puesto;content:counter(puesto);
-  color:var(--tenue);font-size:.8rem;font-variant-numeric:tabular-nums;
+.ranking .fila-ranking{
+  display:flex;justify-content:space-between;gap:12px;align-items:baseline;
+  margin-bottom:7px;
 }
 .ranking .cual{min-width:0;word-break:break-word}
 .ranking .cuanto{
@@ -902,6 +905,27 @@ select:focus{
 }
 .ranking li.mia .cual{color:var(--si);font-weight:650}
 .ranking li.sigo .cual{font-weight:650}
+
+/* Cada barra son sus contratos, uno detrás de otro: el ancho total
+   compara empresas y cada tramo es un contrato concreto que se puede
+   señalar. */
+.barra-tramos{
+  display:flex;height:10px;border-radius:99px;overflow:hidden;
+  background:var(--linea);
+}
+.barra-tramos .tramo{
+  border:0;padding:0;min-width:2px;cursor:pointer;
+  transition:opacity .15s;
+}
+.barra-tramos .tramo + .tramo{border-left:1px solid var(--superficie)}
+.barra-tramos:hover .tramo:not(:hover){opacity:.4}
+
+.detalle-tramo{
+  min-height:34px;margin-top:12px;padding-top:11px;
+  border-top:1px solid var(--linea);
+  color:var(--tenue);font-size:.84rem;line-height:1.45;
+}
+.detalle-tramo strong{color:var(--texto);font-weight:600}
 
 @media(max-width:720px){
   .dos-columnas{grid-template-columns:1fr}
@@ -2891,14 +2915,74 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
   activarCampana();
   activarNav(perfil, session, 'movimientos');
 
-  const [mov, pul, rank] = await Promise.all([
+  const [mov, pul] = await Promise.all([
     sb.rpc('movimientos_mercado', { dias: 30 }),
     sb.rpc('pulso_mercado', { dias: 30 }),
-    sb.rpc('ranking_mercado', { dias: 30 }),
   ]);
   const lista = mov.data ?? [];
   const p = pul.data ?? {};
-  const r = rank.data ?? {};
+
+  // Los rankings salen de la misma lista que se enseña debajo, no de otra
+  // consulta: así lo que se cuenta arriba y lo que se ve abajo coinciden
+  // siempre, y cada barra puede desglosarse en sus contratos.
+  function agrupar(clave, etiqueta) {
+    const grupos = new Map();
+    lista.forEach(m => {
+      const k = m[clave];
+      if (!k) return;
+      if (!grupos.has(k)) grupos.set(k, {
+        clave: k, nombre: m[etiqueta] ?? k, provincia: m.provincia,
+        es_mia: !!m.es_mia, la_sigo: !!m.la_sigo, contratos: [],
+      });
+      grupos.get(k).contratos.push(m);
+    });
+    return [...grupos.values()]
+      .map(g => ({ ...g,
+        n: g.contratos.length,
+        euros: g.contratos.reduce((s, c) => s + (Number(c.importe) || 0), 0) }))
+      .sort((a, b) => b.n - a.n || b.euros - a.euros)
+      .slice(0, 6);
+  }
+
+  const porEmpresa = agrupar('cif', 'empresa');
+  const porOrgano = agrupar('organo', 'organo');
+
+  function bloqueRanking(filas, titulo, id) {
+    if (!filas.length) return '';
+    // El ancho se mide contra el mayor: es una comparación entre
+    // empresas, no un reparto de un total.
+    const tope = Math.max(...filas.map(f => f.euros), 1);
+    return `
+      <div class="ranking" data-ranking="${id}">
+        <h4>${titulo}</h4>
+        <ol>${filas.map((f, i) => {
+          // Cada contrato, un tramo. Los muy pequeños se ven porque hay
+          // un ancho mínimo.
+          const tramos = [...f.contratos]
+            .sort((a, b) => (Number(b.importe) || 0) - (Number(a.importe) || 0));
+          return `<li class="${f.es_mia ? 'mia' : f.la_sigo ? 'sigo' : ''}">
+            <div class="fila-ranking">
+              <span class="cual">${esc(f.nombre)}${
+                f.provincia && id === 'organos'
+                  ? `<span class="cuanto"> · ${esc(f.provincia)}</span>` : ''}</span>
+              <span class="cuanto">${f.n} · ${euros(f.euros)}</span>
+            </div>
+            <div class="barra-tramos" style="width:${f.euros / tope * 100}%">
+              ${tramos.map((c, j) => `<button class="tramo"
+                style="width:${(Number(c.importe) || 0) / f.euros * 100}%;
+                       background:${PALETA[(i + j) % PALETA.length]}"
+                data-titulo="${esc(c.titulo ?? '')}"
+                data-quien="${esc(id === 'organos' ? (c.empresa ?? '') : (c.organo ?? ''))}"
+                data-importe="${esc(euros(Number(c.importe)) ?? '')}"
+                aria-label="${esc(c.titulo ?? '')}"></button>`).join('')}
+            </div>
+          </li>`;
+        }).join('')}</ol>
+        <div class="detalle-tramo" data-hueco-ranking>
+          Pasa por encima de un tramo para ver el contrato.
+        </div>
+      </div>`;
+  }
 
   const fecha = s => s ? new Date(s).toLocaleDateString('es-ES',
     { timeZone: ZONA, day: 'numeric', month: 'short' }) : '';
@@ -2937,52 +3021,55 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
         <h1 style="margin:0 0 12px">Qué se ha adjudicado en tu sector</h1>
         <p class="guia" style="margin:0">Los contratos que se han cerrado en
         los últimos treinta días con los mismos códigos que los tuyos. Quién
-        los ganó, de qué organismo y a qué precio respecto al presupuesto de
-        salida.</p>
+        los ganó, de qué organismo y por cuánto.</p>
       </div>
 
       <div class="pulso">
         <h4>El mes en tu sector</h4>
         <dl>
-          <dt>Contratos adjudicados</dt><dd>${p.contratos ?? 0}</dd>
+          <dt>Adjudicaciones</dt><dd>${p.contratos ?? 0}</dd>
           <dt>Importe total</dt><dd>${
             p.importe ? euros(Number(p.importe)) : '—'}</dd>
           <dt>Empresas distintas</dt><dd>${p.empresas ?? 0}</dd>
           ${p.importe_medio ? `<dt>Importe medio</dt>
             <dd>${euros(Number(p.importe_medio))}</dd>` : ''}
         </dl>
-        ${p.mias ? `<p class="destacado">De ellos, <strong>${p.mias}</strong>
-          ${p.mias === 1 ? 'lo has ganado tú' : 'los has ganado tú'}.</p>` : ''}
+        ${p.mias ? `<p class="destacado">De ellas, <strong>${p.mias}</strong>
+          ${p.mias === 1 ? 'la has ganado tú' : 'las has ganado tú'}.</p>` : ''}
+        <p class="destacado" style="font-size:.8rem">Cada lote de un contrato
+        cuenta como una adjudicación, así que el importe medio es por
+        adjudicación y no por expediente.</p>
       </div>
     </div>
 
-    ${(r.empresas?.length || r.organos?.length) ? `
+    ${(porEmpresa.length || porOrgano.length) ? `
     <div class="dos-columnas">
-      ${r.empresas?.length ? `
-        <div class="ranking">
-          <h4>Quién ha ganado más este mes</h4>
-          <ol>${r.empresas.map(e => `
-            <li class="${e.es_mia ? 'mia' : e.la_sigo ? 'sigo' : ''}">
-              <span class="cual">${esc(e.nombre ?? '—')}</span>
-              <span class="cuanto">${e.contratos}${
-                e.importe ? ` · ${euros(Number(e.importe))}` : ''}</span>
-            </li>`).join('')}</ol>
-        </div>` : ''}
-
-      ${r.organos?.length ? `
-        <div class="ranking">
-          <h4>Quién ha adjudicado más</h4>
-          <ol>${r.organos.map(o => `
-            <li>
-              <span class="cual">${esc(o.organo ?? '—')}${
-                o.provincia ? `<span class="cuanto"> · ${esc(o.provincia)}</span>` : ''}</span>
-              <span class="cuanto">${o.contratos}${
-                o.importe ? ` · ${euros(Number(o.importe))}` : ''}</span>
-            </li>`).join('')}</ol>
-        </div>` : ''}
+      ${bloqueRanking(porEmpresa, 'Quién ha ganado más este mes', 'empresas')}
+      ${bloqueRanking(porOrgano, 'Quién ha adjudicado más', 'organos')}
     </div>` : ''}
 
     <div style="margin-top:32px">${cuerpo}</div>`;
+
+  // Cada tramo dice de qué contrato es. Sin esto la barra solo compara
+  // tamaños; con esto se puede ir al detalle sin bajar a la lista.
+  raiz.querySelectorAll('[data-ranking]').forEach(caja => {
+    const hueco = caja.querySelector('[data-hueco-ranking]');
+    const reposo = hueco.innerHTML;
+    const tramos = [...caja.querySelectorAll('.tramo')];
+
+    const mostrar = t => {
+      hueco.innerHTML = `<strong>${esc(t.dataset.titulo)}</strong>` +
+        (t.dataset.quien ? `<br>${esc(t.dataset.quien)}` : '') +
+        (t.dataset.importe ? ` · ${esc(t.dataset.importe)}` : '');
+    };
+    tramos.forEach(t => {
+      t.onmouseenter = () => mostrar(t);
+      t.onfocus = () => mostrar(t);
+      t.onclick = () => mostrar(t);
+    });
+    caja.querySelector('.barra-tramos')?.closest('ol')
+      ?.addEventListener('mouseleave', () => { hueco.innerHTML = reposo; });
+  });
 }
 
 async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
