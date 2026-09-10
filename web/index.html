@@ -883,6 +883,9 @@ select:focus{
   pointer-events:auto;width:15px;height:15px;border-radius:50%;
   background:var(--superficie);border:2px solid var(--texto);cursor:grab;
 }
+/* El asa no recorre todo el ancho: se detiene a media anchura de su
+   propio círculo en cada extremo. Las marcas se colocan sobre ese mismo
+   recorrido, o no coinciden con la posición donde se clava. */
 .anios .marcas{position:absolute;top:18px;left:0;right:0;pointer-events:none}
 .anios .marcas span{
   position:absolute;transform:translateX(-50%);
@@ -895,6 +898,10 @@ select:focus{
 
 /* ---------- Buscador de organismo ---------- */
 .buscar-organo{position:relative;max-width:760px;margin-top:22px}
+/* El campo hereda `flex:1 1 220px` de la regla general, que fuera de un
+   contenedor flexible no hace nada: se quedaba en su ancho por defecto y
+   cortaba los nombres largos. */
+.buscar-organo input[type=search]{width:100%;flex:none}
 .sugerencias{
   position:absolute;z-index:30;top:calc(100% + 5px);left:0;right:0;
   max-height:300px;overflow-y:auto;padding:5px;
@@ -2179,12 +2186,19 @@ const temaActual = () => document.documentElement.dataset.tema || 'claro';
 
 // Forma de los gráficos. Uno solo para toda la aplicación: es una
 // preferencia del cliente, no de cada gráfico.
-const formaActual = () => {
+// La elección vive en memoria y se copia al almacenamiento, no al revés.
+// Leerla de vuelta justo después de escribirla la hacía depender de que
+// el navegador permitiera guardar, y en cuanto fallaba el interruptor
+// dejaba de responder sin dar ninguna señal.
+let FORMA = (() => {
   try { return localStorage.getItem('forma') || 'barras'; }
   catch { return 'barras'; }
-};
+})();
+
+const formaActual = () => FORMA;
 
 function ponerForma(cual) {
+  FORMA = cual;
   try { localStorage.setItem('forma', cual); } catch { /* modo privado */ }
 }
 
@@ -3175,21 +3189,23 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
     // se clavaba el asa.
     const todos = [];
     for (let a = min; a <= max; a++) todos.push(a);
-    const pos = a => max === min ? 0 : (a - min) / (max - min) * 100;
+    // 15 px es el diámetro del asa: recorre de 7,5 px a (ancho − 7,5).
+    const pos = a => max === min ? 0 : (a - min) / (max - min);
+    const sitio = a => `calc(7.5px + (100% - 15px) * ${pos(a).toFixed(4)})`;
 
     return `
       <div class="anios">
         <span class="rotulo">Periodo</span>
         <div class="pista-anios">
           <div class="riel-anios"></div>
-          <div class="tramo-elegido" style="left:${pos(desde)}%;
-               width:${pos(hasta) - pos(desde)}%"></div>
+          <div class="tramo-elegido" style="left:${sitio(desde)};
+               width:calc(${sitio(hasta)} - ${sitio(desde)})"></div>
           <input type="range" id="a-desde" min="${min}" max="${max}" step="1"
                  value="${desde}" aria-label="Desde el año">
           <input type="range" id="a-hasta" min="${min}" max="${max}" step="1"
                  value="${hasta}" aria-label="Hasta el año">
           <div class="marcas">${todos.map(a =>
-            `<span style="left:${pos(a)}%">${String(a).slice(2)}</span>`).join('')}</div>
+            `<span style="left:${sitio(a)}">${String(a).slice(2)}</span>`).join('')}</div>
         </div>
         <span class="elegido">${desde === hasta ? desde : `${desde}–${hasta}`}</span>
       </div>`;
@@ -3301,15 +3317,16 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
     if (!dDesde) return;
 
     const min = disponibles[0], max = disponibles[disponibles.length - 1];
-    const pos = a => max === min ? 0 : (a - min) / (max - min) * 100;
+    const pos = a => max === min ? 0 : (a - min) / (max - min);
+    const sitio = a => `calc(7.5px + (100% - 15px) * ${pos(a).toFixed(4)})`;
 
     const previsualizar = () => {
       let a = +dDesde.value, b = +dHasta.value;
       if (a > b) [a, b] = [b, a];
       const tramo = zona.querySelector('.tramo-elegido');
       if (tramo) {
-        tramo.style.left = pos(a) + '%';
-        tramo.style.width = (pos(b) - pos(a)) + '%';
+        tramo.style.left = sitio(a);
+        tramo.style.width = `calc(${sitio(b)} - ${sitio(a)})`;
       }
       const texto = zona.querySelector('.anios .elegido');
       if (texto) texto.textContent = a === b ? a : `${a}–${b}`;
