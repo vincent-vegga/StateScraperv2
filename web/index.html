@@ -895,7 +895,12 @@ select:focus{
    detalle de abajo se recolocaban todas y la barra se escapaba del
    cursor. */
 .ranking ol{margin:0;padding:0;list-style:none;flex:1}
-.ranking li{padding:9px 0;font-size:.9rem}
+/* Altura fija por fila. Sin ella, una columna con nombres de una línea
+   quedaba más corta que la otra y las dos tarjetas no cuadraban. */
+.ranking li{
+  padding:10px 0;font-size:.9rem;height:82px;
+  display:flex;flex-direction:column;justify-content:center;
+}
 .ranking li + li{border-top:1px solid var(--linea)}
 .ranking .fila-ranking{
   display:flex;justify-content:space-between;gap:12px;align-items:baseline;
@@ -907,7 +912,7 @@ select:focus{
 .ranking .cual{
   min-width:0;word-break:break-word;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
-  overflow:hidden;min-height:2.7em;
+  overflow:hidden;
 }
 .ranking .cuanto{
   color:var(--tenue);font-size:.84rem;white-space:nowrap;
@@ -938,10 +943,12 @@ select:focus{
    la barra se apartaba del cursor: el ratón salía, el texto volvía a su
    sitio, la barra regresaba bajo el cursor y otra vez. Un bucle que se
    veía como una vibración. */
+/* La altura da para las tres líneas que se permiten: 3 × 1.4 × 13,3 px
+   más el hueco de arriba. Con 64 px el texto se cortaba a media línea. */
 .detalle-tramo{
-  height:64px;margin-top:14px;padding-top:12px;
+  height:78px;margin-top:14px;padding-top:13px;
   border-top:1px solid var(--linea);
-  color:var(--tenue);font-size:.83rem;line-height:1.4;
+  color:var(--tenue);font-size:.83rem;line-height:1.45;
   overflow:hidden;
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
 }
@@ -2995,7 +3002,9 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
           const tramos = [...cabeza];
           if (cola.length) {
             tramos.push({
-              titulo: `Otros ${cola.length} ${cola.length === 1 ? 'contrato' : 'contratos'}`,
+              titulo: cola.length === 1
+                ? 'Otro contrato'
+                : `Otros ${cola.length} contratos`,
               organo: '', empresa: '',
               importe: cola.reduce((s, c) => s + (Number(c.importe) || 0), 0),
               agrupado: true,
