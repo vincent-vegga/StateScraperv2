@@ -1565,8 +1565,12 @@ select:focus{
   to{opacity:1;transform:none}
 }
 
+.bienvenida .saluda{
+  margin:0 0 10px;color:var(--tenue);font-size:.9rem;
+  letter-spacing:.09em;text-transform:uppercase;
+}
 .bienvenida h1{
-  font-size:clamp(1.9rem,5vw,2.6rem);margin:0 0 16px;line-height:1.15;
+  font-size:clamp(1.75rem,4.5vw,2.4rem);margin:0 0 16px;line-height:1.18;
 }
 .bienvenida .principal{min-width:190px}
 .bienvenida .lema{
@@ -4262,13 +4266,13 @@ function pantallaBienvenida(perfil, session) {
   raiz.innerHTML = `
     <div class="bienvenida">
       <div class="entra">
-        <h1>Ya tienes tus contratos</h1>
+        <p class="saluda">Bienvenido</p>
+        <h1>${esc(perfil.empresa || 'Tu empresa')}, ya tiene sus contratos</h1>
       </div>
       <div class="entra">
-        <p class="lema">Hemos leído los contratos que ha ganado
-        ${esc(perfil.empresa || 'tu empresa')} y con eso hemos montado tu
-        filtro. Pero <strong>solo tú sabes a qué te presentarías de
-        verdad</strong>.</p>
+        <p class="lema">Hemos leído los contratos públicos que has ganado y
+        con eso hemos montado tu filtro. Pero <strong>solo tú sabes a qué
+        te presentarías de verdad</strong>.</p>
       </div>
       <div class="entra">
         <p class="lema" style="margin-bottom:18px">Por eso cada contrato
