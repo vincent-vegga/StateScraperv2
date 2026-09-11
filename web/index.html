@@ -3226,7 +3226,9 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
   sb.rpc('buscar_organismo', { texto: '' }).then(({ data }) => {
     TODOS = data ?? [];
     campo.disabled = false;
-    campo.placeholder = 'Ayuntamiento, diputación, consejería...';
+    campo.placeholder = TODOS.length
+      ? `Busca entre ${TODOS.length} organismos de tu sector`
+      : 'Ayuntamiento, diputación, consejería...';
   });
 
   const sinAcentos = s => String(s ?? '')
@@ -3235,9 +3237,13 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
   function buscar() {
     const q = sinAcentos(campo.value.trim());
     const filas = (q ? TODOS.filter(o => sinAcentos(o.organo).includes(q)) : TODOS)
-      .slice(0, 30);
+      .slice(0, 40);
 
-    caja.innerHTML = filas.length
+    const total = q
+      ? TODOS.filter(o => sinAcentos(o.organo).includes(q)).length
+      : TODOS.length;
+
+    caja.innerHTML = (filas.length
       ? filas.map(o => `<button data-organo="${esc(o.organo)}">
           ${esc(o.organo)}
           <span class="cuantos">${esc(o.provincia ?? '')}${o.provincia ? ' · ' : ''}${
@@ -3245,7 +3251,10 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
             o.importe ? ` · ${euros(Number(o.importe))}` : ''}</span>
         </button>`).join('')
       : `<p class="sinresultado">Ningún organismo con ese nombre ha
-         adjudicado contratos de tu sector.</p>`;
+         adjudicado contratos de tu sector.</p>`)
+      + (total > filas.length
+        ? `<p class="sinresultado">Y ${total - filas.length} más. Escribe
+           unas letras del nombre para acotar.</p>` : '');
     caja.hidden = false;
   }
 
