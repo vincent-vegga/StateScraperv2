@@ -1528,71 +1528,69 @@ select:focus{
 }
 
 /* ---------- Bienvenida ----------
-   Una pantalla aparte y con entrada propia. Metida en la primera fila de
-   la lista no se distinguía de lo habitual: sin nada que la señalara
-   como excepcional, se lee como un elemento más y se pasa de largo. */
-/* Ancho de lectura y no de pantalla: con 640 px los párrafos salían a
-   dos líneas muy largas y el bloque flotaba en el centro sin apoyarse en
-   nada. Con una columna estrecha y todo alineado a la izquierda, el ojo
-   tiene un margen al que volver en cada línea. */
+   Centrada y a gran tamaño. Un bloque estrecho alineado a la izquierda,
+   flotando en medio de una pantalla vacía, no se lee como un momento
+   especial sino como contenido mal colocado: lo que le daba aspecto
+   descuidado era la falta de un eje. */
 .bienvenida{
-  min-height:70vh;display:flex;flex-direction:column;justify-content:center;
-  max-width:470px;margin:0 auto;padding:40px 0;
+  min-height:76vh;display:flex;flex-direction:column;justify-content:center;
+  align-items:center;text-align:center;
+  max-width:560px;margin:0 auto;padding:40px 0;
 }
-/* Entrada lenta y escalonada. Con medio segundo y poco recorrido, el
-   texto aparecía de golpe aunque técnicamente hubiera transición: lo que
-   da sensación de calma es el tiempo entre uno y otro, no la duración de
-   cada uno. */
+
+.bienvenida .saluda{
+  margin:0 0 14px;color:var(--tenue);font-size:.82rem;
+  letter-spacing:.13em;text-transform:uppercase;
+}
+.bienvenida h1{
+  font-size:clamp(2.4rem,7vw,3.6rem);margin:0 0 28px;line-height:1.05;
+  letter-spacing:-.035em;
+}
+.bienvenida .lema{
+  font-size:1.05rem;line-height:1.7;color:var(--tenue);margin:0 0 30px;
+  /* Medida corta: el texto centrado se sigue peor que el alineado, así
+     que las líneas tienen que ser breves para compensarlo. */
+  max-width:44ch;
+}
+.bienvenida .lema strong{color:var(--texto);font-weight:650}
+.bienvenida .principal{min-width:210px;margin-top:10px}
+
+.dos-botones{
+  display:flex;gap:10px;align-items:center;justify-content:center;
+  margin:0 0 30px;
+}
+.dos-botones .muestra{
+  display:inline-flex;align-items:center;min-height:36px;padding:0 15px;
+  border:1px solid var(--linea);border-radius:7px;
+  background:var(--superficie);font-size:.86rem;color:var(--tenue);
+  box-shadow:var(--sombra-corta);
+}
+.dos-botones .muestra.si{border-color:var(--si);color:var(--si)}
+.dos-botones .muestra.no{border-color:var(--no);color:var(--no)}
+
+/* Entrada lenta y escalonada. Lo que da sensación de calma es el tiempo
+   entre uno y otro, no la duración de cada uno. */
 .bienvenida .entra{
   opacity:0;transform:translateY(14px);
   animation:subir 1.1s cubic-bezier(.16,.8,.3,1) forwards;
 }
-.bienvenida .entra:nth-child(1){animation-delay:.25s}
-.bienvenida .entra:nth-child(2){animation-delay:.95s}
-.bienvenida .entra:nth-child(3){animation-delay:1.75s}
-.bienvenida .entra:nth-child(4){animation-delay:2.7s}
+.bienvenida .entra:nth-child(1){animation-delay:.3s}
+.bienvenida .entra:nth-child(2){animation-delay:1.2s}
+.bienvenida .entra:nth-child(3){animation-delay:2.3s}
+/* El botón, mucho después: si aparece con el texto, se pulsa antes de
+   leerlo. */
+.bienvenida .entra:nth-child(4){animation-delay:4.6s}
 
-@keyframes subir{
-  to{opacity:1;transform:none}
-}
+@keyframes subir{ to{opacity:1;transform:none} }
 
-/* Los dos botones de muestra entran después del párrafo que los anuncia,
-   para que se lea la frase antes de verlos. */
-.dos-botones .muestra{
-  opacity:0;animation:asomar .9s ease forwards;
-}
-.dos-botones .muestra.si{animation-delay:2.15s}
-.dos-botones .muestra.no{animation-delay:2.35s}
+.dos-botones .muestra{opacity:0;animation:asomar .9s ease forwards}
+.dos-botones .muestra.si{animation-delay:2.9s}
+.dos-botones .muestra.no{animation-delay:3.1s}
 
 @keyframes asomar{
   from{opacity:0;transform:scale(.96)}
   to{opacity:1;transform:none}
 }
-
-.bienvenida .saluda{
-  margin:0 0 10px;color:var(--tenue);font-size:.9rem;
-  letter-spacing:.09em;text-transform:uppercase;
-}
-.bienvenida h1{
-  font-size:clamp(1.75rem,4.5vw,2.4rem);margin:0 0 16px;line-height:1.18;
-}
-.bienvenida .principal{min-width:190px}
-.bienvenida .lema{
-  font-size:1rem;line-height:1.65;color:var(--tenue);margin:0 0 26px;
-}
-.bienvenida .entra:last-child{margin-top:8px}
-.bienvenida .lema strong{color:var(--texto);font-weight:650}
-
-.dos-botones{
-  display:flex;gap:10px;align-items:center;margin:0 0 24px;
-}
-.dos-botones .muestra{
-  display:inline-flex;align-items:center;min-height:34px;padding:0 13px;
-  border:1px solid var(--linea);border-radius:6px;
-  background:var(--superficie);font-size:.84rem;color:var(--tenue);
-}
-.dos-botones .muestra.si{border-color:var(--si);color:var(--si)}
-.dos-botones .muestra.no{border-color:var(--no);color:var(--no)}
 
 @media(prefers-reduced-motion:reduce){
   .bienvenida .entra,
@@ -4274,19 +4272,18 @@ function pantallaBienvenida(perfil, session) {
         <h1>Bienvenido</h1>
       </div>
       <div class="entra">
-        <p class="lema">Hemos leído los contratos públicos que has ganado y
-        con eso hemos montado tu filtro. Pero <strong>solo tú sabes a qué
-        te presentarías de verdad</strong>.</p>
+        <p class="lema">Hemos montado tu filtro leyendo los contratos que
+        has ganado. Pero <strong>solo tú sabes a qué te presentarías de
+        verdad</strong>.</p>
       </div>
       <div class="entra">
-        <p class="lema">Por eso cada contrato lleva dos botones:</p>
         <div class="dos-botones">
           <span class="muestra si">Sí me interesa</span>
           <span class="muestra no">No me interesa</span>
         </div>
-        <p class="lema">Úsalos cuando algo no encaje. A las pocas
-        correcciones <strong>ajustamos tu filtro</strong> y dejamos de
-        enseñarte lo que no es para ti.</p>
+        <p class="lema">Verás estos botones en cada contrato. Úsalos cuando
+        algo no encaje: a las pocas correcciones <strong>ajustamos tu
+        filtro</strong> y dejas de ver lo que no es para ti.</p>
       </div>
       <div class="entra">
         <button class="principal" id="empezar">Ver mis contratos</button>
