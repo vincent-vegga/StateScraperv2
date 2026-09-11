@@ -2971,7 +2971,11 @@ async function pantallaCribando(perfil, session, lectura) {
   }
 
   const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
-  pantallaOportunidades(data?.[0] ?? perfil, session);
+  const actualizado = data?.[0] ?? perfil;
+  // Este es el camino por el que llega un cliente nuevo, así que es aquí
+  // donde más falta hace la presentación.
+  if (actualizado.vio_bienvenida) pantallaOportunidades(actualizado, session);
+  else pantallaBienvenida(actualizado, session);
 }
 
 // ============================================================
