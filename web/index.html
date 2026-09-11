@@ -1527,31 +1527,47 @@ select:focus{
   font-size:.78rem;
 }
 
-/* ---------- Presentación de las correcciones ----------
-   La primera vez, en la primera fila y sobre un contrato de verdad. Un
-   recorrido guiado con capas oscuras se salta —se pulsa "omitir" para
-   llegar a lo de uno— y quien lo vea sin usar el botón ese día lo habrá
-   olvidado. Esto está donde se usa y no bloquea nada. */
-.fila-envoltorio.ensenando{
-  border-left:3px solid var(--acento);
-  margin-left:-14px;padding-left:11px;
-  background:var(--tinte-acento);
-  border-radius:0 8px 8px 0;
+/* ---------- Bienvenida ----------
+   Una pantalla aparte y con entrada propia. Metida en la primera fila de
+   la lista no se distinguía de lo habitual: sin nada que la señalara
+   como excepcional, se lee como un elemento más y se pasa de largo. */
+.bienvenida{
+  min-height:72vh;display:flex;flex-direction:column;justify-content:center;
+  max-width:640px;margin:0 auto;padding:40px 0;
 }
-.fila-envoltorio.ensenando .acciones{opacity:1}
-.fila-envoltorio.ensenando .accion{border-color:var(--fuerte);font-weight:600}
+.bienvenida .entra{
+  opacity:0;transform:translateY(26px);
+  animation:subir .6s cubic-bezier(.2,.7,.3,1) forwards;
+}
+.bienvenida .entra:nth-child(2){animation-delay:.12s}
+.bienvenida .entra:nth-child(3){animation-delay:.24s}
+.bienvenida .entra:nth-child(4){animation-delay:.4s}
 
-.presenta{padding:2px 12px 16px 0}
-.presenta p{
-  margin:0 0 10px;font-size:.92rem;line-height:1.55;color:var(--texto);
-  max-width:62ch;
+@keyframes subir{
+  to{opacity:1;transform:none}
 }
-.presenta .lo-pillo{
-  border:0;background:none;padding:0;color:var(--tenue);
-  font:inherit;font-size:.86rem;text-decoration:underline;
-  text-underline-offset:3px;cursor:pointer;
+
+.bienvenida h1{font-size:clamp(1.9rem,5vw,2.6rem);margin:0 0 16px}
+.bienvenida .lema{
+  font-size:1.05rem;line-height:1.65;color:var(--tenue);margin:0 0 34px;
+  max-width:54ch;
 }
-.presenta .lo-pillo:hover{color:var(--texto)}
+.bienvenida .lema strong{color:var(--texto);font-weight:650}
+
+.dos-botones{
+  display:flex;gap:12px;align-items:center;margin:0 0 30px;
+}
+.dos-botones .muestra{
+  display:inline-flex;align-items:center;min-height:34px;padding:0 13px;
+  border:1px solid var(--linea);border-radius:6px;
+  background:var(--superficie);font-size:.84rem;color:var(--tenue);
+}
+.dos-botones .muestra.si{border-color:var(--si);color:var(--si)}
+.dos-botones .muestra.no{border-color:var(--no);color:var(--no)}
+
+@media(prefers-reduced-motion:reduce){
+  .bienvenida .entra{animation:none;opacity:1;transform:none}
+}
 
 /* Confirmación de lo aprendido: el momento en que se ve que sirve. */
 .aprendido{
@@ -2350,7 +2366,12 @@ async function arrancar(volviendo = false) {
   const perfil = perfiles?.[0];
 
   if (!perfil) return pantallaCodigo(session);
-  if (perfil.paso_alta === 'listo') return pantallaOportunidades(perfil, session, volviendo);
+  if (perfil.paso_alta === 'listo') {
+    // La primera vez que llega a su lista, se le presenta cómo funciona.
+    if (!perfil.vio_bienvenida && !volviendo)
+      return pantallaBienvenida(perfil, session);
+    return pantallaOportunidades(perfil, session, volviendo);
+  }
   if (perfil.paso_alta === 'cribando') return pantallaCribando(perfil, session);
   if (perfil.paso_alta === 'entrenando' && perfil.cpv_prefijos)
     return pantallaEntrenar(perfil, perfil.cpv_prefijos.split(','), session);
@@ -4200,7 +4221,56 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
 }
 
 // ============================================================
-// 8 · Sus oportunidades
+// 8 · Bienvenida
+// ============================================================
+//
+// Una pantalla propia y con entrada animada. Metida en la primera fila
+// de la lista no se distinguía de lo habitual: sin nada que la señalara
+// como excepcional, se leía como un elemento más y se pasaba de largo.
+//
+// Y se recuerda en el PERFIL, no en el navegador: quien entra desde el
+// móvil la vería otra vez, y quien limpia los datos del navegador
+// también. Es una propiedad de la persona, no del aparato.
+function pantallaBienvenida(perfil, session) {
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div class="bienvenida">
+      <div class="entra">
+        <h1>Ya tienes tus contratos</h1>
+      </div>
+      <div class="entra">
+        <p class="lema">Hemos leído los contratos que ha ganado
+        ${esc(perfil.empresa || 'tu empresa')} y con eso hemos montado tu
+        filtro. Pero <strong>solo tú sabes a qué te presentarías de
+        verdad</strong>.</p>
+      </div>
+      <div class="entra">
+        <p class="lema" style="margin-bottom:18px">Por eso cada contrato
+        lleva estos dos botones:</p>
+        <div class="dos-botones">
+          <span class="muestra si">Sí me interesa</span>
+          <span class="muestra no">No me interesa</span>
+        </div>
+        <p class="lema">Úsalos cuando algo no encaje. A las pocas
+        correcciones <strong>ajustamos tu filtro</strong> y dejamos de
+        enseñarte lo que no es para ti. Cuanto más lo corriges, más
+        afinado queda.</p>
+      </div>
+      <div class="entra">
+        <button class="principal" id="empezar">Ver mis contratos</button>
+      </div>
+    </div>`;
+
+  alPulsar('empezar', () => {
+    // Se marca antes de salir: si falla la escritura, peor es repetirla
+    // que perder la lista.
+    sb.rpc('marcar_bienvenida').then(() => {}, () => {});
+    pantallaOportunidades({ ...perfil, vio_bienvenida: true }, session);
+  });
+}
+
+// ============================================================
+// 9 · Sus oportunidades
 // ============================================================
 
 async function pantallaOportunidades(perfil, session, volviendo = false,
@@ -4363,15 +4433,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
 
     pintarTitular(vistos);
-    // La presentación va en la primera fila y solo hasta que corrija algo
-    // o diga que lo ha entendido. Sobre un contrato de verdad, no en una
-    // capa aparte.
-    let presentando = false;
-    try { presentando = localStorage.getItem('sabe-corregir') !== '1'; }
-    catch { /* modo privado */ }
-
     document.getElementById('lista').innerHTML = vistos.length ? vistos.map((o,i) => `
-      <div class="fila-envoltorio ${presentando && i === 0 ? 'ensenando' : ''}">
+      <div class="fila-envoltorio">
       <button class="fila" data-i="${i}">
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
@@ -4385,15 +4448,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
                  <span class="accion si" data-si="${esc(o.id_licitacion)}">Sí me interesa</span>
                  <span class="accion no" data-no="${esc(o.id_licitacion)}">No me interesa</span>
                </span>`}
-          ${presentando && i === 0 ? `
-            <span class="presenta">
-              <p>¿Este contrato te encaja? Dilo con los botones de arriba.
-              <strong>Tu filtro aprende de cada respuesta</strong>: a las
-              pocas correcciones lo ajustamos y dejas de ver lo que no es
-              para ti.</p>
-              <button class="lo-pillo" data-lo-pillo>Entendido, no volver a
-                mostrar esto</button>
-            </span>` : ''}
+
         </div>
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
@@ -4424,19 +4479,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       // Los botones de corrección viven dentro de la fila para que
       // aparezcan al pasar por encima. Hay que evitar que su clic
       // despliegue también el detalle.
-      // El enlace de "entendido" y los botones viven dentro de la fila
-      // para estar donde se usan; hay que evitar que su clic despliegue
-      // también el detalle.
-      if (ev.target.closest('[data-lo-pillo]')) {
-        ev.stopPropagation();
-        yaSabeCorregir();
-        return;
-      }
       const accion = ev.target.closest('.accion');
       if (accion) {
         ev.stopPropagation();
-        // Corregir es la mejor prueba de que se ha entendido.
-        yaSabeCorregir();
         if (accion.dataset.si) corregir(accion.dataset.si, true);
         else pedirMotivo(accion.dataset.no);
         return;
@@ -4451,12 +4496,6 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // modelo no puede deducir nada; con tres ya hay patrón, y esperar más
   // solo retrasa la mejora. El coste de una regeneración es irrisorio.
   const CORRECCIONES_PARA_AJUSTAR = 3;
-
-  function yaSabeCorregir() {
-    try { localStorage.setItem('sabe-corregir', '1'); } catch { /* nada */ }
-    raiz.querySelectorAll('.ensenando').forEach(f => f.classList.remove('ensenando'));
-    raiz.querySelectorAll('.presenta').forEach(p => p.remove());
-  }
 
   async function corregir(id, interesa, motivo) {
     const i = DATOS.findIndex(o => o.id_licitacion === id);
