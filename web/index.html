@@ -3223,13 +3223,28 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
   campo.disabled = true;
   campo.placeholder = 'Cargando organismos...';
 
-  sb.rpc('buscar_organismo', { texto: '' }).then(({ data }) => {
-    TODOS = data ?? [];
+  // Por tandas: la API recorta el número de filas por respuesta, así que
+  // pedir la lista de una vez devolvía menos de la mitad sin avisar de
+  // nada.
+  (async () => {
+    const TANDA = 400;
+    for (let salto = 0; salto < 5000; salto += TANDA) {
+      const { data, error } = await sb.rpc('buscar_organismo',
+        { texto: '', salto, cuantos: TANDA });
+      if (error) break;
+      const trozo = data ?? [];
+      TODOS = TODOS.concat(trozo);
+      // Se habilita en cuanto llega la primera tanda: los organismos con
+      // más contratos son los primeros, así que ya se puede buscar
+      // mientras acaban de llegar los demás.
+      if (salto === 0) campo.disabled = false;
+      if (trozo.length < TANDA) break;
+    }
     campo.disabled = false;
     campo.placeholder = TODOS.length
       ? `Busca entre ${TODOS.length} organismos de tu sector`
       : 'Ayuntamiento, diputación, consejería...';
-  });
+  })();
 
   const sinAcentos = s => String(s ?? '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
