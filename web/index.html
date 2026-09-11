@@ -1535,19 +1535,40 @@ select:focus{
   min-height:72vh;display:flex;flex-direction:column;justify-content:center;
   max-width:640px;margin:0 auto;padding:40px 0;
 }
+/* Entrada lenta y escalonada. Con medio segundo y poco recorrido, el
+   texto aparecía de golpe aunque técnicamente hubiera transición: lo que
+   da sensación de calma es el tiempo entre uno y otro, no la duración de
+   cada uno. */
 .bienvenida .entra{
-  opacity:0;transform:translateY(26px);
-  animation:subir .6s cubic-bezier(.2,.7,.3,1) forwards;
+  opacity:0;transform:translateY(14px);
+  animation:subir 1.1s cubic-bezier(.16,.8,.3,1) forwards;
 }
-.bienvenida .entra:nth-child(2){animation-delay:.12s}
-.bienvenida .entra:nth-child(3){animation-delay:.24s}
-.bienvenida .entra:nth-child(4){animation-delay:.4s}
+.bienvenida .entra:nth-child(1){animation-delay:.25s}
+.bienvenida .entra:nth-child(2){animation-delay:.95s}
+.bienvenida .entra:nth-child(3){animation-delay:1.75s}
+.bienvenida .entra:nth-child(4){animation-delay:2.7s}
 
 @keyframes subir{
   to{opacity:1;transform:none}
 }
 
-.bienvenida h1{font-size:clamp(1.9rem,5vw,2.6rem);margin:0 0 16px}
+/* Los dos botones de muestra entran después del párrafo que los anuncia,
+   para que se lea la frase antes de verlos. */
+.dos-botones .muestra{
+  opacity:0;animation:asomar .9s ease forwards;
+}
+.dos-botones .muestra.si{animation-delay:2.15s}
+.dos-botones .muestra.no{animation-delay:2.35s}
+
+@keyframes asomar{
+  from{opacity:0;transform:scale(.96)}
+  to{opacity:1;transform:none}
+}
+
+.bienvenida h1{
+  font-size:clamp(1.9rem,5vw,2.6rem);margin:0 0 16px;line-height:1.15;
+}
+.bienvenida .principal{min-width:190px}
 .bienvenida .lema{
   font-size:1.05rem;line-height:1.65;color:var(--tenue);margin:0 0 34px;
   max-width:54ch;
@@ -1566,7 +1587,8 @@ select:focus{
 .dos-botones .muestra.no{border-color:var(--no);color:var(--no)}
 
 @media(prefers-reduced-motion:reduce){
-  .bienvenida .entra{animation:none;opacity:1;transform:none}
+  .bienvenida .entra,
+  .dos-botones .muestra{animation:none;opacity:1;transform:none}
 }
 
 /* Confirmación de lo aprendido: el momento en que se ve que sirve. */
