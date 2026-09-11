@@ -105,6 +105,11 @@ jobs:
     timeout-minutes: 90
 
     env:
+      # En la ejecución automática por cron NO hay `inputs`, así que
+      # `inputs.modo` llega vacío y toda condición con `==` resulta falsa.
+      # Los pasos escritos con `!=` sí corrían —el scraper y el cribado—
+      # pero el correo diario se saltaba todas las mañanas sin avisar.
+      MODO: ${{ inputs.modo || 'normal' }}
       TZ: Europe/Madrid
       # Inyección de los secrets. GitHub los sustituye en tiempo de
       # ejecución y los enmascara automáticamente en los registros.
@@ -174,20 +179,20 @@ jobs:
 
       - name: Ejecutar el scraper
         id: scraper
-        if: inputs.modo != 'solo_cribado' && inputs.modo != 'cribado_prueba' && inputs.modo != 'importar_historico'
+        if: env.MODO != 'solo_cribado' && env.MODO != 'cribado_prueba' && env.MODO != 'importar_historico'
         run: python lector_atom.py ${{ inputs.modo == 'diagnostico' && '--diagnostico' || '' }}
 
       - name: Cribado semántico (paso 4a)
         id: cribado
         # No se ejecuta en diagnóstico: ese modo no toca nada ni gasta saldo.
-        if: inputs.modo != 'diagnostico' && inputs.modo != 'importar_historico'
+        if: env.MODO != 'diagnostico' && env.MODO != 'importar_historico'
         run: |
           python cribador.py ${{ inputs.modo == 'cribado_prueba' && '--muestra 20' || '' }}
 
       - name: Probar la alerta sin enviarla
         # Compone los correos y los escribe en el registro, sin mandarlos.
         # Sirve para ver qué le llegaría a cada cliente.
-        if: inputs.modo == 'alerta_prueba'
+        if: env.MODO == 'alerta_prueba'
         run: python alertador.py --simulacro
 
       - name: Alerta diaria por cliente (paso 5)
@@ -196,7 +201,7 @@ jobs:
         #
         # Ni en diagnóstico ni en las pruebas: mandar correos de verdad
         # desde un ensayo sería el peor error posible.
-        if: inputs.modo == 'normal' || inputs.modo == 'solo_cribado'
+        if: env.MODO == 'normal' || env.MODO == 'solo_cribado'
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: python alertador.py
@@ -205,7 +210,7 @@ jobs:
         # Tarea puntual: carga licitaciones pasadas de unos CPV concretos
         # para tener material con el que entrenar un criterio nuevo sin
         # esperar días a que el scraper diario lo acumule.
-        if: inputs.modo == 'importar_historico'
+        if: env.MODO == 'importar_historico'
         env:
           CPV: ${{ inputs.historico_cpv }}
           ANIO: ${{ inputs.historico_anio }}
