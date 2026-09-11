@@ -333,9 +333,19 @@ el "no" con el caso MÁS PARECIDO que aun así no encaja, no con lo lejano.
 corriente y en primera persona del plural, que expliquen al cliente qué se \
 busca y qué se descarta. Es lo que él verá; el criterio no se le enseña.
 
+8. Y "cambios": una LISTA de frases con lo que ha cambiado respecto al \
+criterio anterior, escritas para que el cliente vea el efecto, no el \
+mecanismo. En segunda persona y concretas:
+
+   BIEN: "Ya no te mostraremos vestuario de personal municipal que no sea \
+de cuerpos de seguridad"
+   MAL: "Se ha restringido la cláusula de inclusión del criterio"
+
+   Una o dos frases. Si no ha cambiado nada, lista vacía.
+
 Devuelve EXCLUSIVAMENTE JSON:
 {"criterio":"...","que_buscamos":["frase 1","frase 2"],\
-"cambios":"una frase sobre qué has ajustado",\
+"cambios":["frase sobre qué cambia para él"],\
 "resumen":"una frase para el cliente"}`;
 
 async function regenerarCriterio(
@@ -1001,7 +1011,11 @@ Deno.serve(async (peticion) => {
 
       return responder({
         ok: true,
-        cambios: String(nuevo.cambios ?? ""),
+        cambios: Array.isArray(nuevo.cambios)
+          ? nuevo.cambios.map((c: unknown) => String(c)).slice(0, 3)
+          : (nuevo.cambios ? [String(nuevo.cambios)] : []),
+        que_buscamos: Array.isArray(nuevo.que_buscamos)
+          ? nuevo.que_buscamos.map((c: unknown) => String(c)).slice(0, 5) : [],
         resumen: String(nuevo.resumen ?? ""),
         aplicadas: correcciones.length,
       });
