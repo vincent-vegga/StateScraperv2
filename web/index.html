@@ -1531,9 +1531,13 @@ select:focus{
    Una pantalla aparte y con entrada propia. Metida en la primera fila de
    la lista no se distinguía de lo habitual: sin nada que la señalara
    como excepcional, se lee como un elemento más y se pasa de largo. */
+/* Ancho de lectura y no de pantalla: con 640 px los párrafos salían a
+   dos líneas muy largas y el bloque flotaba en el centro sin apoyarse en
+   nada. Con una columna estrecha y todo alineado a la izquierda, el ojo
+   tiene un margen al que volver en cada línea. */
 .bienvenida{
-  min-height:72vh;display:flex;flex-direction:column;justify-content:center;
-  max-width:640px;margin:0 auto;padding:40px 0;
+  min-height:70vh;display:flex;flex-direction:column;justify-content:center;
+  max-width:470px;margin:0 auto;padding:40px 0;
 }
 /* Entrada lenta y escalonada. Con medio segundo y poco recorrido, el
    texto aparecía de golpe aunque técnicamente hubiera transición: lo que
@@ -1574,13 +1578,13 @@ select:focus{
 }
 .bienvenida .principal{min-width:190px}
 .bienvenida .lema{
-  font-size:1.05rem;line-height:1.65;color:var(--tenue);margin:0 0 34px;
-  max-width:54ch;
+  font-size:1rem;line-height:1.65;color:var(--tenue);margin:0 0 26px;
 }
+.bienvenida .entra:last-child{margin-top:8px}
 .bienvenida .lema strong{color:var(--texto);font-weight:650}
 
 .dos-botones{
-  display:flex;gap:12px;align-items:center;margin:0 0 30px;
+  display:flex;gap:10px;align-items:center;margin:0 0 24px;
 }
 .dos-botones .muestra{
   display:inline-flex;align-items:center;min-height:34px;padding:0 13px;
@@ -4266,8 +4270,8 @@ function pantallaBienvenida(perfil, session) {
   raiz.innerHTML = `
     <div class="bienvenida">
       <div class="entra">
-        <p class="saluda">Bienvenido</p>
-        <h1>${esc(perfil.empresa || 'Tu empresa')}, ya tiene sus contratos</h1>
+        <p class="saluda">${esc(perfil.empresa || '')}</p>
+        <h1>Bienvenido</h1>
       </div>
       <div class="entra">
         <p class="lema">Hemos leído los contratos públicos que has ganado y
@@ -4275,16 +4279,14 @@ function pantallaBienvenida(perfil, session) {
         te presentarías de verdad</strong>.</p>
       </div>
       <div class="entra">
-        <p class="lema" style="margin-bottom:18px">Por eso cada contrato
-        lleva estos dos botones:</p>
+        <p class="lema">Por eso cada contrato lleva dos botones:</p>
         <div class="dos-botones">
           <span class="muestra si">Sí me interesa</span>
           <span class="muestra no">No me interesa</span>
         </div>
         <p class="lema">Úsalos cuando algo no encaje. A las pocas
         correcciones <strong>ajustamos tu filtro</strong> y dejamos de
-        enseñarte lo que no es para ti. Cuanto más lo corriges, más
-        afinado queda.</p>
+        enseñarte lo que no es para ti.</p>
       </div>
       <div class="entra">
         <button class="principal" id="empezar">Ver mis contratos</button>
