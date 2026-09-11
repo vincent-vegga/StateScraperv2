@@ -1527,6 +1527,41 @@ select:focus{
   font-size:.78rem;
 }
 
+/* ---------- Presentación de las correcciones ----------
+   La primera vez, en la primera fila y sobre un contrato de verdad. Un
+   recorrido guiado con capas oscuras se salta —se pulsa "omitir" para
+   llegar a lo de uno— y quien lo vea sin usar el botón ese día lo habrá
+   olvidado. Esto está donde se usa y no bloquea nada. */
+.fila-envoltorio.ensenando{
+  border-left:3px solid var(--acento);
+  margin-left:-14px;padding-left:11px;
+  background:var(--tinte-acento);
+  border-radius:0 8px 8px 0;
+}
+.fila-envoltorio.ensenando .acciones{opacity:1}
+.fila-envoltorio.ensenando .accion{border-color:var(--fuerte);font-weight:600}
+
+.presenta{padding:2px 12px 16px 0}
+.presenta p{
+  margin:0 0 10px;font-size:.92rem;line-height:1.55;color:var(--texto);
+  max-width:62ch;
+}
+.presenta .lo-pillo{
+  border:0;background:none;padding:0;color:var(--tenue);
+  font:inherit;font-size:.86rem;text-decoration:underline;
+  text-underline-offset:3px;cursor:pointer;
+}
+.presenta .lo-pillo:hover{color:var(--texto)}
+
+/* Confirmación de lo aprendido: el momento en que se ve que sirve. */
+.aprendido{
+  margin:0 0 14px;padding:16px 18px;
+  border:1px solid rgba(25,116,94,.35);border-radius:9px;
+  background:var(--tinte-si);font-size:.93rem;line-height:1.55;
+}
+.aprendido strong{color:var(--si)}
+.aprendido ul{margin:10px 0 0;padding-left:18px}
+.aprendido li{margin:4px 0}
 .explica{
   margin:21px 0 0;
   padding:15px 17px;
@@ -4328,8 +4363,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
 
     pintarTitular(vistos);
+    // La presentación va en la primera fila y solo hasta que corrija algo
+    // o diga que lo ha entendido. Sobre un contrato de verdad, no en una
+    // capa aparte.
+    let presentando = false;
+    try { presentando = localStorage.getItem('sabe-corregir') !== '1'; }
+    catch { /* modo privado */ }
+
     document.getElementById('lista').innerHTML = vistos.length ? vistos.map((o,i) => `
-      <div class="fila-envoltorio">
+      <div class="fila-envoltorio ${presentando && i === 0 ? 'ensenando' : ''}">
       <button class="fila" data-i="${i}">
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
@@ -4343,6 +4385,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
                  <span class="accion si" data-si="${esc(o.id_licitacion)}">Sí me interesa</span>
                  <span class="accion no" data-no="${esc(o.id_licitacion)}">No me interesa</span>
                </span>`}
+          ${presentando && i === 0 ? `
+            <span class="presenta">
+              <p>¿Este contrato te encaja? Dilo con los botones de arriba.
+              <strong>Tu filtro aprende de cada respuesta</strong>: a las
+              pocas correcciones lo ajustamos y dejas de ver lo que no es
+              para ti.</p>
+              <button class="lo-pillo" data-lo-pillo>Entendido, no volver a
+                mostrar esto</button>
+            </span>` : ''}
         </div>
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
@@ -4373,9 +4424,19 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       // Los botones de corrección viven dentro de la fila para que
       // aparezcan al pasar por encima. Hay que evitar que su clic
       // despliegue también el detalle.
+      // El enlace de "entendido" y los botones viven dentro de la fila
+      // para estar donde se usan; hay que evitar que su clic despliegue
+      // también el detalle.
+      if (ev.target.closest('[data-lo-pillo]')) {
+        ev.stopPropagation();
+        yaSabeCorregir();
+        return;
+      }
       const accion = ev.target.closest('.accion');
       if (accion) {
         ev.stopPropagation();
+        // Corregir es la mejor prueba de que se ha entendido.
+        yaSabeCorregir();
         if (accion.dataset.si) corregir(accion.dataset.si, true);
         else pedirMotivo(accion.dataset.no);
         return;
@@ -4390,6 +4451,12 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // modelo no puede deducir nada; con tres ya hay patrón, y esperar más
   // solo retrasa la mejora. El coste de una regeneración es irrisorio.
   const CORRECCIONES_PARA_AJUSTAR = 3;
+
+  function yaSabeCorregir() {
+    try { localStorage.setItem('sabe-corregir', '1'); } catch { /* nada */ }
+    raiz.querySelectorAll('.ensenando').forEach(f => f.classList.remove('ensenando'));
+    raiz.querySelectorAll('.presenta').forEach(p => p.remove());
+  }
 
   async function corregir(id, interesa, motivo) {
     const i = DATOS.findIndex(o => o.id_licitacion === id);
@@ -4448,7 +4515,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     aviso.innerHTML = `
       <div class="dialogo">
         <h3>Estamos ajustando tu filtro</h3>
-        <p>Con tus últimas correcciones. Tardará un momento.</p>
+        <p>Con lo que nos has dicho. Después volveremos a revisar todos
+        tus contratos con el filtro nuevo, así que tardará un momento.</p>
       </div>`;
     document.body.appendChild(aviso);
 
@@ -4461,9 +4529,20 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         const c = await llamar('cribar');
         if (c.terminado) break;
       }
+      // Se dice QUÉ ha cambiado, no que algo ha cambiado. Es el momento
+      // en que el cliente ve que sus respuestas han servido para algo, y
+      // un mensaje genérico lo desperdicia.
+      const cambios = Array.isArray(r.cambios) ? r.cambios : [];
       aviso.querySelector('.dialogo').innerHTML = `
-        <h3>Listo</h3>
-        <p>${esc(r.resumen || 'Hemos ajustado tu filtro con tus correcciones.')}</p>
+        <h3>Tu filtro ha aprendido</h3>
+        ${cambios.length ? `
+          <div class="aprendido">
+            <strong>A partir de ahora:</strong>
+            <ul>${cambios.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
+          </div>` : `
+          <p>${esc(r.resumen || 'Hemos ajustado tu filtro con tus correcciones.')}</p>`}
+        <p style="font-size:.88rem">Hemos vuelto a revisar todos tus
+        contratos con el filtro nuevo.</p>
         <div class="botonera"><button class="principal" id="ver">Ver la lista</button></div>`;
       aviso.querySelector('#ver').onclick = () => location.reload();
     } catch {
