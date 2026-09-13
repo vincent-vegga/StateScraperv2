@@ -544,6 +544,79 @@ def extraer_estado(entrada: etree._Element) -> tuple[str, str]:
     return "", ""
 
 
+def extraer_procedimiento(entrada: etree._Element) -> tuple[str, str]:
+    """
+    Cómo se adjudica: abierto, restringido, negociado sin publicidad...
+
+    Es la categoría legal que el propio órgano ha publicado, no una
+    interpretación. Y explica mucho: un negociado sin publicidad se
+    adjudica sin concurrencia, así que quien no estuviera invitado no
+    tenía nada que hacer ahí.
+
+    CODICE trae la etiqueta legible en el atributo `name`, igual que con
+    el estado, así que se usa la taxonomía oficial en lugar de mantener
+    una tabla de códigos a mano.
+    """
+    for nodo in buscar_todos(entrada, "ProcedureCode"):
+        codigo = texto_limpio(nodo.text)
+        if codigo:
+            return codigo, texto_limpio(nodo.get("name") or "")
+    return "", ""
+
+
+def extraer_urgencia(entrada: etree._Element) -> str:
+    """Tramitación ordinaria, urgente o de emergencia."""
+    for nodo in buscar_todos(entrada, "UrgencyCode"):
+        etiqueta = texto_limpio(nodo.get("name") or "")
+        if etiqueta:
+            return etiqueta
+    return ""
+
+
+def extraer_licitadores(entrada: etree._Element) -> int | None:
+    """
+    Cuántas empresas se presentaron.
+
+    Es el dato que de verdad explica una adjudicación. Un contrato con un
+    solo licitador se explica solo: o nadie más podía cumplir el pliego,
+    o nadie más se enteró. No hace falta insinuar nada, basta con
+    enseñarlo.
+
+    Se devuelve None cuando no está publicado, que no es lo mismo que
+    cero: un cero significaría que se declaró desierto.
+    """
+    for etiqueta in ("ReceivedTenderQuantity", "ReceivedAuditRequestsQuantity"):
+        for nodo in buscar_todos(entrada, etiqueta):
+            valor = texto_limpio(nodo.text)
+            if valor and valor.isdigit():
+                return int(valor)
+    return None
+
+
+def extraer_lotes(entrada: etree._Element) -> int:
+    """
+    En cuántos lotes se divide el expediente.
+
+    Sin este dato, comparar el importe adjudicado con el presupuesto da
+    resultados absurdos: se estaba midiendo lo que se llevó UN lote
+    contra el presupuesto del expediente entero. Con él se puede saber
+    cuándo la comparación es válida.
+
+    Cero significa que no está dividido en lotes.
+    """
+    cuantos = 0
+    for nodo in buscar_todos(entrada, "ProcurementProjectLot"):
+        cuantos += 1
+    if cuantos:
+        return cuantos
+    for nodo in buscar_todos(entrada, "LotDistribution"):
+        for cuenta in buscar_todos(nodo, "MaximumLotsSubmittedNumeric"):
+            valor = texto_limpio(cuenta.text)
+            if valor and valor.isdigit():
+                return int(valor)
+    return 0
+
+
 def extraer_fecha_publicacion(entrada: etree._Element) -> str | None:
     """
     Fecha REAL de publicación del anuncio, distinta de su última modificación.
@@ -818,6 +891,15 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
         "cpvs": extraer_cpvs(entrada),
         "estado_licitacion": extraer_estado(entrada)[0],
         "estado_nombre": extraer_estado(entrada)[1],
+        # Cómo se adjudica, cuántos se presentaron y en cuántos lotes.
+        # Son los tres datos que explican una adjudicación sin que nadie
+        # tenga que interpretarla: la categoría legal la publicó el
+        # propio órgano, y el número de licitadores habla solo.
+        "procedimiento": extraer_procedimiento(entrada)[1],
+        "procedimiento_codigo": extraer_procedimiento(entrada)[0],
+        "urgencia": extraer_urgencia(entrada),
+        "licitadores": extraer_licitadores(entrada),
+        "lotes": extraer_lotes(entrada),
         # Interna: gobierna la paginación, porque es el orden del feed.
         "fecha_actualizacion": primer_texto(entrada, "updated", solo_hijos=True)
                                or primer_texto(entrada, "published", solo_hijos=True),
@@ -921,6 +1003,15 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
         "cpvs": extraer_cpvs(entrada),
         "estado_licitacion": extraer_estado(entrada)[0] or resumen.get("estado", ""),
         "estado_nombre": extraer_estado(entrada)[1],
+        # Cómo se adjudica, cuántos se presentaron y en cuántos lotes.
+        # Son los tres datos que explican una adjudicación sin que nadie
+        # tenga que interpretarla: la categoría legal la publicó el
+        # propio órgano, y el número de licitadores habla solo.
+        "procedimiento": extraer_procedimiento(entrada)[1],
+        "procedimiento_codigo": extraer_procedimiento(entrada)[0],
+        "urgencia": extraer_urgencia(entrada),
+        "licitadores": extraer_licitadores(entrada),
+        "lotes": extraer_lotes(entrada),
         "fecha_actualizacion": primer_texto(entrada, "updated", solo_hijos=True)
                                or primer_texto(entrada, "published", solo_hijos=True)
                                or primer_texto(entrada, "pubDate", solo_hijos=True),
@@ -1425,6 +1516,10 @@ def refrescar_conocidas(cliente, conocidas: list[dict[str, Any]]) -> int:
             "estado_nombre": item.get("estado_nombre") or None,
             "fecha_limite": item.get("fecha_limite"),
             "presupuesto": item["presupuesto"],
+            "procedimiento": item.get("procedimiento") or None,
+            "urgencia": item.get("urgencia") or None,
+            "licitadores": item.get("licitadores"),
+            "lotes": item.get("lotes") or 0,
             # Verlo en el feed es la confirmación de que sigue como dice.
             # Sin esta marca no se puede distinguir "está publicada" de
             # "lo estaba la última vez que la vimos, hace tres semanas".
@@ -1481,6 +1576,10 @@ def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
             "cpvs": item["cpvs"],
             "estado_licitacion": item["estado_licitacion"] or None,
             "estado_nombre": item.get("estado_nombre") or None,
+            "procedimiento": item.get("procedimiento") or None,
+            "urgencia": item.get("urgencia") or None,
+            "licitadores": item.get("licitadores"),
+            "lotes": item.get("lotes") or 0,
             # Se normaliza a ISO: el feed catalán puede traerla en formato
             # RSS ("Mon, 17 Aug 2026 08:00:00 +0200"), que PostgreSQL no
             # interpreta, y sin fecha el marcador adaptativo no funciona.
