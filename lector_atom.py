@@ -544,6 +544,31 @@ def extraer_estado(entrada: etree._Element) -> tuple[str, str]:
     return "", ""
 
 
+# Códigos de la lista SyndicationTenderingProcessCode de CODICE.
+#
+# SIN VERIFICAR contra la fuente: las etiquetas se guardan junto al
+# código, así que si alguna traducción está mal se corrige aquí sin
+# volver a procesar nada. Lo que nunca se pierde es el código.
+PROCEDIMIENTOS = {
+    "1": "Abierto",
+    "2": "Restringido",
+    "3": "Negociado con publicidad",
+    "4": "Negociado sin publicidad",
+    "5": "Diálogo competitivo",
+    "6": "Contrato menor",
+    "7": "Derivado de acuerdo marco",
+    "8": "Asociación para la innovación",
+    "9": "Abierto simplificado",
+    "100": "Otros",
+}
+
+URGENCIAS = {
+    "1": "Ordinaria",
+    "2": "Urgente",
+    "3": "Emergencia",
+}
+
+
 def extraer_procedimiento(entrada: etree._Element) -> tuple[str, str]:
     """
     Cómo se adjudica: abierto, restringido, negociado sin publicidad...
@@ -560,16 +585,20 @@ def extraer_procedimiento(entrada: etree._Element) -> tuple[str, str]:
     for nodo in buscar_todos(entrada, "ProcedureCode"):
         codigo = texto_limpio(nodo.text)
         if codigo:
-            return codigo, texto_limpio(nodo.get("name") or "")
+            # A diferencia del estado, este nodo NO trae atributo `name`:
+            # solo el código y una URL a la lista oficial. Leerlo como los
+            # demás devolvía siempre cadena vacía, así que la etiqueta se
+            # traduce con una tabla propia y verificable.
+            return codigo, PROCEDIMIENTOS.get(codigo, "")
     return "", ""
 
 
 def extraer_urgencia(entrada: etree._Element) -> str:
     """Tramitación ordinaria, urgente o de emergencia."""
     for nodo in buscar_todos(entrada, "UrgencyCode"):
-        etiqueta = texto_limpio(nodo.get("name") or "")
-        if etiqueta:
-            return etiqueta
+        codigo = texto_limpio(nodo.text)
+        if codigo:
+            return URGENCIAS.get(codigo, "")
     return ""
 
 
