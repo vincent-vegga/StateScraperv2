@@ -349,13 +349,18 @@ def procesar(contenido: bytes, etiqueta: str) -> tuple[list[dict], dict]:
                     VER_XML[0] -= 1
                     logging.info("=" * 62)
                     logging.info("EXPEDIENTE ADJUDICADO · estado %s", estado)
-                    # El bloque del resultado va al final del expediente,
-                    # así que se enseña también la cola: cortando solo por
-                    # el principio se perdía justo lo que se busca.
-                    if len(bruto) > 16000:
-                        logging.info("%s\n[...]\n%s", bruto[:8000], bruto[-8000:])
-                    else:
-                        logging.info("%s", bruto)
+
+                    # Solo los bloques que interesan, no el expediente
+                    # entero: cortando por los extremos, el resultado
+                    # quedaba justo en la parte omitida.
+                    for etiqueta in ("TenderResult", "TenderingProcess",
+                                     "ProcurementProjectLot"):
+                        trozos = lector.buscar_todos(entrada, etiqueta)
+                        logging.info("--- %s (%d) ---", etiqueta, len(trozos))
+                        for trozo in trozos[:3]:
+                            logging.info("%s", etree.tostring(
+                                trozo, pretty_print=True,
+                                encoding="unicode")[:4000])
                     if VER_XML[0] == 0:
                         logging.info("=" * 62)
                         logging.info("Fin de la muestra.")
