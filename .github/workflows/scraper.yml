@@ -44,6 +44,16 @@ on:
           - alerta_prueba
           - importar_historico
           - catalogar_historico
+          - ver_xml
+      conjunto_xml:
+        description: 'Sindicación a inspeccionar en modo ver_xml'
+        required: false
+        default: '643'
+        type: choice
+        options:
+          - '643'
+          - '1044'
+          - '1143'
       cpv_prefijos:
         description: 'Prefijos CPV solo para esta ejecución (vacío = los de siempre)'
         required: false
@@ -264,6 +274,30 @@ jobs:
   # A partir de ahí, filtrar por cualquier sector son segundos: el
   # trabajo caro —leer el XML— se paga una sola vez.
   # ------------------------------------------------------------
+  # ------------------------------------------------------------
+  # Ver cómo es un expediente por dentro.
+  #
+  # Escribe en el registro el XML de dos expedientes y termina. Es el
+  # paso previo a escribir cualquier extractor: sin mirar la fuente, las
+  # etiquetas se eligen de memoria y las columnas salen vacías sin dar
+  # ningún error.
+  # ------------------------------------------------------------
+  ver-xml:
+    if: inputs.modo == 'ver_xml'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Volcar un expediente de ejemplo
+        run: |
+          python procesar_historico.py \
+            --anio ${{ inputs.catalogo_anio || 2026 }} --mes 1 \
+            --conjunto ${{ inputs.conjunto_xml || '643' }} --ver-xml 2
+
   catalogar:
     name: Catálogo ${{ matrix.mes }}/${{ inputs.catalogo_anio }}
     if: inputs.modo == 'catalogar_historico'
