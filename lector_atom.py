@@ -452,6 +452,111 @@ def extraer_presupuesto(entrada: etree._Element) -> float | None:
     return None
 
 
+def extraer_presupuesto_detallado(entrada: etree._Element) -> tuple[float | None, float | None]:
+    """
+    Presupuesto base de licitación y valor estimado del contrato.
+
+    Son dos cifras distintas y hasta ahora se mezclaban. El VALOR
+    ESTIMADO incluye prórrogas y modificaciones previstas, así que suele
+    ser bastante mayor; la BASE es lo que se licita.
+
+    Comparar un importe adjudicado con el valor estimado daba bajas
+    imposibles. Para saber a cuánto se cerró un contrato hay que usar la
+    base, y sin impuestos, porque así es como se publica.
+    """
+    base = None
+    for presupuesto in buscar_todos(entrada, "BudgetAmount"):
+        base = a_numero(primer_texto(presupuesto, "TaxExclusiveAmount"))
+        if base is None:
+            base = a_numero(primer_texto(presupuesto, "TotalAmount"))
+        if base is not None:
+            break
+
+    estimado = a_numero(primer_texto(entrada, "EstimatedOverallContractAmount"))
+    return base, estimado
+
+
+def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
+    """
+    Todas las adjudicaciones del expediente, con lo que las explica.
+
+    Estructura real de CODICE, comprobada sobre un expediente:
+
+        <cac:TenderResult>
+          <cbc:Description>Mejor oferta calidad-precio.</cbc:Description>
+          <cbc:AwardDate>2025-01-31</cbc:AwardDate>
+          <cbc:ReceivedTenderQuantity>2</cbc:ReceivedTenderQuantity>
+          <cbc:LowerTenderAmount>428461.7</cbc:LowerTenderAmount>
+          <cbc:HigherTenderAmount>458059</cbc:HigherTenderAmount>
+          <cac:WinningParty>...</cac:WinningParty>
+          <cac:AwardedTenderedProject>
+            <cac:LegalMonetaryTotal>
+              <cbc:TaxExclusiveAmount>428461.7</cbc:TaxExclusiveAmount>
+              <cbc:PayableAmount>518438.65</cbc:PayableAmount>
+
+    La oferta más baja y la más alta son el dato que de verdad responde a
+    "¿a qué precio se gana aquí?", y no hacía falta estimarlo: está
+    publicado y no se estaba leyendo.
+    """
+    adjudicaciones: list[dict[str, Any]] = []
+
+    for numero, resultado in enumerate(buscar_todos(entrada, "TenderResult"), 1):
+        nombre = cif = ""
+        for parte in buscar_todos(resultado, "WinningParty"):
+            if not nombre:
+                nombre = primer_texto(parte, "Name")
+            if not cif:
+                for ident in buscar_todos(parte, "PartyIdentification"):
+                    bruto = primer_texto(ident, "ID")
+                    cif = "".join(c for c in bruto.upper() if c.isalnum())
+                    if cif.startswith("ES") and len(cif) > 9:
+                        cif = cif[2:]
+                    if cif:
+                        break
+            if nombre and cif:
+                break
+
+        sin_iva = con_iva = None
+        for proyecto in buscar_todos(resultado, "AwardedTenderedProject"):
+            sin_iva = a_numero(primer_texto(proyecto, "TaxExclusiveAmount"))
+            con_iva = a_numero(primer_texto(proyecto, "PayableAmount"))
+            if sin_iva is not None or con_iva is not None:
+                break
+
+        licitadores = None
+        bruto = primer_texto(resultado, "ReceivedTenderQuantity")
+        if bruto.isdigit():
+            licitadores = int(bruto)
+
+        adjudicaciones.append({
+            "lote": numero,
+            "adjudicatario": nombre,
+            "cif": cif,
+            "importe": sin_iva,
+            "importe_con_iva": con_iva,
+            "licitadores": licitadores,
+            "oferta_baja": a_numero(primer_texto(resultado, "LowerTenderAmount")),
+            "oferta_alta": a_numero(primer_texto(resultado, "HigherTenderAmount")),
+            "motivo": primer_texto(resultado, "Description")[:400],
+            "fecha": primer_texto(resultado, "AwardDate"),
+            "pyme": primer_texto(resultado, "SMEAwardedIndicator") == "true",
+        })
+
+    return adjudicaciones
+
+
+def extraer_sistema(entrada: etree._Element) -> str:
+    """
+    Si el contrato va por acuerdo marco o sistema dinámico.
+
+    Importa para no comparar peras con manzanas: en un acuerdo marco, el
+    importe de un contrato basado no guarda relación con el presupuesto
+    del marco, y cualquier porcentaje entre ambos es un sinsentido.
+    """
+    codigo = primer_texto(entrada, "ContractingSystemCode")
+    return SISTEMAS.get(codigo, "")
+
+
 def extraer_enlace(entrada: etree._Element) -> str:
     """URL pública del expediente."""
     for nodo in buscar_hijos(entrada, "link"):
@@ -568,6 +673,16 @@ URGENCIAS = {
     "3": "Emergencia",
 }
 
+# ContractingSystemTypeCode. Sin verificar contra la fuente: se guarda
+# también el código, así que corregir una etiqueta no obliga a
+# reprocesar nada.
+SISTEMAS = {
+    "0": "Contrato",
+    "1": "Acuerdo marco",
+    "2": "Sistema dinámico de adquisición",
+    "3": "Contrato basado en acuerdo marco",
+}
+
 
 def extraer_procedimiento(entrada: etree._Element) -> tuple[str, str]:
     """
@@ -614,11 +729,12 @@ def extraer_licitadores(entrada: etree._Element) -> int | None:
     Se devuelve None cuando no está publicado, que no es lo mismo que
     cero: un cero significaría que se declaró desierto.
     """
-    for etiqueta in ("ReceivedTenderQuantity", "ReceivedAuditRequestsQuantity"):
-        for nodo in buscar_todos(entrada, etiqueta):
-            valor = texto_limpio(nodo.text)
-            if valor and valor.isdigit():
-                return int(valor)
+    # Vive dentro de <cac:TenderResult>, así que solo existe cuando el
+    # expediente ya está adjudicado.
+    for nodo in buscar_todos(entrada, "ReceivedTenderQuantity"):
+        valor = texto_limpio(nodo.text)
+        if valor and valor.isdigit():
+            return int(valor)
     return None
 
 
@@ -929,6 +1045,13 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
         "urgencia": extraer_urgencia(entrada),
         "licitadores": extraer_licitadores(entrada),
         "lotes": extraer_lotes(entrada),
+        # Base de licitación y valor estimado por separado: el estimado
+        # incluye prórrogas y modificaciones, así que compararlo con lo
+        # adjudicado daba bajas imposibles.
+        "presupuesto_base": extraer_presupuesto_detallado(entrada)[0],
+        "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
+        "sistema": extraer_sistema(entrada),
+        "adjudicaciones": extraer_adjudicaciones(entrada),
         # Interna: gobierna la paginación, porque es el orden del feed.
         "fecha_actualizacion": primer_texto(entrada, "updated", solo_hijos=True)
                                or primer_texto(entrada, "published", solo_hijos=True),
@@ -1041,6 +1164,13 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
         "urgencia": extraer_urgencia(entrada),
         "licitadores": extraer_licitadores(entrada),
         "lotes": extraer_lotes(entrada),
+        # Base de licitación y valor estimado por separado: el estimado
+        # incluye prórrogas y modificaciones, así que compararlo con lo
+        # adjudicado daba bajas imposibles.
+        "presupuesto_base": extraer_presupuesto_detallado(entrada)[0],
+        "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
+        "sistema": extraer_sistema(entrada),
+        "adjudicaciones": extraer_adjudicaciones(entrada),
         "fecha_actualizacion": primer_texto(entrada, "updated", solo_hijos=True)
                                or primer_texto(entrada, "published", solo_hijos=True)
                                or primer_texto(entrada, "pubDate", solo_hijos=True),
