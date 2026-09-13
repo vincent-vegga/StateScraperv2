@@ -40,6 +40,7 @@ import gzip
 import io
 import json
 import logging
+from lxml import etree
 import os
 import sys
 import zipfile
@@ -75,6 +76,11 @@ CAMPOS = [
     "adjudicaciones", "adjudicatarios",
     "fecha_actualizacion", "fecha_publicacion", "fecha_limite",
 ]
+
+
+# Cuántos expedientes quedan por volcar en crudo. En lista para poder
+# modificarlo desde main sin declararlo global en cada sitio.
+VER_XML = [0]
 
 
 def configurar_logging() -> None:
@@ -317,6 +323,22 @@ def procesar(contenido: bytes, etiqueta: str) -> tuple[list[dict], dict]:
                 stats["entradas"] += 1
                 if lector.buscar_hijos(entrada, "deleted-entry"):
                     continue
+
+                # Escribir el XML tal cual y parar. Es la única forma de
+                # saber cómo se llaman los campos: escribir un extractor
+                # a partir del estándar y confiar en que las etiquetas
+                # coincidan produce columnas vacías sin ningún error.
+                if VER_XML[0] > 0:
+                    VER_XML[0] -= 1
+                    bruto = etree.tostring(entrada, pretty_print=True,
+                                           encoding="unicode")
+                    logging.info("=" * 62)
+                    logging.info("EXPEDIENTE DE EJEMPLO\n%s", bruto[:14000])
+                    if VER_XML[0] == 0:
+                        logging.info("=" * 62)
+                        logging.info("Fin de la muestra.")
+                        raise SystemExit(0)
+                    continue
                 try:
                     fila = a_fila(entrada, etiqueta)
                 except Exception:
@@ -472,28 +494,52 @@ def volcar_todo(filas: list[dict], etiqueta: str) -> int:
     # Esta segunda pasada completa solo esos tres campos, y solo donde
     # faltan: no pisa el estado ni el plazo, que pueden venir de una
     # captura más reciente del scraper.
-    con_adjudicatario = [f for f in filas if f.get("adjudicatario")]
-    if con_adjudicatario:
+    # Se completa TODO lo que el upsert se salta, no solo el
+    # adjudicatario: cada vez que se añade una columna hay que volver a
+    # pasar por aquí, porque `ignore_duplicates` descarta la fila entera.
+    completables = [f for f in filas if f.get("adjudicatario")
+                    or f.get("procedimiento") or f.get("licitadores")
+                    or f.get("lotes")]
+    if completables:
         completadas = 0
-        for i in range(0, len(con_adjudicatario), 500):
+        for i in range(0, len(completables), 400):
             lote = [
                 {
                     "id": f["id_licitacion"],
-                    "adjudicatario": f["adjudicatario"],
+                    "adjudicatario": f.get("adjudicatario") or "",
                     "cif": f.get("adjudicatario_cif") or "",
                     "importe": (str(f["importe_adjudicacion"])
                                 if f.get("importe_adjudicacion") not in ("", None) else ""),
+                    "procedimiento": f.get("procedimiento") or "",
+                    "urgencia": f.get("urgencia") or "",
+                    "licitadores": (str(f["licitadores"])
+                                    if str(f.get("licitadores") or "").isdigit() else ""),
+                    "lotes": (str(f["lotes"])
+                              if str(f.get("lotes") or "").isdigit() else ""),
+                    "adjudicaciones": (json.loads(f["adjudicaciones"])
+                                       if f.get("adjudicaciones") else []),
+                    "adjudicatarios": (str(f["adjudicatarios"])
+                                       if str(f.get("adjudicatarios") or "").isdigit() else ""),
                 }
-                for f in con_adjudicatario[i:i + 500]
+                for f in completables[i:i + 400]
             ]
             try:
-                respuesta = cliente.rpc("completar_adjudicatarios",
+                respuesta = cliente.rpc("completar_explicacion",
                                         {"datos": lote}).execute()
                 completadas += respuesta.data or 0
             except Exception as error:
-                logging.error("Fallo al completar adjudicatarios: %s", error)
-        logging.info("Adjudicatarios completados en %d filas ya existentes.",
-                     completadas)
+                logging.error("Fallo al completar los datos: %s", error)
+        logging.info("Completados %d campos en filas ya existentes.", completadas)
+
+        # Si se extrajo algo y no se guardó nada, hay que enterarse: el
+        # fallo de `ignore_duplicates` es silencioso por naturaleza y ya
+        # ha costado tres reprocesados enteros.
+        if completadas == 0:
+            raise RuntimeError(
+                f"Se extrajeron datos de {len(completables)} licitaciones y no "
+                "se guardó ninguno. Comprueba que existe la función "
+                "`completar_explicacion` en la base."
+            )
 
     return guardadas
 
@@ -529,7 +575,12 @@ def main() -> int:
     p.add_argument("--conjunto", default="643", choices=list(CONJUNTOS))
     p.add_argument("--local", action="store_true",
                    help="Escribe el fichero en disco y NO lo sube.")
+    p.add_argument("--ver-xml", type=int, default=0, metavar="N",
+                   help="Escribe en el registro el XML de N expedientes y "
+                        "termina. Sirve para saber cómo se llaman de verdad "
+                        "las etiquetas antes de escribir un extractor.")
     opciones = p.parse_args()
+    VER_XML[0] = opciones.ver_xml
 
     configurar_logging()
     etiqueta = f"Histórico {opciones.conjunto} · {opciones.anio}-{opciones.mes:02d}"
