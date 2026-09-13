@@ -329,11 +329,33 @@ def procesar(contenido: bytes, etiqueta: str) -> tuple[list[dict], dict]:
                 # a partir del estándar y confiar en que las etiquetas
                 # coincidan produce columnas vacías sin ningún error.
                 if VER_XML[0] > 0:
-                    VER_XML[0] -= 1
                     bruto = etree.tostring(entrada, pretty_print=True,
                                            encoding="unicode")
+
+                    # Solo sirven los expedientes YA ADJUDICADOS: uno en
+                    # evaluación no publica adjudicatario, importe ni
+                    # licitadores, así que mirarlo no dice nada sobre cómo
+                    # se llaman esos campos.
+                    #
+                    # Se filtra por el ESTADO y no buscando "Award" en el
+                    # texto: `AwardingTerms` —los criterios de
+                    # adjudicación— aparece en todos los expedientes,
+                    # adjudicados o no, así que ese filtro dejaba pasar
+                    # cualquiera.
+                    estado = lector.extraer_estado(entrada)[0]
+                    if estado not in ("ADJ", "RES", "FORM"):
+                        continue
+
+                    VER_XML[0] -= 1
                     logging.info("=" * 62)
-                    logging.info("EXPEDIENTE DE EJEMPLO\n%s", bruto[:14000])
+                    logging.info("EXPEDIENTE ADJUDICADO · estado %s", estado)
+                    # El bloque del resultado va al final del expediente,
+                    # así que se enseña también la cola: cortando solo por
+                    # el principio se perdía justo lo que se busca.
+                    if len(bruto) > 16000:
+                        logging.info("%s\n[...]\n%s", bruto[:8000], bruto[-8000:])
+                    else:
+                        logging.info("%s", bruto)
                     if VER_XML[0] == 0:
                         logging.info("=" * 62)
                         logging.info("Fin de la muestra.")
