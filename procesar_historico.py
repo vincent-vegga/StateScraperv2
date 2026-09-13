@@ -71,6 +71,7 @@ CAMPOS = [
     "id_licitacion", "expediente", "titulo", "organo", "enlace",
     "codigo_postal", "presupuesto", "cpvs", "estado_licitacion",
     "adjudicatario", "adjudicatario_cif", "importe_adjudicacion",
+    "procedimiento", "urgencia", "licitadores", "lotes",
     "fecha_actualizacion", "fecha_publicacion", "fecha_limite",
 ]
 
@@ -168,6 +169,14 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
         "estado_licitacion": datos["estado_licitacion"] or "",
         "adjudicatario": adjudicatario,
         "adjudicatario_cif": cif,
+        # Los tres datos que explican una adjudicación: cómo se adjudicó,
+        # cuántos se presentaron y en cuántos lotes iba. Sin ellos, el
+        # porcentaje sobre el presupuesto no se puede calcular bien,
+        # porque se compara un lote con el expediente entero.
+        "procedimiento": lector.extraer_procedimiento(entrada)[1],
+        "urgencia": lector.extraer_urgencia(entrada),
+        "licitadores": lector.extraer_licitadores(entrada),
+        "lotes": lector.extraer_lotes(entrada),
         "importe_adjudicacion": importe if importe is not None else "",
         "fecha_actualizacion": fecha_act.isoformat() if fecha_act else "",
         "fecha_publicacion": datos.get("fecha_publicacion") or "",
@@ -348,6 +357,12 @@ def volcar_todo(filas: list[dict], etiqueta: str) -> int:
             # instante a qué contratos se presenta.
             "adjudicatario": f.get("adjudicatario") or None,
             "adjudicatario_cif": f.get("adjudicatario_cif") or None,
+            "procedimiento": f.get("procedimiento") or None,
+            "urgencia": f.get("urgencia") or None,
+            "licitadores": (int(f["licitadores"])
+                            if str(f.get("licitadores") or "").isdigit() else None),
+            "lotes": (int(f["lotes"])
+                      if str(f.get("lotes") or "").isdigit() else 0),
             "importe_adjudicacion": (f["importe_adjudicacion"]
                                      if f.get("importe_adjudicacion") not in ("", None)
                                      else None),
