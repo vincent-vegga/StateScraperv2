@@ -942,6 +942,44 @@ select:focus{
   color:var(--texto);font-weight:650;font-variant-numeric:tabular-nums;
 }
 
+/* ---------- Cómo se adjudica aquí ----------
+   Dentro de la misma tarjeta, bajo la cabecera: son datos DE ese
+   organismo, no un tema aparte. En una tarjeta separada habría que
+   relacionar dos bloques mentalmente. */
+.como-adjudica{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:18px 26px;padding:18px 0;margin-bottom:18px;
+  border-bottom:1px solid var(--linea);
+}
+.como-adjudica > div{min-width:0}
+.como-adjudica dt{
+  color:var(--tenue);font-size:.78rem;letter-spacing:.04em;
+  text-transform:uppercase;margin:0 0 5px;
+}
+.como-adjudica dd{
+  margin:0;font-size:1.22rem;font-weight:650;
+  font-variant-numeric:tabular-nums;line-height:1.2;
+}
+.como-adjudica .matiz{
+  display:block;margin-top:4px;color:var(--tenue);font-size:.82rem;
+  font-weight:400;line-height:1.4;
+}
+/* Cuando la mitad de los contratos van con un solo licitador, eso no es
+   un dato más: es la respuesta a si merece la pena presentarse. */
+.como-adjudica .alerta dd{color:var(--no)}
+
+.poca-muestra{
+  padding:16px 0;margin-bottom:18px;border-bottom:1px solid var(--linea);
+  color:var(--tenue);font-size:.9rem;line-height:1.55;
+}
+
+.detalle-contrato{
+  display:flex;gap:14px;flex-wrap:wrap;margin-top:5px;
+  color:var(--tenue);font-size:.8rem;
+}
+.detalle-contrato span{white-space:nowrap}
+.detalle-contrato strong{color:var(--texto);font-weight:600}
+
 .dos-paneles{
   display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   gap:14px;margin-top:18px;align-items:start;
@@ -3357,6 +3395,68 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
       </div>`;
   }
 
+  // Con pocos contratos una media no dice nada: tres adjudicaciones no
+  // describen cómo compra un ayuntamiento. Por debajo de este número la
+  // cifra no se enseña.
+  const MINIMO_PARA_MEDIA = 5;
+
+  function bloqueAdjudicacion(d) {
+    const trozos = [];
+
+    // Cada cifra va con la de su sector al lado. Un porcentaje suelto no
+    // distingue un organismo de otro; lo que informa es la diferencia.
+    const comparar = (valor, referencia, sufijo) => {
+      if (!referencia) return '';
+      const dif = Math.round((valor - referencia) * 10) / 10;
+      if (Math.abs(dif) < 0.5) return `igual que tu sector`;
+      return `${Math.abs(dif).toString().replace('.', ',')} ${sufijo} ${
+        dif > 0 ? 'más' : 'menos'} que tu sector`;
+    };
+
+    if (d.baja_media && d.con_baja >= MINIMO_PARA_MEDIA) {
+      const roza = comparar(d.baja_media, d.baja_sector, 'puntos');
+      trozos.push(`<div>
+        <dt>Se adjudica al</dt>
+        <dd>${d.baja_media} %
+          <span class="matiz">del presupuesto${roza ? ` · ${roza}` : ''}
+          <br>medido en ${d.con_baja} ${
+            d.con_baja === 1 ? 'contrato' : 'contratos'}</span>
+        </dd></div>`);
+    }
+
+    if (d.licitadores_medio && d.con_licitadores >= MINIMO_PARA_MEDIA) {
+      // Que la mitad de los contratos vayan con un solo licitador sí es
+      // propio de ese organismo, y responde a si merece la pena
+      // presentarse.
+      const solos = d.sin_competencia > d.con_licitadores / 2;
+      const roza = comparar(d.licitadores_medio, d.licitadores_sector, '');
+      trozos.push(`<div class="${solos ? 'alerta' : ''}">
+        <dt>Se presentan</dt>
+        <dd>${String(d.licitadores_medio).replace('.', ',')}
+          <span class="matiz">empresas de media${roza ? ` · ${roza}` : ''}
+          ${d.sin_competencia ? `<br><strong>${d.sin_competencia}</strong> de
+            ${d.con_licitadores} con un solo licitador` : ''}</span>
+        </dd></div>`);
+    }
+
+    if (d.procedimientos?.length) {
+      const p = d.procedimientos[0];
+      trozos.push(`<div>
+        <dt>Suele adjudicar por</dt>
+        <dd style="font-size:1.02rem">${esc(p.cual)}
+          <span class="matiz">${p.cuantos} de sus ${d.contratos}${
+            d.procedimientos.length > 1
+              ? ` · y ${d.procedimientos.length - 1} vía más` : ''}</span>
+        </dd></div>`);
+    }
+
+    if (!trozos.length) {
+      return `<p class="poca-muestra">Este organismo tiene pocos contratos
+        publicados en tus sectores como para decir cómo adjudica.</p>`;
+    }
+    return `<dl class="como-adjudica">${trozos.join('')}</dl>`;
+  }
+
   function pintar(cual, d) {
     const empresas = d.empresas ?? [];
     const contratos = d.contratos_lista ?? [];
@@ -3378,6 +3478,8 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
           </div>
           <div style="flex:1 1 260px;max-width:420px">${selectorAnios()}</div>
         </div>
+
+        ${bloqueAdjudicacion(d)}
 
         <div class="dos-paneles">
           <div class="panel-organo">
@@ -3432,6 +3534,16 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
               <p class="que">${esc(c.titulo ?? '')}</p>
               <span class="quien">${esc(c.empresa ?? '')}${
                 c.importe ? ` · ${euros(Number(c.importe))}` : ''}</span>
+              ${(c.licitadores || c.baja || c.oferta_baja) ? `
+                <span class="detalle-contrato">
+                  ${c.licitadores ? `<span><strong>${c.licitadores}</strong>
+                    ${c.licitadores === 1 ? 'licitador' : 'licitadores'}</span>` : ''}
+                  ${c.baja ? `<span>al <strong>${c.baja} %</strong></span>` : ''}
+                  ${c.oferta_baja && c.oferta_alta
+                    && Number(c.oferta_alta) > Number(c.oferta_baja)
+                    ? `<span>de ${euros(Number(c.oferta_baja))} a ${
+                       euros(Number(c.oferta_alta))}</span>` : ''}
+                </span>` : ''}
             </div>`).join('')
         : `<p class="sin-datos">Sin contratos en el periodo elegido.</p>`;
     };
