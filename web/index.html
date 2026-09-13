@@ -1054,7 +1054,12 @@ select:focus{
 /* Dos columnas de estadísticas entre la explicación y la lista: ese
    hueco estaba vacío y son datos que orientan antes de bajar al detalle. */
 .dos-columnas{
-  display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:26px;
+  /* minmax(0,1fr) y no 1fr: `1fr` respeta el ancho mínimo del contenido,
+     y como el detalle de abajo lleva `nowrap`, un nombre largo ensanchaba
+     la columna. Al pasar de un tramo a otro cambiaba el texto, cambiaba
+     el ancho, y la tarjeta se movía bajo el cursor. */
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:14px;margin-top:26px;
   /* Cada tarjeta con su altura natural: estirarlas dejaba un hueco
      vacío en la más corta. */
   align-items:start;
@@ -1138,7 +1143,7 @@ select:focus{
   overflow:hidden;
 }
 .detalle-tramo .meta-tramo{
-  margin-top:auto;
+  margin-top:auto;min-width:0;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 
@@ -3784,7 +3789,7 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
     ${(porEmpresa.length || porOrgano.length) ? `
     <div class="dos-columnas">
       ${bloqueRanking(porEmpresa, 'Quién más ha facturado este mes', 'empresas')}
-      ${bloqueRanking(porOrgano, 'Quién más ha adjudicado', 'organos')}
+      ${bloqueRanking(porOrgano, 'Quién ha adjudicado más', 'organos')}
     </div>` : ''}
 
     <div style="margin-top:32px">${cuerpo}</div>`;
