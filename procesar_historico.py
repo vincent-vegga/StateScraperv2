@@ -74,6 +74,9 @@ CAMPOS = [
     "adjudicatario", "adjudicatario_cif", "importe_adjudicacion",
     "procedimiento", "urgencia", "licitadores", "lotes",
     "adjudicaciones", "adjudicatarios",
+    "presupuesto_base", "valor_estimado", "importe_sin_iva",
+    "oferta_baja", "oferta_alta", "motivo_adjudicacion",
+    "fecha_adjudicacion", "gano_pyme", "sistema",
     "fecha_actualizacion", "fecha_publicacion", "fecha_limite",
 ]
 
@@ -108,70 +111,21 @@ def normalizar_cif(valor: str) -> str:
     return limpio
 
 
-def extraer_adjudicaciones(entrada) -> list[dict]:
-    """
-    TODAS las adjudicaciones del expediente, una por lote.
-
-    Antes se cogía la primera y se paraba. En un contrato de cinco lotes
-    con cinco ganadores, eso dejaba fuera a cuatro empresas: no salían en
-    su ficha, ni en la competencia, ni en quién compra un organismo. Y el
-    importe guardado era el de un lote suelto, que comparado con el
-    presupuesto del expediente entero daba porcentajes absurdos.
-
-    En CODICE cada lote es un <cac:TenderResult> dentro del mismo
-    expediente, con su adjudicatario y su importe.
-    """
-    adjudicaciones = []
-
-    for numero, resultado in enumerate(lector.buscar_todos(entrada, "TenderResult"), 1):
-        nombre, cif = "", ""
-        for parte in lector.buscar_todos(resultado, "WinningParty"):
-            if not nombre:
-                nombre = lector.primer_texto(parte, "Name")
-            if not cif:
-                for ident in lector.buscar_todos(parte, "PartyIdentification"):
-                    cif = normalizar_cif(lector.primer_texto(ident, "ID"))
-                    if cif:
-                        break
-            if nombre and cif:
-                break
-
-        importe = None
-        for proyecto in lector.buscar_todos(resultado, "AwardedTenderedProject"):
-            for etiqueta in ("PayableAmount", "TotalAmount", "TaxExclusiveAmount"):
-                importe = lector.a_numero(lector.primer_texto(proyecto, etiqueta))
-                if importe is not None:
-                    break
-            if importe is not None:
-                break
-
-        if nombre or cif or importe is not None:
-            adjudicaciones.append({
-                "lote": numero,
-                "adjudicatario": nombre,
-                "cif": cif,
-                "importe": importe,
-            })
-
-    return adjudicaciones
-
-
 def resumir_adjudicaciones(adjudicaciones: list[dict]) -> tuple[str, str, float | None]:
     """
     De la lista de lotes, el ganador principal y el importe total.
 
     Principal es quien más dinero se lleva, no quien aparece primero: en
-    un contrato por lotes el orden no significa nada, y el que más pesa
-    es el que describe mejor de quién es ese contrato.
+    un contrato por lotes el orden no significa nada.
 
-    El importe es la SUMA de todos los lotes, que es lo único comparable
-    con el presupuesto publicado.
+    El importe es la SUMA de todos los lotes y SIN impuestos, que es lo
+    único comparable con el presupuesto base publicado.
     """
     if not adjudicaciones:
         return "", "", None
 
-    total = sum(a["importe"] for a in adjudicaciones if a["importe"] is not None)
-    principal = max(adjudicaciones, key=lambda a: a["importe"] or 0)
+    total = sum(a["importe"] for a in adjudicaciones if a.get("importe") is not None)
+    principal = max(adjudicaciones, key=lambda a: a.get("importe") or 0)
     return principal["adjudicatario"], principal["cif"], (total or None)
 
 
@@ -225,8 +179,14 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
     if datos is None:
         return None
 
-    adjudicaciones = extraer_adjudicaciones(entrada)
+    # La extracción vive en el lector, que es donde está el conocimiento
+    # de cómo es un expediente por dentro. Tener una copia aquí hacía que
+    # los arreglos solo llegaran a la mitad del sistema.
+    adjudicaciones = lector.extraer_adjudicaciones(entrada)
     adjudicatario, cif, importe = resumir_adjudicaciones(adjudicaciones)
+    base, estimado = lector.extraer_presupuesto_detallado(entrada)
+    principal = (max(adjudicaciones, key=lambda a: a.get("importe") or 0)
+                 if adjudicaciones else {})
     fecha_act = lector.a_fecha(datos["fecha_actualizacion"])
 
     return {
@@ -252,6 +212,15 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
         # lote en las consultas de inteligencia.
         "adjudicaciones": json.dumps(adjudicaciones, ensure_ascii=False),
         "adjudicatarios": len({a["cif"] for a in adjudicaciones if a["cif"]}),
+        "presupuesto_base": base,
+        "valor_estimado": estimado,
+        "importe_sin_iva": importe,
+        "oferta_baja": principal.get("oferta_baja"),
+        "oferta_alta": principal.get("oferta_alta"),
+        "motivo_adjudicacion": principal.get("motivo", ""),
+        "fecha_adjudicacion": principal.get("fecha", ""),
+        "gano_pyme": principal.get("pyme"),
+        "sistema": lector.extraer_sistema(entrada),
         "procedimiento": lector.extraer_procedimiento(entrada)[1],
         "urgencia": lector.extraer_urgencia(entrada),
         "licitadores": lector.extraer_licitadores(entrada),
@@ -487,6 +456,26 @@ def volcar_todo(filas: list[dict], etiqueta: str) -> int:
                       if str(f.get("lotes") or "").isdigit() else 0),
             "adjudicaciones": (json.loads(f["adjudicaciones"])
                                if f.get("adjudicaciones") else []),
+            "presupuesto_base": (float(f["presupuesto_base"])
+                      if str(f.get("presupuesto_base") or "").strip() not in ("", "None")
+                      else None),
+            "valor_estimado": (float(f["valor_estimado"])
+                      if str(f.get("valor_estimado") or "").strip() not in ("", "None")
+                      else None),
+            "importe_sin_iva": (float(f["importe_sin_iva"])
+                      if str(f.get("importe_sin_iva") or "").strip() not in ("", "None")
+                      else None),
+            "oferta_baja": (float(f["oferta_baja"])
+                      if str(f.get("oferta_baja") or "").strip() not in ("", "None")
+                      else None),
+            "oferta_alta": (float(f["oferta_alta"])
+                      if str(f.get("oferta_alta") or "").strip() not in ("", "None")
+                      else None),
+            "motivo_adjudicacion": f.get("motivo_adjudicacion") or None,
+            "fecha_adjudicacion": f.get("fecha_adjudicacion") or None,
+            "gano_pyme": (f.get("gano_pyme") == "True"
+                          if f.get("gano_pyme") not in ("", None) else None),
+            "sistema": f.get("sistema") or None,
             "adjudicatarios": (int(f["adjudicatarios"])
                                if str(f.get("adjudicatarios") or "").isdigit() else 0),
             "importe_adjudicacion": (f["importe_adjudicacion"]
@@ -547,6 +536,15 @@ def volcar_todo(filas: list[dict], etiqueta: str) -> int:
                                        if f.get("adjudicaciones") else []),
                     "adjudicatarios": (str(f["adjudicatarios"])
                                        if str(f.get("adjudicatarios") or "").isdigit() else ""),
+                    "presupuesto_base": str(f.get("presupuesto_base") or ""),
+                    "valor_estimado": str(f.get("valor_estimado") or ""),
+                    "importe_sin_iva": str(f.get("importe_sin_iva") or ""),
+                    "oferta_baja": str(f.get("oferta_baja") or ""),
+                    "oferta_alta": str(f.get("oferta_alta") or ""),
+                    "motivo_adjudicacion": f.get("motivo_adjudicacion") or "",
+                    "fecha_adjudicacion": f.get("fecha_adjudicacion") or "",
+                    "gano_pyme": str(f.get("gano_pyme") or ""),
+                    "sistema": f.get("sistema") or "",
                 }
                 for f in completables[i:i + 400]
             ]
