@@ -45,8 +45,13 @@ on:
           - importar_historico
           - catalogar_historico
           - ver_xml
+      catalogo_meses:
+        description: 'Meses a catalogar, separados por comas. Vacío = los doce'
+        required: false
+        default: ''
+        type: string
       conjunto_xml:
-        description: 'Sindicación a inspeccionar en modo ver_xml'
+        description: 'Qué sindicación catalogar o inspeccionar'
         required: false
         default: '643'
         type: choice
@@ -298,20 +303,41 @@ jobs:
             --anio ${{ inputs.catalogo_anio || 2026 }} --mes 1 \
             --conjunto ${{ inputs.conjunto_xml || '643' }} --ver-xml 2
 
-  catalogar:
-    name: Catálogo ${{ matrix.mes }}/${{ inputs.catalogo_anio }}
+  # Qué meses hay que procesar. Poder lanzar uno suelto evita esperar
+  # hora y cuarto para descubrir que algo estaba mal configurado.
+  meses:
     if: inputs.modo == 'catalogar_historico'
+    runs-on: ubuntu-latest
+    outputs:
+      lista: ${{ steps.decidir.outputs.lista }}
+    steps:
+      - id: decidir
+        run: |
+          if [ -z "${{ inputs.catalogo_meses }}" ]; then
+            echo 'lista=[1,2,3,4,5,6,7,8,9,10,11,12]' >> "$GITHUB_OUTPUT"
+          else
+            LIMPIO=$(echo "${{ inputs.catalogo_meses }}" | tr -d ' ')
+            echo "lista=[$LIMPIO]" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Meses a procesar: ${{ inputs.catalogo_meses || 'todos' }}"
+
+  catalogar:
+    name: Catálogo ${{ inputs.conjunto_xml || '643' }} · ${{ matrix.mes }}/${{ inputs.catalogo_anio }}
+    if: inputs.modo == 'catalogar_historico'
+    needs: meses
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     strategy:
       fail-fast: false          # un mes malo no cancela los demás
-      # Dos a la vez, no cuatro: el servidor de Hacienda agotó el
-      # tiempo de espera con cuatro descargas simultáneas y un mes se
-      # quedó sin procesar.
-      max-parallel: 2
+      # Tres a la vez. Con cuatro, el servidor de Hacienda agotaba el
+      # tiempo de espera y algún mes se quedaba sin procesar; con dos, un
+      # año entero pasaba de la hora. Tres es el punto en el que aguanta
+      # y no castiga demasiado a la base, que recibe todas las
+      # escrituras a la vez.
+      max-parallel: 3
       matrix:
-        mes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        mes: ${{ fromJson(needs.meses.outputs.lista) }}
 
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -325,7 +351,13 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
       - name: Procesar el mes
+        # El conjunto se pasa de verdad. Antes se usaba siempre el valor
+        # por defecto —el del Estado— así que elegir la sindicación
+        # agregada en el desplegable no cambiaba nada: descargaba lo
+        # mismo y no había forma de notarlo salvo mirando qué fuentes
+        # acababan en la base.
         run: |
           python procesar_historico.py \
             --anio "${{ inputs.catalogo_anio }}" \
-            --mes "${{ matrix.mes }}"
+            --mes "${{ matrix.mes }}" \
+            --conjunto "${{ inputs.conjunto_xml || '643' }}"
