@@ -545,6 +545,48 @@ def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
     return adjudicaciones
 
 
+def resumir_adjudicaciones(adjudicaciones: list[dict[str, Any]],
+                           presupuesto: float | None = None) -> dict[str, Any]:
+    """
+    Del conjunto de lotes, lo que describe al expediente.
+
+    El principal es quien más dinero se lleva, no quien aparece primero:
+    en un contrato por lotes el orden no significa nada. Y el importe es
+    la SUMA de todos y sin impuestos, que es lo único comparable con el
+    presupuesto base.
+    """
+    if not adjudicaciones:
+        return {}
+
+    total = sum(a["importe"] for a in adjudicaciones if a.get("importe") is not None)
+    principal = max(adjudicaciones, key=lambda a: a.get("importe") or 0)
+
+    # Sumar los lotes NO siempre da el total del contrato.
+    #
+    # En un acuerdo marco cada lote suele publicar el importe del marco
+    # ENTERO, no la parte de esa empresa. Un contrato andaluz con 393
+    # lotes y 178 M€ de presupuesto salía con 6.665 M€ adjudicados:
+    # treinta y siete veces su propio presupuesto, porque se estaba
+    # sumando el mismo dinero una vez por lote.
+    #
+    # Cuando la suma se dispara sobre el presupuesto, lo honesto es
+    # quedarse con el mayor de los lotes y no inventar un total.
+    if presupuesto and total and total > presupuesto * 1.5:
+        total = principal.get("importe")
+
+    return {
+        "adjudicatario": principal.get("adjudicatario") or "",
+        "adjudicatario_cif": principal.get("cif") or "",
+        "importe_sin_iva": total or None,
+        "importe_adjudicacion": total or None,
+        "oferta_baja": principal.get("oferta_baja"),
+        "oferta_alta": principal.get("oferta_alta"),
+        "motivo_adjudicacion": principal.get("motivo") or "",
+        "fecha_adjudicacion": principal.get("fecha") or "",
+        "gano_pyme": principal.get("pyme"),
+    }
+
+
 def extraer_sistema(entrada: etree._Element) -> str:
     """
     Si el contrato va por acuerdo marco o sistema dinámico.
@@ -1052,6 +1094,8 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
         "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
         "sistema": extraer_sistema(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
+        **resumir_adjudicaciones(extraer_adjudicaciones(entrada),
+                                 extraer_presupuesto_detallado(entrada)[0]),
         # Interna: gobierna la paginación, porque es el orden del feed.
         "fecha_actualizacion": primer_texto(entrada, "updated", solo_hijos=True)
                                or primer_texto(entrada, "published", solo_hijos=True),
@@ -1171,6 +1215,8 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
         "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
         "sistema": extraer_sistema(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
+        **resumir_adjudicaciones(extraer_adjudicaciones(entrada),
+                                 extraer_presupuesto_detallado(entrada)[0]),
         "fecha_actualizacion": primer_texto(entrada, "updated", solo_hijos=True)
                                or primer_texto(entrada, "published", solo_hijos=True)
                                or primer_texto(entrada, "pubDate", solo_hijos=True),
@@ -1679,6 +1725,30 @@ def refrescar_conocidas(cliente, conocidas: list[dict[str, Any]]) -> int:
             "urgencia": item.get("urgencia") or None,
             "licitadores": item.get("licitadores"),
             "lotes": item.get("lotes") or 0,
+            # Lo que explica la adjudicación, para que un contrato que se
+            # resuelve entre en la inteligencia el mismo día.
+            #
+            # Sin esto, un expediente que el scraper vigila durante dos
+            # semanas y acaba adjudicándose se quedaba a medias: cambiaba
+            # de estado y desaparecía de la lista, pero su adjudicatario,
+            # sus licitadores y sus ofertas no se guardaban. Había que
+            # esperar a una pasada del catálogo para recogerlo.
+            "adjudicaciones": item.get("adjudicaciones") or [],
+            "adjudicatarios": len({
+                a.get("cif") for a in (item.get("adjudicaciones") or [])
+                if a.get("cif")}),
+            "presupuesto_base": item.get("presupuesto_base"),
+            "valor_estimado": item.get("valor_estimado"),
+            "sistema": item.get("sistema") or None,
+            "adjudicatario": item.get("adjudicatario") or None,
+            "adjudicatario_cif": item.get("adjudicatario_cif") or None,
+            "importe_sin_iva": item.get("importe_sin_iva"),
+            "importe_adjudicacion": item.get("importe_adjudicacion"),
+            "oferta_baja": item.get("oferta_baja"),
+            "oferta_alta": item.get("oferta_alta"),
+            "motivo_adjudicacion": item.get("motivo_adjudicacion") or None,
+            "fecha_adjudicacion": item.get("fecha_adjudicacion") or None,
+            "gano_pyme": item.get("gano_pyme"),
             # Verlo en el feed es la confirmación de que sigue como dice.
             # Sin esta marca no se puede distinguir "está publicada" de
             # "lo estaba la última vez que la vimos, hace tres semanas".
@@ -1739,6 +1809,30 @@ def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
             "urgencia": item.get("urgencia") or None,
             "licitadores": item.get("licitadores"),
             "lotes": item.get("lotes") or 0,
+            # Lo que explica la adjudicación, para que un contrato que se
+            # resuelve entre en la inteligencia el mismo día.
+            #
+            # Sin esto, un expediente que el scraper vigila durante dos
+            # semanas y acaba adjudicándose se quedaba a medias: cambiaba
+            # de estado y desaparecía de la lista, pero su adjudicatario,
+            # sus licitadores y sus ofertas no se guardaban. Había que
+            # esperar a una pasada del catálogo para recogerlo.
+            "adjudicaciones": item.get("adjudicaciones") or [],
+            "adjudicatarios": len({
+                a.get("cif") for a in (item.get("adjudicaciones") or [])
+                if a.get("cif")}),
+            "presupuesto_base": item.get("presupuesto_base"),
+            "valor_estimado": item.get("valor_estimado"),
+            "sistema": item.get("sistema") or None,
+            "adjudicatario": item.get("adjudicatario") or None,
+            "adjudicatario_cif": item.get("adjudicatario_cif") or None,
+            "importe_sin_iva": item.get("importe_sin_iva"),
+            "importe_adjudicacion": item.get("importe_adjudicacion"),
+            "oferta_baja": item.get("oferta_baja"),
+            "oferta_alta": item.get("oferta_alta"),
+            "motivo_adjudicacion": item.get("motivo_adjudicacion") or None,
+            "fecha_adjudicacion": item.get("fecha_adjudicacion") or None,
+            "gano_pyme": item.get("gano_pyme"),
             # Se normaliza a ISO: el feed catalán puede traerla en formato
             # RSS ("Mon, 17 Aug 2026 08:00:00 +0200"), que PostgreSQL no
             # interpreta, y sin fecha el marcador adaptativo no funciona.
