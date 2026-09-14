@@ -3361,7 +3361,15 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
 
     const { data, error } = await sb.rpc('ficha_organismo',
       { organo_buscado: cual, desde, hasta });
-    if (error || !data || !data.contratos) {
+    // Distinguir "no hay datos" de "no se han podido leer": decir lo
+    // primero cuando pasa lo segundo es afirmar algo falso.
+    if (error) {
+      zona.innerHTML = `<div class="aviso mal">No hemos podido cargar este
+        organismo.<div style="margin-top:8px;font-size:.86rem;color:var(--tenue)">
+        ${esc(error.message || '')}</div></div>`;
+      return;
+    }
+    if (!data || !data.contratos) {
       zona.innerHTML = `<div class="aviso">No hay adjudicaciones de tu sector
         para ese organismo en el periodo elegido.</div>`;
       return;
@@ -3637,6 +3645,27 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
     sb.rpc('movimientos_mercado', { dias: 30 }),
     sb.rpc('pulso_mercado', { dias: 30 }),
   ]);
+  // Un fallo NO se enseña como "no hay nada".
+  //
+  // Cuando la consulta se cae —un tiempo de espera agotado mientras el
+  // catálogo escribe, por ejemplo— la pantalla decía "Todavía no hay
+  // adjudicaciones en tus sectores". Y eso es mentira: las hay, pero no
+  // se han podido leer. El cliente concluye que su sector está parado.
+  if (mov.error || pul.error) {
+    const fallo = mov.error || pul.error;
+    document.getElementById('zona').innerHTML = `
+      <div class="aviso mal" style="margin-top:26px">
+        No hemos podido cargar los movimientos.
+        <div style="margin-top:10px;font-size:.86rem;color:var(--tenue)">
+          ${esc(fallo.message || 'Error desconocido')}</div>
+        <div style="margin-top:14px">
+          <button class="secundario" id="reintentar">Reintentar</button>
+        </div>
+      </div>`;
+    alPulsar('reintentar', () => pantallaMovimientos(perfil, session, true));
+    return;
+  }
+
   const lista = mov.data ?? [];
   const p = pul.data ?? {};
 
