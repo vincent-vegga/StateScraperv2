@@ -4624,7 +4624,12 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
       </button>
       <section class="detalle" id="d${i}">
-        ${o.veredicto_motivo ? `<p class="cita">${esc(o.veredicto_motivo)}</p>` : ''}
+        <!-- El motivo del cribado NO se enseña.
+             Es el razonamiento interno del clasificador —"mantenimiento de
+             dispositivos CR, pero no se especifica que sean de diagnóstico
+             por imagen"— y leerlo solo consigue que el cliente discuta con
+             la máquina en vez de decirle si le interesa o no. Para eso
+             están los dos botones. -->
         <dl>
           <dt>Órgano</dt><dd>${esc(o.organo ?? '—')}</dd>
           <dt>Provincia</dt><dd>${esc(o.provincia ?? 'no informada')}</dd>
