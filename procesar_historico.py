@@ -534,7 +534,7 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
     # pasar por aquí, porque `ignore_duplicates` descarta la fila entera.
     completables = [f for f in filas if f.get("adjudicatario")
                     or f.get("procedimiento") or f.get("licitadores")
-                    or f.get("lotes")]
+                    or f.get("lotes") or f.get("nuts")]
     if completables:
         completadas = 0
         for i in range(0, len(completables), 400):
@@ -564,6 +564,10 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
                     "fecha_adjudicacion": f.get("fecha_adjudicacion") or "",
                     "gano_pyme": str(f.get("gano_pyme") or ""),
                     "sistema": f.get("sistema") or "",
+                    # El territorio también: el agregado autonómico no
+                    # trae código postal y sin el NUTS esas licitaciones
+                    # se quedan sin provincia ni comunidad.
+                    "nuts": f.get("nuts") or "",
                 }
                 for f in completables[i:i + 400]
             ]
