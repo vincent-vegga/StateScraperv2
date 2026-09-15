@@ -636,6 +636,26 @@ def normalizar_codigo_postal(valor: str | None) -> str | None:
     return digitos
 
 
+def extraer_nuts(entrada: etree._Element) -> str:
+    """
+    Código de territorio NUTS del lugar de ejecución.
+
+    Las plataformas autonómicas NO publican dirección postal: donde el
+    Estado pone <cbc:PostalZone>28001</cbc:PostalZone>, ellas ponen solo
+
+        <cac:RealizedLocation>
+          <cbc:CountrySubentityCode>ES220</cbc:CountrySubentityCode>
+
+    Sin leerlo, 165.834 licitaciones del agregado se quedaban sin
+    territorio y el selector geográfico no las veía.
+    """
+    for lugar in buscar_todos(entrada, "RealizedLocation"):
+        codigo = primer_texto(lugar, "CountrySubentityCode")
+        if codigo and codigo.upper().startswith("ES"):
+            return codigo.upper()
+    return ""
+
+
 def extraer_codigo_postal(entrada: etree._Element) -> str | None:
     """
     Localiza el código postal de la licitación, por orden de fiabilidad.
@@ -1071,6 +1091,7 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
         "organo": organo or "(órgano no informado)",
         "enlace": enlace,
         "codigo_postal": extraer_codigo_postal(entrada),
+        "nuts": extraer_nuts(entrada),
         "fecha_limite": extraer_fecha_limite(entrada),
         "documentos": extraer_documentos(entrada),
         **extraer_condiciones(entrada),
@@ -1192,6 +1213,7 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
         "organo": organo or "(órgano no informado)",
         "enlace": enlace,
         "codigo_postal": extraer_codigo_postal(entrada),
+        "nuts": extraer_nuts(entrada),
         "fecha_limite": extraer_fecha_limite(entrada),
         "documentos": extraer_documentos(entrada),
         **extraer_condiciones(entrada),
@@ -1801,6 +1823,7 @@ def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
             "organo": item["organo"],
             "enlace": item["enlace"] or None,
             "codigo_postal": item["codigo_postal"],
+            "nuts": item.get("nuts") or None,
             "presupuesto": item["presupuesto"],
             "cpvs": item["cpvs"],
             "estado_licitacion": item["estado_licitacion"] or None,
