@@ -311,9 +311,9 @@ def procesar(contenido: bytes, etiqueta: str) -> tuple[list[dict], dict]:
                     # adjudicación— aparece en todos los expedientes,
                     # adjudicados o no, así que ese filtro dejaba pasar
                     # cualquiera.
+                    # Sin filtrar por estado: la dirección se publica
+                    # desde el principio, esté adjudicado o no.
                     estado = lector.extraer_estado(entrada)[0]
-                    if estado not in ("ADJ", "RES", "FORM"):
-                        continue
 
                     VER_XML[0] -= 1
                     logging.info("=" * 62)
@@ -322,8 +322,9 @@ def procesar(contenido: bytes, etiqueta: str) -> tuple[list[dict], dict]:
                     # Solo los bloques que interesan, no el expediente
                     # entero: cortando por los extremos, el resultado
                     # quedaba justo en la parte omitida.
-                    for etiqueta in ("TenderResult", "TenderingProcess",
-                                     "ProcurementProjectLot"):
+                    for etiqueta in ("RealizedLocation", "PostalAddress",
+                                     "Address", "TenderResult",
+                                     "TenderingProcess"):
                         trozos = lector.buscar_todos(entrada, etiqueta)
                         logging.info("--- %s (%d) ---", etiqueta, len(trozos))
                         for trozo in trozos[:3]:
@@ -400,7 +401,15 @@ def subir(datos: bytes, ruta: str) -> bool:
         return False
 
 
-def volcar_todo(filas: list[dict], etiqueta: str) -> int:
+# De qué procede cada sindicación.
+ORIGEN_DE = {
+    "643": "Estado",
+    "1044": "Comunidades",
+    "1143": "Menores",
+}
+
+
+def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
     """
     Guarda en la base todas las licitaciones del mes, vivas o cerradas.
 
@@ -430,7 +439,11 @@ def volcar_todo(filas: list[dict], etiqueta: str) -> int:
         {
             "id_licitacion": f["id_licitacion"],
             "fuente": etiqueta,
-            "origen": "Estado",
+            # Según la sindicación, no siempre «Estado»: la 1044 agrega
+            # las plataformas autonómicas, así que marcar todo como
+            # Estado hacía creer que no había datos de las comunidades
+            # cuando sí estaban.
+            "origen": ORIGEN_DE.get(conjunto, "Estado"),
             "expediente": f["expediente"] or None,
             "titulo": f["titulo"],
             "organo": f["organo"],
@@ -640,7 +653,7 @@ def main() -> int:
     logging.info("  Estados: %s", ", ".join(f"{k}={v}" for k, v in reparto.most_common(6)))
 
     if not opciones.local:
-        volcar_todo(filas, etiqueta)
+        volcar_todo(filas, etiqueta, opciones.conjunto)
         # El resumen se recalcula al final, sobre lo ya volcado: contarlo
         # mes a mes duplicaba los expedientes que se mueven varias veces.
         refrescar_resumen()
