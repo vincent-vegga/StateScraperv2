@@ -70,8 +70,9 @@ TIMEOUT = 900
 # futuro, no solo para el que motivó su creación.
 CAMPOS = [
     "id_licitacion", "expediente", "titulo", "organo", "enlace",
-    "codigo_postal", "presupuesto", "cpvs", "estado_licitacion",
+    "codigo_postal", "nuts", "presupuesto", "cpvs", "estado_licitacion",
     "adjudicatario", "adjudicatario_cif", "importe_adjudicacion",
+    "nuts",
     "procedimiento", "urgencia", "licitadores", "lotes",
     "adjudicaciones", "adjudicatarios",
     "presupuesto_base", "valor_estimado", "importe_sin_iva",
@@ -196,6 +197,10 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
         "organo": datos["organo"],
         "enlace": datos["enlace"],
         "codigo_postal": datos["codigo_postal"] or "",
+        # El agregado autonómico no publica dirección postal, solo el
+        # código NUTS del lugar de ejecución. Sin esto, 165.834
+        # licitaciones se quedaban sin territorio.
+        "nuts": datos.get("nuts") or "",
         "presupuesto": datos["presupuesto"] if datos["presupuesto"] is not None else "",
         # Los CPV van como texto separado por comas y no como JSON: el
         # catálogo se filtra leyendo líneas, y una comparación de texto
@@ -449,6 +454,7 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
             "organo": f["organo"],
             "enlace": f["enlace"] or None,
             "codigo_postal": f["codigo_postal"] or None,
+            "nuts": f.get("nuts") or None,
             "presupuesto": f["presupuesto"] if f["presupuesto"] != "" else None,
             "cpvs": [c for c in f["cpvs"].split(",") if c],
             "estado_licitacion": f["estado_licitacion"] or None,
