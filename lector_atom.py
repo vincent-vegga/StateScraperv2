@@ -627,8 +627,19 @@ def normalizar_codigo_postal(valor: str | None) -> str | None:
     if not valor:
         return None
     digitos = "".join(c for c in valor if c.isdigit())
+
     if len(digitos) == 4:
+        # Un AÑO también tiene cuatro dígitos. Rellenando a ciegas, '2025'
+        # se convertía en '02025' y el 02 lo mandaba a Albacete: 2.029
+        # licitaciones gallegas, catalanas y madrileñas acabaron
+        # etiquetadas como albaceteñas.
+        #
+        # Los CP de Barcelona sin cero van de 8001 a 8999, y los de Álava
+        # de 1001 a 1999; ningún año cae en esos rangos.
+        if 1900 <= int(digitos) <= 2100:
+            return None
         digitos = "0" + digitos
+
     if len(digitos) != 5:
         return None
     if not 1 <= int(digitos[:2]) <= 52:
