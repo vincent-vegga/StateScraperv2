@@ -1262,6 +1262,41 @@ select:focus{
   .dos-columnas{grid-template-columns:1fr}
 }
 
+/* Compras repetidas del mismo contrato, plegadas.
+   Un acuerdo marco de stents publica cada compra derivada como su
+   propio expediente: salían 41 líneas con el mismo título. */
+.grupo-mov > summary{
+  display:grid;grid-template-columns:1fr 150px;gap:20px;align-items:start;
+  padding:17px 0;border-bottom:1px solid var(--linea);
+  cursor:pointer;list-style:none;
+}
+.grupo-mov > summary::-webkit-details-marker{display:none}
+.grupo-mov > summary:hover{background:var(--hover)}
+.grupo-mov[open] > summary{border-bottom:0;padding-bottom:8px}
+/* Los estilos de texto viven dentro de `.movimiento`; el resumen del
+   grupo no lo es, así que los necesita también. */
+.grupo-mov > summary .gano{font-size:.86rem;font-weight:650;margin:0 0 4px}
+.grupo-mov > summary .que{margin:0 0 4px;font-size:.95rem;line-height:1.42}
+.grupo-mov > summary .donde{color:var(--tenue);font-size:.85rem}
+.grupo-mov > summary .cifra{text-align:right;white-space:nowrap}
+.grupo-mov > summary .cifra strong{font-variant-numeric:tabular-nums}
+.grupo-mov > summary .baja{
+  display:block;margin-top:3px;color:var(--tenue);font-size:.8rem;
+}
+
+.grupo-mov .cuantas-veces{
+  display:inline-flex;align-items:center;gap:6px;margin-top:5px;
+  color:var(--tenue);font-size:.84rem;
+}
+.grupo-mov .flechita{font-size:.7rem;transition:transform .18s}
+.grupo-mov[open] .flechita{transform:rotate(180deg)}
+.grupo-mov .dentro{
+  margin-left:16px;padding-left:16px;
+  border-left:2px solid var(--linea);
+  border-bottom:1px solid var(--linea);
+}
+.grupo-mov .dentro .movimiento{padding:12px 0}
+
 .movimiento{
   display:grid;grid-template-columns:1fr 150px;gap:20px;align-items:start;
   padding:17px 0;border-bottom:1px solid var(--linea);
@@ -1291,6 +1326,9 @@ select:focus{
   .cabeza-movimientos{grid-template-columns:1fr}
   .movimiento{grid-template-columns:1fr;gap:6px}
   .movimiento .cifra{text-align:left}
+  .grupo-mov > summary{grid-template-columns:1fr;gap:6px}
+  .grupo-mov > summary .cifra{text-align:left}
+  .grupo-mov .dentro{margin-left:8px;padding-left:10px}
 }
 
 /* ---------- Mercado ---------- */
@@ -4212,7 +4250,20 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
   //
   // Para recuperarlo hay que extraer el número de lotes y el tipo de
   // contrato al procesar el histórico.
-  const cuerpo = lista.length ? lista.map(m => {
+  // Una línea por contrato, no por compra.
+  //
+  // Un acuerdo marco de stents publica CADA compra derivada como su
+  // propio expediente: salían 41 líneas con el mismo título y distinta
+  // empresa. Se agrupan por organismo y título, y el detalle se
+  // despliega.
+  const grupos = new Map();
+  lista.forEach(m => {
+    const k = m.grupo || m.id_licitacion;
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(m);
+  });
+
+  const unaLinea = m => {
     return `<div class="movimiento ${m.es_mia ? 'mia' : m.la_sigo ? 'sigo' : ''}">
       <div>
         <p class="gano">${esc(m.empresa ?? '—')}${
@@ -4226,6 +4277,37 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
         <span class="baja">${esc(fecha(m.fecha))}</span>
       </div>
     </div>`;
+  };
+
+  const cuerpo = lista.length ? [...grupos.values()].map(g => {
+    if (g.length === 1) return unaLinea(g[0]);
+
+    // Del grupo se enseña la compra más reciente, y el resto debajo.
+    const primera = g[0];
+    const empresas = new Set(g.map(x => x.cif).filter(Boolean)).size;
+    const total = g.reduce((s, x) => s + (Number(x.importe) || 0), 0);
+    const mia = g.some(x => x.es_mia);
+    const sigo = g.some(x => x.la_sigo);
+
+    return `<details class="grupo-mov">
+      <summary>
+        <div>
+          <p class="gano">${empresas} ${empresas === 1 ? 'empresa' : 'empresas'}
+            ${mia ? '<span class="marca-mia">tu empresa entre ellas</span>'
+            : sigo ? '<span class="marca-mia">una que sigues</span>' : ''}</p>
+          <p class="que">${esc(primera.titulo ?? '')}</p>
+          <span class="donde">${esc([primera.organo, primera.provincia]
+            .filter(Boolean).join(' · '))}</span>
+          <span class="cuantas-veces">${g.length} compras
+            <span class="flechita">▾</span></span>
+        </div>
+        <div class="cifra">
+          <strong>${total ? euros(total) : '—'}</strong>
+          <span class="baja">${esc(fecha(primera.fecha))}</span>
+        </div>
+      </summary>
+      <div class="dentro">${g.map(unaLinea).join('')}</div>
+    </details>`;
   }).join('') : `<p class="vacio">Todavía no hay adjudicaciones registradas en
     tus sectores este mes.</p>`;
 
