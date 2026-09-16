@@ -3368,6 +3368,15 @@ function navPrincipal(donde) {
 }
 
 function activarNav(perfil, session, donde) {
+  document.querySelectorAll('[data-nav]').forEach(b => {
+    // Al acercar el cursor ya se va pidiendo: para cuando pulsa, los
+    // datos están de camino.
+    const adelantar = () => precargar(b.dataset.nav);
+    b.onmouseenter = adelantar;
+    b.onfocus = adelantar;
+    b.ontouchstart = adelantar;
+  });
+
   document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => {
     if (b.dataset.nav === donde) return;
     if (b.dataset.nav === 'mercado') pantallaMercado(perfil, session);
@@ -3376,6 +3385,97 @@ function activarNav(perfil, session, donde) {
     else if (b.dataset.nav === 'viabilidad') pantallaViabilidad(perfil, session);
     else pantallaOportunidades(perfil, session);
   });
+}
+
+// ---------- Lo que ya se ha pedido ----------
+//
+// Cada cambio de pestaña volvía a pedirlo todo a la base, así que había
+// un segundo de espera cada vez. Aquí se guarda lo último que devolvió
+// cada consulta: al volver, la pantalla sale al instante con eso y se
+// refresca por detrás.
+//
+// Vive solo en memoria y se pierde al recargar, que es lo que se quiere:
+// nunca se enseñan datos de una sesión anterior.
+const CACHE = new Map();
+const VIGENCIA = 90_000;   // Metro y medio de margen: pasado eso, se pide de nuevo.
+
+async function pedir(nombre, args = {}, opciones = {}) {
+  const clave = nombre + ':' + JSON.stringify(args);
+  const guardado = CACHE.get(clave);
+  const fresco = guardado && (Date.now() - guardado.cuando) < VIGENCIA;
+
+  // Con algo guardado se devuelve YA y se refresca en segundo plano.
+  if (guardado && opciones.alVuelo !== false) {
+    if (!fresco) refrescar(clave, nombre, args, opciones.alCambiar);
+    return { data: guardado.data, error: null, deCache: true };
+  }
+
+  const r = await sb.rpc(nombre, args);
+  if (!r.error) CACHE.set(clave, { data: r.data, cuando: Date.now() });
+  return r;
+}
+
+async function refrescar(clave, nombre, args, alCambiar) {
+  try {
+    const r = await sb.rpc(nombre, args);
+    if (r.error) return;
+    const antes = JSON.stringify(CACHE.get(clave)?.data);
+    CACHE.set(clave, { data: r.data, cuando: Date.now() });
+    // Solo se avisa si de verdad cambió algo: repintar una lista
+    // idéntica mueve lo que el cliente está mirando sin motivo.
+    if (alCambiar && JSON.stringify(r.data) !== antes) alCambiar(r.data);
+  } catch { /* el refresco nunca estorba */ }
+}
+
+// Lo que se toca deja de valer: tras corregir un contrato o seguir una
+// empresa, lo guardado ya no describe la realidad.
+function olvidar(...nombres) {
+  for (const k of [...CACHE.keys()]) {
+    if (nombres.some(n => k.startsWith(n + ':'))) CACHE.delete(k);
+  }
+}
+
+// Sus contratos abiertos. No es una función sino una consulta de tabla,
+// así que necesita su propio guardado — y es la pantalla a la que más se
+// vuelve, así que es donde más se nota.
+async function pedirContratos(perfilId, alCambiar) {
+  const clave = 'contratos:' + perfilId;
+  const guardado = CACHE.get(clave);
+
+  if (guardado) {
+    if (Date.now() - guardado.cuando >= VIGENCIA) {
+      sb.from('mis_oportunidades').select('*').eq('perfil_id', perfilId)
+        .then(({ data, error }) => {
+          if (error) return;
+          const antes = JSON.stringify(CACHE.get(clave)?.data);
+          CACHE.set(clave, { data, cuando: Date.now() });
+          if (alCambiar && JSON.stringify(data) !== antes) alCambiar(data);
+        });
+    }
+    return { data: guardado.data, error: null };
+  }
+
+  const r = await sb.from('mis_oportunidades').select('*').eq('perfil_id', perfilId);
+  if (!r.error) CACHE.set(clave, { data: r.data, cuando: Date.now() });
+  return r;
+}
+
+// Al pasar el cursor por una pestaña se va pidiendo lo que necesita.
+// Para cuando se pulsa, los datos ya están de camino.
+function precargar(donde) {
+  if (donde === 'contratos') {
+    // El perfil no está aquí, pero la clave se resuelve sola en cuanto
+    // la pantalla lo pida: lo que importa es no esperar dos veces.
+    return;
+  }
+  if (donde === 'movimientos') {
+    pedir('movimientos_mercado', { dias: 30 });
+    pedir('pulso_mercado', { dias: 30 });
+  } else if (donde === 'mercado') {
+    pedir('buscar_organismo', { texto: '', salto: 0, cuantos: 400 });
+  } else if (donde === 'viabilidad') {
+    pedir('analizables', { texto: '', organo_filtro: '' });
+  }
 }
 
 // ---------- Viabilidad ----------
@@ -3435,7 +3535,7 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
   }
 
   async function cargarLista(texto, organo) {
-    const { data, error } = await sb.rpc('analizables',
+    const { data, error } = await pedir('analizables',
       { texto: texto || '', organo_filtro: organo || '' });
     const caja = document.getElementById('lista-elegir');
     if (!caja) return;
@@ -4160,9 +4260,23 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
   // lo criba el propio scraper.
   await cribarMercado();
 
+  // La estructura primero, los datos después: reemplazar la pantalla
+  // entera por «Cargando...» da sensación de salto en cada cambio de
+  // pestaña. Así la cabecera y el titular no parpadean.
+  document.getElementById('zona').innerHTML = `
+    <div class="cabeza-movimientos">
+      <div>
+        <h1 style="margin:0 0 12px">Qué se ha adjudicado en tu sector</h1>
+        <p class="guia" style="margin:0">Los contratos que se han cerrado en
+        los últimos treinta días con los mismos códigos que los tuyos.</p>
+      </div>
+      <div class="pulso"><h4>El mes en tu sector</h4>
+        <p class="guia" style="margin:0;font-size:.9rem">Cargando...</p></div>
+    </div>`;
+
   const [mov, pul] = await Promise.all([
-    sb.rpc('movimientos_mercado', { dias: 30 }),
-    sb.rpc('pulso_mercado', { dias: 30 }),
+    pedir('movimientos_mercado', { dias: 30 }),
+    pedir('pulso_mercado', { dias: 30 }),
   ]);
   // Un fallo NO se enseña como "no hay nada".
   //
@@ -4687,6 +4801,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       recado(data
         ? 'Añadida a tu lista de seguimiento'
         : 'Quitada de tu lista de seguimiento');
+      olvidar('mi_seguimiento', 'competencia', 'movimientos_mercado');
     });
   }
 
@@ -5041,8 +5156,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando tus contratos...</p></div>`;
 
-  const { data, error } = await sb.from('mis_oportunidades')
-    .select('*').eq('perfil_id', perfil.id);
+  const { data, error } = await pedirContratos(perfil.id, nuevos => {
+    // Si algo cambió por detrás, se repinta sin que el cliente
+    // haya tenido que esperar.
+    DATOS.length = 0;
+    (nuevos ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
+      .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9))
+      .forEach(o => DATOS.push(o));
+    if (document.getElementById('lista')) pintar();
+  });
   if (error) {
     raiz.innerHTML = `<div class="centro"><div class="aviso mal">
       No hemos podido cargar tus contratos.</div></div>`;
@@ -5282,6 +5404,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const CORRECCIONES_PARA_AJUSTAR = 3;
 
   async function corregir(id, interesa, motivo) {
+    // Corregir cambia lo que se muestra, así que lo guardado deja de
+    // describir la realidad.
+    olvidar('analizables', 'contratos');
     const i = DATOS.findIndex(o => o.id_licitacion === id);
     if (i >= 0) {
       if (interesa) {
