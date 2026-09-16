@@ -1036,7 +1036,8 @@ Deno.serve(async (peticion) => {
       if (!perfil.criterio) return responder({ error: "sin_criterio" }, 400);
 
       const dias = Number(cuerpo.dias ?? 30);
-      const { data: cola } = await comoUsuario.rpc("mercado_sin_cribar", { dias });
+      const { data: cola } = await admin.rpc("mercado_sin_cribar_de",
+        { perfil: perfil.id, dias });
       const pendientes = (cola ?? []) as Record<string, unknown>[];
 
       if (!pendientes.length) {
@@ -1069,13 +1070,21 @@ Deno.serve(async (peticion) => {
         });
       }
 
-      await comoUsuario.rpc("guardar_criba_mercado", { datos: veredictos });
+      // Con el perfil explícito: esta llamada va con la clave de
+      // servicio y `auth.uid()` no resuelve a nadie desde aquí.
+      const { data: metidas, error: fallo } = await admin.rpc(
+        "guardar_criba_mercado", { datos: veredictos, perfil: perfil.id });
+
+      if (fallo) {
+        return responder({ error: "no_guardado", detalle: fallo.message }, 500);
+      }
 
       return responder({
         ok: true,
         terminado: pendientes.length <= LOTE,
         quedan: Math.max(0, pendientes.length - tanda.length),
         cribados: veredictos.length,
+        guardados: metidas ?? 0,
       });
     }
 
