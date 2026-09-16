@@ -587,6 +587,60 @@ def resumir_adjudicaciones(adjudicaciones: list[dict[str, Any]],
     }
 
 
+def extraer_criterios(entrada: etree._Element) -> dict[str, Any]:
+    """
+    Cómo se reparte la puntuación entre precio y juicio de valor.
+
+    Es la señal que más dice sobre si merece la pena presentarse. Un
+    contrato donde el 45 % de los puntos depende de la valoración
+    subjetiva de un técnico favorece a quien ya trabaja con el organismo;
+    uno donde el 90 % es precio está abierto a cualquiera que ajuste.
+
+    Viene en el XML y no hace falta leer ningún PDF:
+
+        <cac:AwardingCriteria>
+          <cbc:AwardingCriteriaTypeCode>OBJ</cbc:AwardingCriteriaTypeCode>
+          <cbc:Description>Precio ofertado</cbc:Description>
+          <cbc:WeightNumeric>85</cbc:WeightNumeric>
+        </cac:AwardingCriteria>
+
+    OBJ es automático —una fórmula—, SUB es juicio de valor. Los pesos
+    se normalizan a cien porque hay pliegos que los publican sobre otra
+    escala.
+    """
+    objetivo = subjetivo = 0.0
+    detalle: list[dict[str, Any]] = []
+
+    for criterio in buscar_todos(entrada, "AwardingCriteria"):
+        tipo = primer_texto(criterio, "AwardingCriteriaTypeCode").upper()
+        peso = a_numero(primer_texto(criterio, "WeightNumeric"))
+        nombre = primer_texto(criterio, "Description")[:120]
+        if peso is None:
+            continue
+
+        # SUB es juicio de valor; todo lo demás se cuenta como fórmula.
+        # Con un código desconocido es preferible no alarmar: decir que
+        # un contrato es subjetivo cuando no lo es desaconseja presentarse
+        # a algo que sí estaba abierto.
+        if tipo == "SUB":
+            subjetivo += peso
+        else:
+            objetivo += peso
+
+        detalle.append({"nombre": nombre, "peso": peso,
+                        "juicio": tipo == "SUB"})
+
+    total = objetivo + subjetivo
+    if total <= 0:
+        return {}
+
+    return {
+        "peso_objetivo": round(objetivo / total * 100),
+        "peso_subjetivo": round(subjetivo / total * 100),
+        "criterios": detalle[:12],
+    }
+
+
 def extraer_sistema(entrada: etree._Element) -> str:
     """
     Si el contrato va por acuerdo marco o sistema dinámico.
@@ -1125,6 +1179,7 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
         "presupuesto_base": extraer_presupuesto_detallado(entrada)[0],
         "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
         "sistema": extraer_sistema(entrada),
+        **extraer_criterios(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
         **resumir_adjudicaciones(extraer_adjudicaciones(entrada),
                                  extraer_presupuesto_detallado(entrada)[0]),
@@ -1247,6 +1302,7 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
         "presupuesto_base": extraer_presupuesto_detallado(entrada)[0],
         "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
         "sistema": extraer_sistema(entrada),
+        **extraer_criterios(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
         **resumir_adjudicaciones(extraer_adjudicaciones(entrada),
                                  extraer_presupuesto_detallado(entrada)[0]),
@@ -1773,6 +1829,9 @@ def refrescar_conocidas(cliente, conocidas: list[dict[str, Any]]) -> int:
             "presupuesto_base": item.get("presupuesto_base"),
             "valor_estimado": item.get("valor_estimado"),
             "sistema": item.get("sistema") or None,
+            "peso_objetivo": item.get("peso_objetivo"),
+            "peso_subjetivo": item.get("peso_subjetivo"),
+            "criterios": item.get("criterios") or None,
             "adjudicatario": item.get("adjudicatario") or None,
             "adjudicatario_cif": item.get("adjudicatario_cif") or None,
             "importe_sin_iva": item.get("importe_sin_iva"),
@@ -1858,6 +1917,9 @@ def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
             "presupuesto_base": item.get("presupuesto_base"),
             "valor_estimado": item.get("valor_estimado"),
             "sistema": item.get("sistema") or None,
+            "peso_objetivo": item.get("peso_objetivo"),
+            "peso_subjetivo": item.get("peso_subjetivo"),
+            "criterios": item.get("criterios") or None,
             "adjudicatario": item.get("adjudicatario") or None,
             "adjudicatario_cif": item.get("adjudicatario_cif") or None,
             "importe_sin_iva": item.get("importe_sin_iva"),
