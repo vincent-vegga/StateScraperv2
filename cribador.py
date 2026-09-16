@@ -269,6 +269,54 @@ def leer_pendientes(cliente, perfil_id: str, limite: int) -> list[dict]:
         return []
 
 
+def cola_de_mercado(cliente, perfil_id: str, dias: int = 30) -> list[dict]:
+    """
+    Adjudicaciones recientes del sector que aún no se han clasificado.
+
+    Es otra pregunta que la de los contratos abiertos: no «¿me presento a
+    esto?» sino «¿esta empresa es de mi mercado?». Hace falta porque el
+    sector se define cruzando códigos CPV, y eso trae competidores que no
+    lo son: a un proveedor de equipamiento médico le salían empresas de
+    mantenimiento de escuelas infantiles por compartir el código de
+    «reparación y mantenimiento».
+    """
+    try:
+        respuesta = cliente.rpc("mercado_sin_cribar_de",
+                                {"perfil": perfil_id, "dias": dias}).execute()
+        return respuesta.data or []
+    except Exception as error:
+        logging.error("No se pudo leer la cola de mercado: %s", error)
+        return []
+
+
+def guardar_mercado(cliente, perfil_id: str, resultados: list[dict]) -> int:
+    """Guarda si cada adjudicación es del sector del cliente."""
+    if not resultados:
+        return 0
+    filas = [
+        {
+            "perfil_id": perfil_id,
+            "id_licitacion": r["id_licitacion"],
+            # Un «quizás» cuenta como del sector: en el mercado conviene
+            # no perder de vista a un competidor por un caso dudoso, que
+            # es lo contrario de lo que interesa con los contratos
+            # abiertos.
+            "del_sector": r["veredicto"] in ("si", "quizas"),
+        }
+        for r in resultados
+    ]
+    metidas = 0
+    for i in range(0, len(filas), 200):
+        try:
+            (cliente.table("veredictos_mercado")
+             .upsert(filas[i:i + 200], on_conflict="perfil_id,id_licitacion")
+             .execute())
+            metidas += len(filas[i:i + 200])
+        except Exception as error:
+            logging.error("Fallo al guardar el cribado de mercado: %s", error)
+    return metidas
+
+
 def guardar_veredictos(cliente, resultados: list[dict]) -> int:
     """
     Escribe los veredictos.
@@ -422,6 +470,34 @@ def main() -> int:
                     logging.info("  %d/%d clasificadas...", hechas, len(pendientes))
 
         por_perfil[perfil["nombre"]] = reparto
+
+        # ---------- Y lo adjudicado de su mercado ----------
+        #
+        # Para que la pestaña de Movimientos no tenga que cribar al vuelo
+        # cada día: lo que entra hoy queda clasificado esta madrugada, y
+        # el cliente lo encuentra ya filtrado.
+        if not es_prueba and perfil.get("criterio"):
+            cola_mercado = cola_de_mercado(cliente, perfil["id"])
+            if cola_mercado:
+                logging.info("[%s] %d adjudicaciones de mercado por clasificar.",
+                             perfil["nombre"], len(cola_mercado))
+                juicios = []
+                with ThreadPoolExecutor(max_workers=SIMULTANEAS) as ejecutor:
+                    tareas_m = {
+                        ejecutor.submit(clasificar, cliente_ia,
+                                        perfil["criterio"], l): l
+                        for l in cola_mercado
+                    }
+                    for tarea in as_completed(tareas_m):
+                        lic = tareas_m[tarea]
+                        v = tarea.result()
+                        if v is None:
+                            continue
+                        juicios.append({"id_licitacion": lic["id_licitacion"],
+                                        "veredicto": v["veredicto"]})
+                metidas = guardar_mercado(cliente, perfil["id"], juicios)
+                logging.info("[%s] Mercado: %d clasificadas.",
+                             perfil["nombre"], metidas)
 
         if not es_prueba:
             guardados = guardar_veredictos(cliente, resultados)
