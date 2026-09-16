@@ -548,7 +548,7 @@ Deno.serve(async (peticion) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { accion, descripcion, prefijos, respuestas, cif, empresa } =
+    const { accion, descripcion, prefijos, respuestas, cif, empresa, dias } =
       await peticion.json();
 
     const { data: perfiles } = await comoUsuario.from("perfiles")
@@ -1035,9 +1035,12 @@ Deno.serve(async (peticion) => {
     if (accion === "cribar_mercado") {
       if (!perfil.criterio) return responder({ error: "sin_criterio" }, 400);
 
-      const dias = Number(cuerpo.dias ?? 30);
+      // Los parámetros se desestructuran arriba; no hay ningún objeto
+      // `cuerpo`. Usarlo lanzaba un ReferenceError que la web veía solo
+      // como un tiempo de espera agotado.
+      const ventana = Number(dias ?? 30);
       const { data: cola } = await admin.rpc("mercado_sin_cribar_de",
-        { perfil: perfil.id, dias });
+        { perfil: perfil.id, dias: ventana });
       const pendientes = (cola ?? []) as Record<string, unknown>[];
 
       if (!pendientes.length) {
