@@ -291,10 +291,10 @@ jobs:
       # año entero pasaba de la hora. Tres es el punto en el que aguanta
       # y no castiga demasiado a la base, que recibe todas las
       # escrituras a la vez.
-      # Uno cada vez. Con tres, la segunda pasada —que actualiza quince
-      # columnas por fila— agotaba el tiempo de espera en todas las
-      # tandas y no se completaba nada.
-      max-parallel: 1
+      # Dos a la vez. Con tres, la segunda pasada agotaba el tiempo de
+      # espera en todas las tandas; con uno, doce meses no caben en el
+      # límite de una hora por trabajo.
+      max-parallel: 2
       matrix:
         mes: ${{ fromJson(needs.meses.outputs.lista) }}
 
