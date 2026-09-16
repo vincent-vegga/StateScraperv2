@@ -551,12 +551,13 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
     if completables:
         completadas = 0
         fallos_seguidos = 0
-        # Tandas de 100, no de 400.
+        # Tandas de 250.
         #
-        # Cada llamada actualiza quince columnas por fila, y con varios
-        # catálogos escribiendo a la vez la base no llegaba: todas las
-        # tandas agotaban el tiempo y no se guardaba nada.
-        for i in range(0, len(completables), 100):
+        # Con 400 la base agotaba el tiempo de espera en cada llamada;
+        # con 100 no fallaba pero un mes pasaba de 18 minutos, y doce no
+        # caben en el límite del trabajo. 250 es el punto en que cabe y
+        # no se cae.
+        for i in range(0, len(completables), 250):
             lote = [
                 {
                     "id": f["id_licitacion"],
@@ -591,7 +592,7 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
                     "peso_subjetivo": str(f.get("peso_subjetivo") or ""),
                     "criterios": f.get("criterios") or "",
                 }
-                for f in completables[i:i + 100]
+                for f in completables[i:i + 250]
             ]
             # Un reintento con pausa: si la base va cargada, insistir de
             # inmediato solo añade presión.
