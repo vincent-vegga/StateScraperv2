@@ -1022,6 +1022,63 @@ Deno.serve(async (peticion) => {
     }
 
     // --- Cribar un lote de lo pendiente ---
+    // ---------- Cribar lo ADJUDICADO ----------
+    //
+    // Responde a otra pregunta que el cribado normal: no «¿me presento
+    // a esto?» sino «¿esta empresa es de mi mercado?».
+    //
+    // Hace falta porque el sector se define cruzando códigos CPV, y eso
+    // trae competidores que no lo son: a un proveedor de equipamiento
+    // médico le salían empresas de mantenimiento de escuelas infantiles
+    // y de semáforos, porque comparten el código de «reparación y
+    // mantenimiento».
+    if (accion === "cribar_mercado") {
+      if (!perfil.criterio) return responder({ error: "sin_criterio" }, 400);
+
+      const dias = Number(cuerpo.dias ?? 30);
+      const { data: cola } = await comoUsuario.rpc("mercado_sin_cribar", { dias });
+      const pendientes = (cola ?? []) as Record<string, unknown>[];
+
+      if (!pendientes.length) {
+        return responder({ ok: true, terminado: true, quedan: 0 });
+      }
+
+      const tanda = pendientes.slice(0, LOTE);
+      const veredictos: Record<string, unknown>[] = [];
+
+      for (let i = 0; i < tanda.length; i += SIMULTANEAS) {
+        const grupo = tanda.slice(i, i + SIMULTANEAS);
+        const juicios = await Promise.all(grupo.map((l) =>
+          clasificar(perfil.criterio, {
+            titulo: String(l.titulo ?? ""),
+            organo: String(l.organo ?? ""),
+            presupuesto: null,
+            cpvs: [],
+          })
+        ));
+        grupo.forEach((l, j) => {
+          // Un "quizás" cuenta como del sector: en el mercado interesa
+          // no perder de vista a un competidor por un caso dudoso, que
+          // es lo contrario de lo que conviene con los contratos
+          // abiertos.
+          const v = juicios[j]?.veredicto ?? "quizas";
+          veredictos.push({
+            id: String(l.id_licitacion),
+            del_sector: v === "si" || v === "quizas",
+          });
+        });
+      }
+
+      await comoUsuario.rpc("guardar_criba_mercado", { datos: veredictos });
+
+      return responder({
+        ok: true,
+        terminado: pendientes.length <= LOTE,
+        quedan: Math.max(0, pendientes.length - tanda.length),
+        cribados: veredictos.length,
+      });
+    }
+
     if (accion === "cribar") {
       if (!perfil.criterio) return responder({ error: "sin_criterio" }, 400);
 
