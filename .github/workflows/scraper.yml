@@ -78,18 +78,6 @@ on:
         required: false
         default: ''
         type: string
-        description: 'Histórico: prefijos CPV separados por comas. Ej: 3581,1883'
-        required: false
-        default: ''
-        type: string
-        description: 'Histórico: año. Ej: 2026'
-        required: false
-        default: '2026'
-        type: string
-        description: 'Histórico: mes 1-12. Vacío = el fichero anual entero'
-        required: false
-        default: ''
-        type: string
       catalogo_anio:
         description: 'Catálogo: año a procesar entero, mes a mes. Ej: 2025'
         required: false
