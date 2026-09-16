@@ -43,6 +43,7 @@ import logging
 from lxml import etree
 import os
 import sys
+import time
 import zipfile
 from collections import Counter
 from datetime import datetime, timezone
@@ -549,7 +550,13 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
                     or f.get("peso_objetivo")]
     if completables:
         completadas = 0
-        for i in range(0, len(completables), 400):
+        fallos_seguidos = 0
+        # Tandas de 100, no de 400.
+        #
+        # Cada llamada actualiza quince columnas por fila, y con varios
+        # catálogos escribiendo a la vez la base no llegaba: todas las
+        # tandas agotaban el tiempo y no se guardaba nada.
+        for i in range(0, len(completables), 100):
             lote = [
                 {
                     "id": f["id_licitacion"],
@@ -584,14 +591,31 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
                     "peso_subjetivo": str(f.get("peso_subjetivo") or ""),
                     "criterios": f.get("criterios") or "",
                 }
-                for f in completables[i:i + 400]
+                for f in completables[i:i + 100]
             ]
-            try:
-                respuesta = cliente.rpc("completar_explicacion",
-                                        {"datos": lote}).execute()
-                completadas += respuesta.data or 0
-            except Exception as error:
-                logging.error("Fallo al completar los datos: %s", error)
+            # Un reintento con pausa: si la base va cargada, insistir de
+            # inmediato solo añade presión.
+            for intento in range(2):
+                try:
+                    respuesta = cliente.rpc("completar_explicacion",
+                                            {"datos": lote}).execute()
+                    completadas += respuesta.data or 0
+                    fallos_seguidos = 0
+                    break
+                except Exception as error:
+                    if intento == 0:
+                        time.sleep(3)
+                        continue
+                    fallos_seguidos += 1
+                    logging.error("Fallo al completar los datos: %s", error)
+
+            # Si falla diez veces seguidas, la base no está para esto y
+            # seguir intentándolo media hora no arregla nada.
+            if fallos_seguidos >= 10:
+                logging.error("Diez tandas seguidas fallidas: se deja de "
+                              "completar. Relanza este mes cuando la base "
+                              "esté descargada.")
+                break
         logging.info("Completados %d campos en filas ya existentes.", completadas)
 
         # Si se extrajo algo y no se guardó nada, hay que enterarse: el
