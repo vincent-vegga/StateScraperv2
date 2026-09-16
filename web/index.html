@@ -1031,27 +1031,38 @@ select:focus{
    Un número compuesto oculta de dónde sale: si acierta, el cliente no
    sabe por qué; si falla, deja de fiarse de todo lo demás. */
 .dictamen{
-  display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;
-  padding:24px;border-radius:10px;border:1px solid var(--linea);
+  padding:26px 28px;border-radius:12px;
+  border:1px solid var(--linea);border-left:5px solid var(--linea);
   background:var(--superficie);box-shadow:var(--sombra-baja);
 }
-.dictamen .marca{
-  flex:0 0 auto;padding:7px 15px;border-radius:99px;
-  font-size:.86rem;font-weight:650;letter-spacing:.02em;
-  text-transform:uppercase;
+.dictamen .titular{
+  display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  margin:0 0 4px;
 }
-.dictamen.abierto .marca{background:var(--tinte-si);color:var(--si)}
-.dictamen.dificil .marca{background:var(--tinte-acento);color:var(--acento)}
-.dictamen.cerrado .marca{background:var(--tinte-no);color:var(--no)}
-.dictamen.mio .marca{background:var(--tinte-si);color:var(--si)}
+.dictamen h2{
+  margin:0;font-size:clamp(1.35rem,3.2vw,1.75rem);letter-spacing:-.02em;
+}
+.dictamen .cuantos{color:var(--tenue);font-size:.88rem}
 
-.dictamen .porque{flex:1 1 320px;min-width:0}
-.dictamen .porque h3{margin:0 0 12px;font-size:1.05rem}
-.dictamen .porque ul{margin:0;padding-left:19px}
-.dictamen .porque li{margin:7px 0;font-size:.94rem;line-height:1.5}
-.dictamen .sin-motivos{
-  margin:0;color:var(--tenue);font-size:.92rem;line-height:1.5;
+.dictamen.abierto{border-left-color:var(--si)}
+.dictamen.abierto h2{color:var(--si)}
+.dictamen.dificil{border-left-color:var(--acento)}
+.dictamen.dificil h2{color:var(--acento)}
+.dictamen.cerrado{border-left-color:var(--no)}
+.dictamen.cerrado h2{color:var(--no)}
+.dictamen.mio{border-left-color:var(--si)}
+.dictamen.mio h2{color:var(--si)}
+
+/* Los motivos, en prosa y no en lista: con uno solo, un punto de lista
+   suelto queda absurdo, y con tres se leen igual de bien separados por
+   líneas. */
+.dictamen .motivos{margin:14px 0 0}
+.dictamen .motivos p{
+  margin:0;padding:11px 0;font-size:.97rem;line-height:1.55;
+  max-width:70ch;
 }
+.dictamen .motivos p + p{border-top:1px solid var(--linea)}
+.dictamen .solo{color:var(--tenue)}
 
 /* Los cuatro factores, cada uno con su dato detrás. */
 .factores{
@@ -3490,9 +3501,15 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
     // aviso, es una ventaja que conviene defender.
     const clase = d.soy_el_lider ? 'mio' : d.veredicto === 'cerrado' ? 'cerrado'
                 : d.veredicto === 'difícil' ? 'dificil' : 'abierto';
-    const etiqueta = d.soy_el_lider ? 'Lo tienes tú'
+    const etiqueta = d.soy_el_lider ? 'Este contrato es tuyo'
                    : d.veredicto === 'cerrado' ? 'Parece cerrado'
-                   : d.veredicto === 'difícil' ? 'Difícil' : 'Tienes opciones';
+                   : d.veredicto === 'difícil' ? 'Lo tienes difícil'
+                   : 'Tienes opciones';
+
+    // Cuánto respalda el veredicto. Sin esto, «Tienes opciones» suena
+    // igual de firme con tres contratos detrás que con doscientos.
+    const muestra = Math.max(inc.ediciones ?? 0, org.licitadores_muestra ?? 0,
+                             org.baja_muestra ?? 0);
 
     zona.innerHTML = `
       <button class="volver-listas" id="otro" style="margin-top:22px">
@@ -3505,14 +3522,18 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         ? ` · ${euros(Number(c.presupuesto))}` : ''}</p>
 
       <div class="dictamen ${clase}">
-        <span class="marca">${etiqueta}</span>
-        <div class="porque">
-          <h3>Por qué</h3>
+        <div class="titular">
+          <h2>${etiqueta}</h2>
+          ${muestra ? `<span class="cuantos">según ${muestra}
+            ${muestra === 1 ? 'contrato anterior' : 'contratos anteriores'}
+            de este organismo</span>` : ''}
+        </div>
+        <div class="motivos">
           ${motivos.length
-            ? `<ul>${motivos.map(m => `<li>${esc(m)}</li>`).join('')}</ul>`
-            : `<ul><li>No hemos encontrado señales en contra: ni un proveedor
-               que repita, ni criterios subjetivos, ni competencia alta en
-               este organismo.</li></ul>`}
+            ? motivos.map(m => `<p>${esc(m[0].toUpperCase() + m.slice(1))}.</p>`).join('')
+            : `<p class="solo">No hemos encontrado señales en contra: ningún
+               proveedor que repita, ningún criterio subjetivo y poca
+               competencia en este organismo.</p>`}
         </div>
       </div>
 
@@ -3623,6 +3644,14 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
   }
 
   function factorCompetencia(org) {
+    // Con menos de cinco contratos, una media no describe nada: dos de
+    // tres es una casualidad, no una costumbre del organismo.
+    if (org.licitadores_muestra != null && org.licitadores_muestra < 5) {
+      return `<div class="factor"><h4>Cuánta competencia</h4>
+        <p class="vacio-factor">Solo hay ${org.licitadores_muestra}
+        ${org.licitadores_muestra === 1 ? 'contrato' : 'contratos'} con datos
+        de licitadores en este organismo: muy poco para decir nada.</p></div>`;
+    }
     if (org.licitadores_medio == null) {
       return `<div class="factor"><h4>Cuánta competencia</h4>
         <p class="vacio-factor">Sin datos de licitadores en este
@@ -3633,9 +3662,13 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
                                 : org.licitadores_medio <= 3 ? 'bueno' : ''}">
       <h4>Cuánta competencia</h4>
       <div class="cifra">${n}</div>
-      <span class="pie">empresas de media${org.sin_competencia
-        ? `<br>${org.sin_competencia} de ${org.licitadores_muestra} con un
-           solo licitador` : ''}</span>
+      <span class="pie">empresas de media<br>
+        medido en ${org.licitadores_muestra}
+        ${org.licitadores_muestra === 1 ? 'contrato' : 'contratos'}${
+        org.sin_competencia
+          ? `, de los que ${org.sin_competencia} ${
+             org.sin_competencia === 1 ? 'tuvo' : 'tuvieron'} un solo
+             licitador` : ''}</span>
     </div>`;
   }
 
