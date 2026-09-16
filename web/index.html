@@ -5056,8 +5056,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
             o.dias_sin_verificar > 90
               ? ' — lleva mucho parado, conviene comprobarlo' : ''}</dd>
         </dl>
-        <span class="ver" data-analizar="${esc(o.id_licitacion)}"
-              role="button" tabindex="0">Analizar viabilidad</span>
+        <button class="principal" data-analizar="${esc(o.id_licitacion)}"
+                style="margin-right:10px">Analizar viabilidad</button>
         ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
       </section></div>`).join('')
       : pestana === 'hoy'
@@ -5065,18 +5065,25 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
            a partir de ahora.</p>`
         : `<p class="vacio">Ningún contrato encaja con estos filtros.</p>`;
 
+    // El botón de analizar vive en el DETALLE, que es hermano de la
+    // fila y no hijo suyo. Enganchado a `.fila` como los demás, el clic
+    // no llegaba nunca: hay que escuchar en la lista, que contiene los
+    // dos.
+    const lista_ = document.getElementById('lista');
+    if (!lista_.dataset.conAnalisis) {
+      lista_.dataset.conAnalisis = '1';
+      lista_.addEventListener('click', ev => {
+        const b = ev.target.closest('[data-analizar]');
+        if (!b) return;
+        ev.stopPropagation();
+        pantallaViabilidad(perfil, session, false, b.dataset.analizar);
+      });
+    }
+
     raiz.querySelectorAll('.fila').forEach(f => f.onclick = ev => {
       // Los botones de corrección viven dentro de la fila para que
       // aparezcan al pasar por encima. Hay que evitar que su clic
       // despliegue también el detalle.
-      // El análisis se abre desde el propio contrato: es donde surge la
-      // pregunta de si merece la pena presentarse.
-      const analiza = ev.target.closest('[data-analizar]');
-      if (analiza) {
-        ev.stopPropagation();
-        return pantallaViabilidad(perfil, session, false,
-                                  analiza.dataset.analizar);
-      }
       const accion = ev.target.closest('.accion');
       if (accion) {
         ev.stopPropagation();
