@@ -4113,13 +4113,20 @@ async function cribarMercado() {
     } catch {
       break;   // Si falla, se enseña sin filtrar antes que no enseñar nada.
     }
+
+    // Si una vuelta clasifica y NO guarda nada, seguir es dar vueltas:
+    // la siguiente encontrará los mismos contratos y la pantalla se
+    // quedaría girando para siempre.
+    if (r?.cribados > 0 && !r?.guardados) break;
+
+    const antes = quedan;
     quedan = r?.quedan ?? 0;
     const hechas = total - quedan;
     const barra = document.getElementById('relleno-mercado');
     if (barra) barra.style.width = `${total ? hechas / total * 100 : 100}%`;
     const texto = document.getElementById('paso-mercado');
     if (texto) texto.textContent = `${hechas} de ${total}`;
-    if (r?.terminado || !quedan) break;
+    if (r?.terminado || !quedan || quedan >= antes) break;
   }
 }
 
