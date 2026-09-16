@@ -546,7 +546,8 @@ def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
 
 
 def resumir_adjudicaciones(adjudicaciones: list[dict[str, Any]],
-                           presupuesto: float | None = None) -> dict[str, Any]:
+                           presupuesto: float | None = None,
+                           es_marco: bool = False) -> dict[str, Any]:
     """
     Del conjunto de lotes, lo que describe al expediente.
 
@@ -560,6 +561,18 @@ def resumir_adjudicaciones(adjudicaciones: list[dict[str, Any]],
 
     total = sum(a["importe"] for a in adjudicaciones if a.get("importe") is not None)
     principal = max(adjudicaciones, key=lambda a: a.get("importe") or 0)
+
+    # En un ACUERDO MARCO no se puede atribuir importe a nadie.
+    #
+    # Cada lote publica el importe del marco entero, no la parte de esa
+    # empresa, así que ni sumar ni coger el mayor da algo cierto. Con
+    # 185 lotes, Philips salía con 6.743 millones adjudicados por el
+    # Servicio Andaluz de Salud.
+    #
+    # Mejor un hueco que un número falso: nadie decide nada con un
+    # hueco, y con seis mil millones sí.
+    if es_marco and len(adjudicaciones) > 1:
+        total = None
 
     # Sumar los lotes NO siempre da el total del contrato.
     #
@@ -1181,8 +1194,11 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
         "sistema": extraer_sistema(entrada),
         **extraer_criterios(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
-        **resumir_adjudicaciones(extraer_adjudicaciones(entrada),
-                                 extraer_presupuesto_detallado(entrada)[0]),
+        **resumir_adjudicaciones(
+            extraer_adjudicaciones(entrada),
+            extraer_presupuesto_detallado(entrada)[0],
+            extraer_sistema(entrada) in ("Acuerdo marco",
+                                        "Sistema dinámico de adquisición")),
         # Interna: gobierna la paginación, porque es el orden del feed.
         "fecha_actualizacion": primer_texto(entrada, "updated", solo_hijos=True)
                                or primer_texto(entrada, "published", solo_hijos=True),
@@ -1304,8 +1320,11 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
         "sistema": extraer_sistema(entrada),
         **extraer_criterios(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
-        **resumir_adjudicaciones(extraer_adjudicaciones(entrada),
-                                 extraer_presupuesto_detallado(entrada)[0]),
+        **resumir_adjudicaciones(
+            extraer_adjudicaciones(entrada),
+            extraer_presupuesto_detallado(entrada)[0],
+            extraer_sistema(entrada) in ("Acuerdo marco",
+                                        "Sistema dinámico de adquisición")),
         "fecha_actualizacion": primer_texto(entrada, "updated", solo_hijos=True)
                                or primer_texto(entrada, "published", solo_hijos=True)
                                or primer_texto(entrada, "pubDate", solo_hijos=True),
