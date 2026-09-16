@@ -31,6 +31,11 @@ on:
   # Al pulsarlo aparecen dos opciones para hacer pruebas sin tocar código.
   workflow_dispatch:
     inputs:
+      # AVISO: GitHub Actions admite un MÁXIMO DE 10 campos aquí.
+      #
+      # El undécimo y siguientes se ignoran en silencio: el formulario
+      # los muestra pero su valor nunca llega al workflow. Así, elegir
+      # meses sueltos no hacía nada y se lanzaban los doce.
       modo:
         description: 'Modo: normal escribe en Supabase, diagnostico no toca nada'
         required: true
@@ -42,7 +47,6 @@ on:
           - solo_cribado
           - cribado_prueba
           - alerta_prueba
-          - importar_historico
           - catalogar_historico
           - ver_xml
       catalogo_meses:
@@ -74,17 +78,14 @@ on:
         required: false
         default: ''
         type: string
-      historico_cpv:
         description: 'Histórico: prefijos CPV separados por comas. Ej: 3581,1883'
         required: false
         default: ''
         type: string
-      historico_anio:
         description: 'Histórico: año. Ej: 2026'
         required: false
         default: '2026'
         type: string
-      historico_mes:
         description: 'Histórico: mes 1-12. Vacío = el fichero anual entero'
         required: false
         default: ''
@@ -221,39 +222,6 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: python alertador.py
 
-      - name: Importar histórico de un sector
-        # Tarea puntual: carga licitaciones pasadas de unos CPV concretos
-        # para tener material con el que entrenar un criterio nuevo sin
-        # esperar días a que el scraper diario lo acumule.
-        if: env.MODO == 'importar_historico'
-        env:
-          CPV: ${{ inputs.historico_cpv }}
-          ANIO: ${{ inputs.historico_anio }}
-          MES: ${{ inputs.historico_mes }}
-          SIMULACRO: ${{ inputs.historico_simulacro }}
-          # Un año entero de la sindicación 643 ronda las 620.000 entradas.
-          # Con el tope por defecto (400.000) el recorrido se cortaría a
-          # mitad, y el aviso pasaría desapercibido entre el resto.
-          MAX_ENTRADAS_HISTORICO: '900000'
-        run: |
-          set -e
-          if [ -z "$CPV" ]; then
-            echo "::error::Falta historico_cpv. Ejemplo: 18,35"
-            exit 1
-          fi
-          # Los argumentos se pasan uno a uno y entrecomillados. Con una
-          # sola cadena, un espacio en los prefijos ("18, 35") la partía
-          # en dos argumentos y el importador recibía basura.
-          OPCIONES=""
-          if [ -n "$MES" ]; then
-            OPCIONES="--mes $MES"
-          fi
-          if [ "$SIMULACRO" = "true" ]; then
-            OPCIONES="$OPCIONES --simulacro"
-          fi
-          echo "Prefijos CPV: $CPV"
-          python importar_historico.py --cpv "$CPV" --anio "${ANIO:-2026}" $OPCIONES
-
       - name: Comprobar que el repositorio sigue limpio
         run: |
           # interfaz.html es un artefacto de salida, no código: se genera
@@ -335,7 +303,10 @@ jobs:
       # año entero pasaba de la hora. Tres es el punto en el que aguanta
       # y no castiga demasiado a la base, que recibe todas las
       # escrituras a la vez.
-      max-parallel: 3
+      # Uno cada vez. Con tres, la segunda pasada —que actualiza quince
+      # columnas por fila— agotaba el tiempo de espera en todas las
+      # tandas y no se completaba nada.
+      max-parallel: 1
       matrix:
         mes: ${{ fromJson(needs.meses.outputs.lista) }}
 
