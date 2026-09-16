@@ -71,6 +71,7 @@ TIMEOUT = 900
 CAMPOS = [
     "id_licitacion", "expediente", "titulo", "organo", "enlace",
     "codigo_postal", "nuts", "presupuesto", "cpvs", "estado_licitacion",
+    "peso_objetivo", "peso_subjetivo", "criterios",
     "adjudicatario", "adjudicatario_cif", "importe_adjudicacion",
     "nuts",
     "procedimiento", "urgencia", "licitadores", "lotes",
@@ -201,6 +202,11 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
         # código NUTS del lugar de ejecución. Sin esto, 165.834
         # licitaciones se quedaban sin territorio.
         "nuts": datos.get("nuts") or "",
+        # Cómo se reparte la puntuación. Un 45 % de juicio de valor
+        # favorece a quien ya trabaja con el organismo; un 90 % de precio
+        # deja la puerta abierta.
+        **{k: (json.dumps(v, ensure_ascii=False) if k == "criterios" else v)
+           for k, v in lector.extraer_criterios(entrada).items()},
         "presupuesto": datos["presupuesto"] if datos["presupuesto"] is not None else "",
         # Los CPV van como texto separado por comas y no como JSON: el
         # catálogo se filtra leyendo líneas, y una comparación de texto
@@ -455,6 +461,11 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
             "enlace": f["enlace"] or None,
             "codigo_postal": f["codigo_postal"] or None,
             "nuts": f.get("nuts") or None,
+            "peso_objetivo": (int(f["peso_objetivo"])
+                              if str(f.get("peso_objetivo") or "").isdigit() else None),
+            "peso_subjetivo": (int(f["peso_subjetivo"])
+                               if str(f.get("peso_subjetivo") or "").isdigit() else None),
+            "criterios": (json.loads(f["criterios"]) if f.get("criterios") else None),
             "presupuesto": f["presupuesto"] if f["presupuesto"] != "" else None,
             "cpvs": [c for c in f["cpvs"].split(",") if c],
             "estado_licitacion": f["estado_licitacion"] or None,
@@ -534,7 +545,8 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
     # pasar por aquí, porque `ignore_duplicates` descarta la fila entera.
     completables = [f for f in filas if f.get("adjudicatario")
                     or f.get("procedimiento") or f.get("licitadores")
-                    or f.get("lotes") or f.get("nuts")]
+                    or f.get("lotes") or f.get("nuts")
+                    or f.get("peso_objetivo")]
     if completables:
         completadas = 0
         for i in range(0, len(completables), 400):
@@ -568,6 +580,9 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
                     # trae código postal y sin el NUTS esas licitaciones
                     # se quedan sin provincia ni comunidad.
                     "nuts": f.get("nuts") or "",
+                    "peso_objetivo": str(f.get("peso_objetivo") or ""),
+                    "peso_subjetivo": str(f.get("peso_subjetivo") or ""),
+                    "criterios": f.get("criterios") or "",
                 }
                 for f in completables[i:i + 400]
             ]
