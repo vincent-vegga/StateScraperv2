@@ -3469,14 +3469,21 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
       <div class="dictamen ${clase}">
         <span class="marca">${etiqueta}</span>
         <div class="porque">
-          ${motivos.length ? `
-            <h3>Por qué</h3>
-            <ul>${motivos.map(m => `<li>${esc(m)}</li>`).join('')}</ul>`
-          : `<p class="sin-motivos">No hemos encontrado señales en contra:
-             ni un proveedor que repita, ni criterios subjetivos, ni una
-             competencia alta en este organismo.</p>`}
+          <h3>Por qué</h3>
+          ${motivos.length
+            ? `<ul>${motivos.map(m => `<li>${esc(m)}</li>`).join('')}</ul>`
+            : `<ul><li>No hemos encontrado señales en contra: ni un proveedor
+               que repita, ni criterios subjetivos, ni competencia alta en
+               este organismo.</li></ul>`}
         </div>
       </div>
+
+      ${(!c.peso_objetivo && !inc.ediciones) ? `
+        <p class="guia" style="margin:14px 0 0;font-size:.88rem">
+        De este contrato no hay datos suficientes para valorarlo: ni el
+        reparto de la puntuación ni adjudicaciones anteriores del
+        organismo. El veredicto solo refleja que no hemos encontrado
+        señales en contra, no que no las haya.</p>` : ''}
 
       <div class="factores">
         ${factorIncumbencia(inc, lider, d.soy_el_lider)}
@@ -4006,6 +4013,45 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
 // Va en la web y no en el correo: el correo es para lo que caduca —una
 // licitación que cierra el jueves exige acción hoy— y una adjudicación ya
 // cerrada no. Meterla ahí le restaría urgencia a lo que sí la tiene.
+// Clasifica lo adjudicado que aún no tenga veredicto. Enseña progreso
+// porque la primera vez son unos segundos, y una pantalla parada sin
+// explicación se lee como que algo va mal.
+async function cribarMercado() {
+  const { data: cola } = await sb.rpc('mercado_sin_cribar', { dias: 30 });
+  const total = (cola ?? []).length;
+  if (!total) return;
+
+  const zona = document.getElementById('zona');
+  zona.innerHTML = `
+    <div class="paso ancha" style="min-height:40vh">
+      <h1 style="font-size:1.5rem">Revisando tu mercado</h1>
+      <p class="lema">Estamos comprobando cuáles de las
+      ${total} adjudicaciones de este mes son de verdad de tu sector.
+      Solo hace falta la primera vez.</p>
+      <div class="avance" style="margin-top:24px">
+        <div class="barra"><div class="relleno" id="relleno-mercado"></div></div>
+        <div class="cuenta"><span id="paso-mercado">Empezando...</span><span></span></div>
+      </div>
+    </div>`;
+
+  let quedan = total;
+  for (let vuelta = 0; vuelta < 30; vuelta++) {
+    let r;
+    try {
+      r = await llamar('cribar_mercado', { dias: 30 });
+    } catch {
+      break;   // Si falla, se enseña sin filtrar antes que no enseñar nada.
+    }
+    quedan = r?.quedan ?? 0;
+    const hechas = total - quedan;
+    const barra = document.getElementById('relleno-mercado');
+    if (barra) barra.style.width = `${total ? hechas / total * 100 : 100}%`;
+    const texto = document.getElementById('paso-mercado');
+    if (texto) texto.textContent = `${hechas} de ${total}`;
+    if (r?.terminado || !quedan) break;
+  }
+}
+
 async function pantallaMovimientos(perfil, session, volviendo = false) {
   if (!volviendo) irA('movimientos');
   raiz.className = 'envoltorio ancho';
@@ -4024,6 +4070,17 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
   activarMenu(perfil, session);
   activarCampana();
   activarNav(perfil, session, 'movimientos');
+
+  // Se criba antes de enseñar, la primera vez.
+  //
+  // El sector se define cruzando códigos CPV y eso trae empresas que no
+  // compiten: a un proveedor de equipamiento médico le salían empresas
+  // de mantenimiento de escuelas y de semáforos. El clasificador que ya
+  // filtra sus contratos abiertos sabe distinguirlas.
+  //
+  // Solo pasa una vez: el veredicto se guarda, y lo que entra a diario
+  // lo criba el propio scraper.
+  await cribarMercado();
 
   const [mov, pul] = await Promise.all([
     sb.rpc('movimientos_mercado', { dias: 30 }),
