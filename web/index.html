@@ -1026,6 +1026,117 @@ select:focus{
   .dos-paneles{grid-template-columns:1fr}
 }
 
+/* ---------- Viabilidad ----------
+   Un veredicto en palabras y sus motivos debajo, no una puntuación.
+   Un número compuesto oculta de dónde sale: si acierta, el cliente no
+   sabe por qué; si falla, deja de fiarse de todo lo demás. */
+.dictamen{
+  display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;
+  padding:24px;border-radius:10px;border:1px solid var(--linea);
+  background:var(--superficie);box-shadow:var(--sombra-baja);
+}
+.dictamen .marca{
+  flex:0 0 auto;padding:7px 15px;border-radius:99px;
+  font-size:.86rem;font-weight:650;letter-spacing:.02em;
+  text-transform:uppercase;
+}
+.dictamen.abierto .marca{background:var(--tinte-si);color:var(--si)}
+.dictamen.dificil .marca{background:var(--tinte-acento);color:var(--acento)}
+.dictamen.cerrado .marca{background:var(--tinte-no);color:var(--no)}
+.dictamen.mio .marca{background:var(--tinte-si);color:var(--si)}
+
+.dictamen .porque{flex:1 1 320px;min-width:0}
+.dictamen .porque h3{margin:0 0 12px;font-size:1.05rem}
+.dictamen .porque ul{margin:0;padding-left:19px}
+.dictamen .porque li{margin:7px 0;font-size:.94rem;line-height:1.5}
+.dictamen .sin-motivos{
+  margin:0;color:var(--tenue);font-size:.92rem;line-height:1.5;
+}
+
+/* Los cuatro factores, cada uno con su dato detrás. */
+.factores{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:14px;margin-top:16px;
+}
+.factor{
+  border:1px solid var(--linea);border-radius:10px;padding:18px;
+  background:var(--superficie);box-shadow:var(--sombra-baja);
+}
+.factor h4{
+  margin:0 0 9px;font-size:.77rem;font-weight:650;color:var(--tenue);
+  letter-spacing:.05em;text-transform:uppercase;
+}
+.factor .cifra{
+  font-size:1.5rem;font-weight:650;line-height:1.15;
+  font-variant-numeric:tabular-nums;
+}
+.factor .cifra.pequena{font-size:1.02rem;line-height:1.3}
+.factor .pie{
+  display:block;margin-top:7px;color:var(--tenue);font-size:.83rem;
+  line-height:1.45;
+}
+.factor.malo .cifra{color:var(--no)}
+.factor.bueno .cifra{color:var(--si)}
+.factor .vacio-factor{color:var(--tenue);font-size:.9rem;line-height:1.5}
+
+/* Reparto de la puntuación del pliego. */
+.pesos{display:flex;height:26px;border-radius:6px;overflow:hidden;margin:4px 0 10px}
+.pesos .formula{background:var(--si)}
+.pesos .juicio{background:var(--acento)}
+.pesos span{
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:.76rem;font-weight:650;
+}
+.lista-criterios{margin:10px 0 0;padding:0;list-style:none}
+.lista-criterios li{
+  display:flex;justify-content:space-between;gap:12px;
+  padding:6px 0;font-size:.86rem;border-top:1px solid var(--linea);
+}
+.lista-criterios .peso{
+  color:var(--tenue);font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.lista-criterios .esjuicio{color:var(--acento)}
+
+/* Quién ha ganado las ediciones anteriores. */
+.historial-contrato > div{
+  display:grid;grid-template-columns:1fr auto;gap:14px;
+  padding:12px 0;border-bottom:1px solid var(--linea);align-items:baseline;
+}
+.historial-contrato > div:last-child{border-bottom:0}
+.historial-contrato .quien{font-size:.94rem;word-break:break-word}
+.historial-contrato .cuando{
+  color:var(--tenue);font-size:.84rem;white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.historial-contrato .lider .quien{font-weight:650}
+.historial-contrato .mia .quien{color:var(--si);font-weight:650}
+
+/* Elegir qué contrato analizar. */
+.elige{
+  border:1px solid var(--linea);border-radius:10px;
+  background:var(--superficie);box-shadow:var(--sombra-baja);
+  margin-top:22px;padding:4px 20px;
+}
+.elige > button{
+  display:grid;grid-template-columns:1fr auto;gap:16px;width:100%;
+  padding:15px 0;border:0;border-bottom:1px solid var(--linea);
+  background:none;font:inherit;text-align:left;cursor:pointer;
+}
+.elige > button:last-child{border-bottom:0}
+.elige > button:hover{background:var(--hover)}
+.elige .que{font-size:.95rem;line-height:1.42;margin:0 0 3px}
+.elige .donde{color:var(--tenue);font-size:.85rem}
+.elige .plazo{
+  color:var(--tenue);font-size:.84rem;white-space:nowrap;text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+
+@media(max-width:720px){
+  .dictamen{flex-direction:column;gap:14px}
+  .elige > button{grid-template-columns:1fr;gap:4px}
+  .elige .plazo{text-align:left}
+}
+
 /* ---------- Movimientos del mercado ----------
    Arriba, el titular a la izquierda y las cifras del mes a la derecha;
    debajo, la lista de lo adjudicado. */
@@ -2367,6 +2478,8 @@ window.addEventListener('popstate', async (ev) => {
   const perfil = perfiles?.[0];
   if (!perfil) return arrancar(true);
 
+  if (estado.vista === 'viabilidad')
+    return pantallaViabilidad(perfil, session, true, estado.contrato ?? null);
   if (estado.vista === 'organismos')
     return pantallaOrganismos(perfil, session, true, estado.organo ?? null);
   if (estado.vista === 'movimientos')
@@ -3201,6 +3314,7 @@ function navPrincipal(donde) {
       <button data-nav="movimientos" aria-current="${donde === 'movimientos'}">Movimientos</button>
       <button data-nav="mercado" aria-current="${donde === 'mercado'}">Empresas</button>
       <button data-nav="organismos" aria-current="${donde === 'organismos'}">Organismos</button>
+      <button data-nav="viabilidad" aria-current="${donde === 'viabilidad'}">Viabilidad</button>
     </div>`;
 }
 
@@ -3210,8 +3324,278 @@ function activarNav(perfil, session, donde) {
     if (b.dataset.nav === 'mercado') pantallaMercado(perfil, session);
     else if (b.dataset.nav === 'movimientos') pantallaMovimientos(perfil, session);
     else if (b.dataset.nav === 'organismos') pantallaOrganismos(perfil, session);
+    else if (b.dataset.nav === 'viabilidad') pantallaViabilidad(perfil, session);
     else pantallaOportunidades(perfil, session);
   });
+}
+
+// ---------- Viabilidad ----------
+//
+// Responde a una pregunta distinta del cribado: no «¿esto encaja con lo
+// que hago?» sino «¿merece la pena que me presente?».
+//
+// Devuelve un veredicto en palabras y sus motivos, no una puntuación de
+// 0 a 100: un número compuesto oculta de dónde sale, y si falla una vez
+// el cliente deja de fiarse de todo lo demás.
+async function pantallaViabilidad(perfil, session, volviendo = false,
+                                  contrato = null) {
+  if (!volviendo) irA('viabilidad', contrato ? { contrato } : {});
+  raiz.className = 'envoltorio ancho';
+  raiz.innerHTML = `
+    <div class="cabecera-app">
+      <div><strong>Viabilidad</strong>
+        <div class="quien">${esc(perfil.empresa || '')}</div>
+        ${navPrincipal('viabilidad')}</div>
+      <div style="display:flex;gap:9px;align-items:center">
+        ${campanaAvisos()}
+        ${menuCuenta()}
+      </div>
+    </div>
+    <div id="zona"></div>`;
+
+  activarMenu(perfil, session);
+  activarCampana();
+  activarNav(perfil, session, 'viabilidad');
+
+  const zona = document.getElementById('zona');
+
+  // ---------- Elegir contrato ----------
+  async function elegir(texto = '', organo = '') {
+    zona.innerHTML = `
+      <h1 style="margin-top:26px">¿A cuál te presentas?</h1>
+      <p class="guia" style="max-width:66ch">Antes de preparar una oferta,
+      mira quién ha ganado las convocatorias anteriores, cuánto se baja del
+      presupuesto en ese organismo y qué parte de la puntuación depende de
+      una fórmula.</p>
+
+      <div class="buscador-cif" style="max-width:640px">
+        <input type="search" id="q-contrato" autocomplete="off"
+               placeholder="Buscar entre tus contratos abiertos"
+               value="${esc(texto)}" aria-label="Buscar contrato">
+      </div>
+      <div id="lista-elegir"><p class="guia">Cargando...</p></div>`;
+
+    const campo = document.getElementById('q-contrato');
+    let espera;
+    campo.oninput = () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => cargarLista(campo.value.trim(), organo), 250);
+    };
+    campo.focus();
+    cargarLista(texto, organo);
+  }
+
+  async function cargarLista(texto, organo) {
+    const { data, error } = await sb.rpc('analizables',
+      { texto: texto || '', organo_filtro: organo || '' });
+    const caja = document.getElementById('lista-elegir');
+    if (!caja) return;
+
+    if (error) {
+      caja.innerHTML = `<div class="aviso mal">No hemos podido cargar tus
+        contratos.<div style="margin-top:8px;font-size:.86rem;color:var(--tenue)">
+        ${esc(error.message || '')}</div></div>`;
+      return;
+    }
+
+    const filas = data ?? [];
+    if (!filas.length) {
+      caja.innerHTML = `<p class="vacio">${texto
+        ? 'Ningún contrato abierto coincide con esa búsqueda.'
+        : 'Ahora mismo no tienes contratos abiertos que analizar.'}</p>`;
+      return;
+    }
+
+    caja.innerHTML = `<div class="elige">${filas.map(f => {
+      const dias = diasHasta(f.fecha_limite);
+      return `<button data-contrato="${esc(f.id_licitacion)}">
+        <span>
+          <p class="que">${esc(f.titulo ?? '')}</p>
+          <span class="donde">${esc([f.organo, f.provincia]
+            .filter(Boolean).join(' · '))}</span>
+        </span>
+        <span class="plazo">${f.presupuesto
+          ? euros(Number(f.presupuesto)) : ''}${dias != null
+          ? `<br>${dias < 0 ? 'vencido' : dias === 0 ? 'vence hoy'
+             : dias === 1 ? 'queda 1 día' : `quedan ${dias} días`}` : ''}</span>
+      </button>`;
+    }).join('')}</div>`;
+
+    caja.querySelectorAll('[data-contrato]').forEach(b =>
+      b.onclick = () => analizar(b.dataset.contrato));
+  }
+
+  // ---------- Analizar ----------
+  async function analizar(id, restaurando = false) {
+    if (!restaurando) irA('viabilidad', { contrato: id });
+    zona.innerHTML = `<p class="guia" style="margin-top:26px">Analizando...</p>`;
+
+    const { data: d, error } = await sb.rpc('viabilidad', { ficha: id });
+    if (error || !d || d.error) {
+      zona.innerHTML = `<div class="aviso mal" style="margin-top:26px">
+        No hemos podido analizar este contrato.
+        ${error ? `<div style="margin-top:8px;font-size:.86rem;color:var(--tenue)">
+          ${esc(error.message)}</div>` : ''}</div>`;
+      return;
+    }
+    pintar(d);
+  }
+
+  function pintar(d) {
+    const c = d.contrato ?? {};
+    const inc = d.incumbencia ?? {};
+    const org = d.organismo ?? {};
+    const lider = inc.lider ?? {};
+    const motivos = Array.isArray(d.motivos) ? d.motivos : [];
+
+    // Si el proveedor de siempre es él, el mensaje se invierte: no es un
+    // aviso, es una ventaja que conviene defender.
+    const clase = d.soy_el_lider ? 'mio' : d.veredicto === 'cerrado' ? 'cerrado'
+                : d.veredicto === 'difícil' ? 'dificil' : 'abierto';
+    const etiqueta = d.soy_el_lider ? 'Lo tienes tú'
+                   : d.veredicto === 'cerrado' ? 'Parece cerrado'
+                   : d.veredicto === 'difícil' ? 'Difícil' : 'Tienes opciones';
+
+    zona.innerHTML = `
+      <button class="volver-listas" id="otro" style="margin-top:22px">
+        ← Analizar otro contrato</button>
+
+      <h1 style="margin:6px 0 8px;font-size:clamp(1.3rem,3vw,1.7rem)">
+        ${esc(c.titulo ?? '')}</h1>
+      <p class="guia" style="margin:0 0 20px">${esc([c.organo, c.provincia]
+        .filter(Boolean).join(' · '))}${c.presupuesto
+        ? ` · ${euros(Number(c.presupuesto))}` : ''}</p>
+
+      <div class="dictamen ${clase}">
+        <span class="marca">${etiqueta}</span>
+        <div class="porque">
+          ${motivos.length ? `
+            <h3>Por qué</h3>
+            <ul>${motivos.map(m => `<li>${esc(m)}</li>`).join('')}</ul>`
+          : `<p class="sin-motivos">No hemos encontrado señales en contra:
+             ni un proveedor que repita, ni criterios subjetivos, ni una
+             competencia alta en este organismo.</p>`}
+        </div>
+      </div>
+
+      <div class="factores">
+        ${factorIncumbencia(inc, lider, d.soy_el_lider)}
+        ${factorCriterios(c)}
+        ${factorBaja(org)}
+        ${factorCompetencia(org)}
+      </div>
+
+      ${(inc.reparto?.length) ? `
+        <div class="seccion-mercado" style="margin-top:18px">
+          <h3>Quién ha ganado aquí${inc.por_convocatoria
+            ? ' este mismo contrato' : ' contratos parecidos'}</h3>
+          <p class="guia" style="margin:0 0 14px;font-size:.89rem">
+            ${inc.por_convocatoria
+              ? `${inc.ediciones} convocatorias en los últimos cuatro años.`
+              : `No hemos encontrado convocatorias anteriores de este contrato
+                 concreto, así que miramos las de su misma familia en este
+                 organismo: ${inc.ediciones} en cuatro años.`}</p>
+          <div class="historial-contrato">
+            ${inc.reparto.map((r, i) => `
+              <div class="${r.cif === lider.cif ? 'lider' : ''} ${
+                r.cif === perfil.cif ? 'mia' : ''}">
+                <span class="quien">${esc(r.nombre ?? '—')}</span>
+                <span class="cuando">${r.veces}
+                  ${r.veces === 1 ? 'vez' : 'veces'}</span>
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+
+      ${c.enlace ? `<div style="margin-top:22px">
+        <a class="secundario" href="${esc(c.enlace)}" target="_blank"
+           rel="noopener" style="display:inline-block;text-decoration:none">
+          Ver el expediente</a></div>` : ''}`;
+
+    alPulsar('otro', () => elegir());
+  }
+
+  // ---------- Los cuatro factores ----------
+  function factorIncumbencia(inc, lider, esMio) {
+    if (!inc.ediciones) {
+      return `<div class="factor"><h4>Quién suele ganar</h4>
+        <p class="vacio-factor">No hay adjudicaciones anteriores de este
+        organismo en tu sector.</p></div>`;
+    }
+    const cuota = lider.cuota ?? 0;
+    const clase = esMio ? 'bueno' : cuota >= 60 ? 'malo' : cuota <= 30 ? 'bueno' : '';
+    return `<div class="factor ${clase}">
+      <h4>Quién suele ganar</h4>
+      <div class="cifra">${cuota} %</div>
+      <span class="pie">${esc(lider.nombre ?? '—')}<br>
+        ${lider.veces} de ${inc.ediciones} adjudicaciones ·
+        ${inc.empresas} ${inc.empresas === 1 ? 'empresa' : 'empresas'}
+        distintas</span>
+    </div>`;
+  }
+
+  function factorCriterios(c) {
+    if (c.peso_objetivo == null) {
+      return `<div class="factor"><h4>Cómo se puntúa</h4>
+        <p class="vacio-factor">Este expediente no publica el reparto de
+        la puntuación.</p></div>`;
+    }
+    const juicio = c.peso_subjetivo ?? 0;
+    const lista = Array.isArray(c.criterios) ? c.criterios : [];
+    return `<div class="factor ${juicio >= 40 ? 'malo' : juicio === 0 ? 'bueno' : ''}"
+                 style="grid-column:span 2">
+      <h4>Cómo se puntúa</h4>
+      <div class="pesos">
+        ${c.peso_objetivo ? `<span class="formula"
+          style="width:${c.peso_objetivo}%">${c.peso_objetivo} % fórmula</span>` : ''}
+        ${juicio ? `<span class="juicio"
+          style="width:${juicio}%">${juicio} % juicio</span>` : ''}
+      </div>
+      <span class="pie">${juicio >= 40
+        ? 'Una parte grande depende de la valoración de un técnico, y eso favorece a quien ya trabaja con el organismo.'
+        : juicio === 0
+          ? 'Todo se calcula con fórmula: gana la mejor oferta, sin valoraciones.'
+          : 'La mayor parte se calcula con fórmula.'}</span>
+      ${lista.length ? `<ul class="lista-criterios">
+        ${lista.map(k => `<li>
+          <span class="${k.juicio ? 'esjuicio' : ''}">${esc(k.nombre || '—')}</span>
+          <span class="peso">${k.peso}${k.juicio ? ' · juicio' : ''}</span>
+        </li>`).join('')}</ul>` : ''}
+    </div>`;
+  }
+
+  function factorBaja(org) {
+    if (org.baja_media == null) {
+      return `<div class="factor"><h4>A qué precio se cierra</h4>
+        <p class="vacio-factor">Sin datos suficientes de este organismo.</p></div>`;
+    }
+    return `<div class="factor ${org.baja_media <= 75 ? 'malo' : ''}">
+      <h4>A qué precio se cierra</h4>
+      <div class="cifra">${org.baja_media} %</div>
+      <span class="pie">del presupuesto, de media<br>
+        medido en ${org.baja_muestra}
+        ${org.baja_muestra === 1 ? 'contrato' : 'contratos'}</span>
+    </div>`;
+  }
+
+  function factorCompetencia(org) {
+    if (org.licitadores_medio == null) {
+      return `<div class="factor"><h4>Cuánta competencia</h4>
+        <p class="vacio-factor">Sin datos de licitadores en este
+        organismo.</p></div>`;
+    }
+    const n = String(org.licitadores_medio).replace('.', ',');
+    return `<div class="factor ${org.licitadores_medio >= 8 ? 'malo'
+                                : org.licitadores_medio <= 3 ? 'bueno' : ''}">
+      <h4>Cuánta competencia</h4>
+      <div class="cifra">${n}</div>
+      <span class="pie">empresas de media${org.sin_competencia
+        ? `<br>${org.sin_competencia} de ${org.licitadores_muestra} con un
+           solo licitador` : ''}</span>
+    </div>`;
+  }
+
+  if (contrato) analizar(contrato, true);
+  else elegir();
 }
 
 // ---------- Organismos ----------
@@ -4672,6 +5056,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
             o.dias_sin_verificar > 90
               ? ' — lleva mucho parado, conviene comprobarlo' : ''}</dd>
         </dl>
+        <span class="ver" data-analizar="${esc(o.id_licitacion)}"
+              role="button" tabindex="0">Analizar viabilidad</span>
         ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
       </section></div>`).join('')
       : pestana === 'hoy'
@@ -4683,6 +5069,14 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       // Los botones de corrección viven dentro de la fila para que
       // aparezcan al pasar por encima. Hay que evitar que su clic
       // despliegue también el detalle.
+      // El análisis se abre desde el propio contrato: es donde surge la
+      // pregunta de si merece la pena presentarse.
+      const analiza = ev.target.closest('[data-analizar]');
+      if (analiza) {
+        ev.stopPropagation();
+        return pantallaViabilidad(perfil, session, false,
+                                  analiza.dataset.analizar);
+      }
       const accion = ev.target.closest('.accion');
       if (accion) {
         ev.stopPropagation();
