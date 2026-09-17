@@ -600,6 +600,34 @@ def resumir_adjudicaciones(adjudicaciones: list[dict[str, Any]],
     }
 
 
+# Lo que delata un criterio de juicio de valor en su nombre. Es una
+# heurística, no una lectura del dato: acierta en la mayoría y falla en
+# pliegos con nombres poco habituales.
+JUICIO_SI = (
+    # En plural también: «criterios de juicios de valor».
+    "juicio de valor", "juicios de valor", "subjetiv",
+    "memoria", "propuesta tecnica",
+    "proyecto tecnico", "metodolog", "plan de trabajo",
+    "calidad tecnica", "oferta tecnica", "criterios tecnicos",
+)
+# Y lo que lo descarta aunque suene técnico: hay 555 contratos con
+# «Oferta técnica evaluable de forma automática», que de subjetivo no
+# tiene nada.
+JUICIO_NO = ("autom", "formula", "cuantificable")
+
+
+def juicio_de_valor(nombre: str) -> bool:
+    """Si ese criterio lo puntúa una persona o una fórmula."""
+    import unicodedata
+    plano = "".join(
+        c for c in unicodedata.normalize("NFD", nombre.lower())
+        if unicodedata.category(c) != "Mn"
+    )
+    if any(x in plano for x in JUICIO_NO):
+        return False
+    return any(x in plano for x in JUICIO_SI)
+
+
 def extraer_criterios(entrada: etree._Element) -> dict[str, Any]:
     """
     Cómo se reparte la puntuación entre precio y juicio de valor.
@@ -631,17 +659,23 @@ def extraer_criterios(entrada: etree._Element) -> dict[str, Any]:
         if peso is None:
             continue
 
-        # SUB es juicio de valor; todo lo demás se cuenta como fórmula.
-        # Con un código desconocido es preferible no alarmar: decir que
-        # un contrato es subjetivo cuando no lo es desaconseja presentarse
-        # a algo que sí estaba abierto.
-        if tipo == "SUB":
+        # Por el NOMBRE y no por el código.
+        #
+        # Se probó con AwardingCriteriaTypeCode == "SUB" y salieron CERO
+        # contratos subjetivos de 111.599, incluidos 385 con un criterio
+        # llamado «Criterios técnicos evaluables mediante juicio de
+        # valor». CODICE usa otro valor que no conocemos.
+        #
+        # El código en bruto se guarda igualmente: cuando se vea qué
+        # valores trae de verdad, esto se podrá sustituir por el dato.
+        es_juicio = juicio_de_valor(nombre)
+        if es_juicio:
             subjetivo += peso
         else:
             objetivo += peso
 
         detalle.append({"nombre": nombre, "peso": peso,
-                        "juicio": tipo == "SUB"})
+                        "juicio": es_juicio, "codigo": tipo})
 
     total = objetivo + subjetivo
     if total <= 0:
