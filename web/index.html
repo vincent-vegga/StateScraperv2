@@ -794,7 +794,7 @@ select:focus{
    interesa presentar, y qué pasa en mi sector. Meterlas en el menú de
    cuenta escondería la segunda. Las pestañas de Novedades y Todos se
    quedan dentro de Contratos, que es donde pertenecen. */
-.principales{display:flex;gap:20px;margin-top:12px}
+.principales{display:flex;gap:20px;margin-top:12px;flex-wrap:wrap}
 .principales button{
   border:0;background:none;padding:0;cursor:pointer;font:inherit;
   font-size:.92rem;color:var(--tenue);transition:color .15s;
@@ -1331,6 +1331,49 @@ select:focus{
 
 .marca-mia{
   margin-left:8px;font-size:.74rem;font-weight:400;color:var(--tenue);
+}
+
+/* Ningún bloque ancho arrastra la página entera.
+   Una tabla o un gráfico que no cabe debe desplazarse DENTRO de su
+   caja; si empuja al body, hay que deslizar todo de lado y la cabecera
+   se va con ello. */
+@media(max-width:640px){
+  html, body{overflow-x:hidden}
+  .envoltorio{max-width:100%;overflow-x:hidden}
+  table{display:block;overflow-x:auto;max-width:100%}
+  .reparto, .apilada, .quesito, .pesos{max-width:100%}
+  pre, code{overflow-x:auto;max-width:100%}
+  /* Los títulos largos de contrato no ensanchan la pantalla. */
+  h1, h2, h3, .que, .titulo-tramo{overflow-wrap:anywhere}
+}
+
+/* ---------- La cabecera en pantallas estrechas ----------
+   Cinco pestañas más la campana y el menú no caben en 390 px: la barra
+   se desbordaba y había que deslizar la pantalla entera de lado para
+   llegar a «Mi cuenta». */
+@media(max-width:640px){
+  .cabecera-app{
+    flex-direction:column;align-items:stretch;gap:12px;padding:12px 0;
+  }
+  /* El nombre y los botones, en la misma línea. */
+  .cabecera-app > div:first-child{
+    display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;
+  }
+  .cabecera-app > div:last-child{
+    grid-row:1;grid-column:2;
+  }
+  /* Las pestañas ocupan su propia línea y se desplazan SOLAS, no con
+     toda la página. */
+  .principales{
+    grid-column:1 / -1;order:3;margin-top:4px;
+    flex-wrap:nowrap;overflow-x:auto;gap:16px;
+    padding-bottom:4px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  }
+  .principales::-webkit-scrollbar{display:none}
+  .principales button{white-space:nowrap;font-size:.88rem}
+
+  .cabecera-app .quien{font-size:.8rem}
 }
 
 @media(max-width:720px){
