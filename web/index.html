@@ -1377,32 +1377,32 @@ select:focus{
 }
 
 /* ---------- La cabecera en pantallas estrechas ----------
-   Cinco pestañas más la campana y el menú no caben en 390 px: la barra
-   se desbordaba y había que deslizar la pantalla entera de lado para
-   llegar a «Mi cuenta». */
+   Cinco pestañas más la campana y el menú no caben en 390 px. */
 @media(max-width:640px){
-  .cabecera-app{
-    flex-direction:column;align-items:stretch;gap:12px;padding:12px 0;
-  }
-  /* El nombre y los botones, en la misma línea. */
-  .cabecera-app > div:first-child{
-    display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;
-  }
-  .cabecera-app > div:last-child{
-    grid-row:1;grid-column:2;
-  }
-  /* Las pestañas ocupan su propia línea y se desplazan SOLAS, no con
-     toda la página. */
+  .cabecera-app{gap:10px;padding:12px 0}
+
+  /* Que el bloque del título pueda ENCOGER. Sin `min-width:0`, un
+     contenedor flexible se niega a bajar del ancho de su contenido, y
+     la barra de pestañas de dentro empujaba toda la cabecera. */
+  .cabecera-app > div:first-child{min-width:0;flex:1 1 auto}
+  .cabecera-app > div:last-child{flex:0 0 auto}
+
+  .cabecera-app strong{font-size:.98rem}
+  .cabecera-app .quien{font-size:.78rem}
+
+  /* Las pestañas se desplazan DENTRO de su caja, no arrastrando la
+     página. */
   .principales{
-    grid-column:1 / -1;order:3;margin-top:4px;
-    flex-wrap:nowrap;overflow-x:auto;gap:16px;
-    padding-bottom:4px;
+    flex-wrap:nowrap;overflow-x:auto;gap:15px;margin-top:10px;
+    padding-bottom:3px;
     scrollbar-width:none;-webkit-overflow-scrolling:touch;
   }
   .principales::-webkit-scrollbar{display:none}
-  .principales button{white-space:nowrap;font-size:.88rem}
+  .principales button{white-space:nowrap;font-size:.86rem}
 
-  .cabecera-app .quien{font-size:.8rem}
+  /* En el panel hay un botón más —«Mis contratos»— y con la campana y
+     el menú no caben los tres. Ese sobra: el menú ya lleva a todo. */
+  .cabecera-app .enlace{display:none}
 }
 
 @media(max-width:720px){
@@ -3759,6 +3759,23 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         <p class="vacio-factor">No hay adjudicaciones anteriores de este
         organismo en tu sector.</p></div>`;
     }
+
+    // Nadie destaca: se dice eso, no se señala a uno cualquiera.
+    //
+    // Con cuatro empresas a una adjudicación cada una, anunciar que
+    // «una ha ganado el 25 %» es arbitrario y sugiere un dominio que no
+    // existe.
+    if (inc.reparto_equitativo) {
+      return `<div class="factor bueno">
+        <h4>Quién suele ganar</h4>
+        <div class="cifra">Nadie</div>
+        <span class="pie">${inc.ediciones}
+          ${inc.ediciones === 1 ? 'adjudicación repartida' : 'adjudicaciones repartidas'}
+          entre ${inc.empresas} ${inc.empresas === 1 ? 'empresa' : 'empresas'}
+          <br>ninguna repite más que las demás</span>
+      </div>`;
+    }
+
     const cuota = lider.cuota ?? 0;
     const clase = esMio ? 'bueno' : cuota >= 60 ? 'malo' : cuota <= 30 ? 'bueno' : '';
     return `<div class="factor ${clase}">
