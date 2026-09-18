@@ -1391,11 +1391,19 @@ select:focus{
   }
 
   /* El título deja sitio a la campana y al menú, pero las PESTAÑAS no:
-     van por debajo y pueden usar todo el ancho. Cortarlas donde
-     empiezan los botones dejaba un hueco vacío a su derecha. */
-  .cabecera-app > div:first-child > strong,
-  .cabecera-app > div:first-child > .quien{
+     van por debajo y pueden usar todo el ancho.
+
+     El margen es solo para el título, que es corto. El nombre de la
+     empresa cabe entero y reservarle 96 px lo partía sin necesidad. */
+  .cabecera-app > div:first-child > strong{
     display:block;padding-right:96px;
+  }
+  /* Hasta tres líneas: un nombre con «Sociedad Anónima Unipersonal» y
+     su forma jurídica completa puede ser larguísimo, pero tampoco debe
+     empujar las pestañas fuera de la pantalla. */
+  .cabecera-app > div:first-child > .quien{
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+    overflow:hidden;overflow-wrap:anywhere;line-height:1.35;
   }
 
   .cabecera-app strong{font-size:.98rem}
@@ -2682,6 +2690,25 @@ async function arrancar(volviendo = false) {
   const perfil = perfiles?.[0];
 
   if (!perfil) return pantallaCodigo(session);
+
+  // Si queda algo sin clasificar, se clasifica ANTES de enseñar nada.
+  //
+  // El cribado corría solo al final del alta. Si se interrumpía —o si
+  // alguien se daba de alta entre dos pasadas del scraper— la lista
+  // salía vacía hasta la madrugada siguiente, y un cliente que entra y
+  // no ve nada no vuelve.
+  //
+  // Va aquí y no en la pantalla de contratos porque por el arranque
+  // pasan TODAS las entradas a la aplicación, se llegue a la pantalla
+  // que se llegue.
+  if (perfil.paso_alta === 'listo' && !volviendo) {
+    try {
+      const { data: pend } = await sb.rpc('pendientes_de_perfil',
+        { perfil: perfil.id, tope: 1 });
+      if ((pend ?? []).length) await pantallaCribando(perfil, session, null, true);
+    } catch { /* si falla, se enseña lo que haya */ }
+  }
+
   if (perfil.paso_alta === 'listo') {
     // La primera vez que llega a su lista, se le presenta cómo funciona.
     if (!perfil.vio_bienvenida && !volviendo)
@@ -5260,23 +5287,6 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando tus contratos...</p></div>`;
 
-  // Si queda algo sin clasificar, se clasifica AHORA.
-  //
-  // El cribado se hacía solo al final del alta. Si se interrumpía —o si
-  // alguien se daba de alta entre dos pasadas del scraper— la lista
-  // salía vacía hasta la madrugada siguiente, y un cliente que entra y
-  // no ve nada no vuelve.
-  //
-  // Aquí se comprueba en cada visita, así que también recoge lo que
-  // haya entrado desde la última vez.
-  try {
-    const { data: pend } = await sb.rpc('pendientes_de_perfil',
-      { perfil: perfil.id, tope: 1 });
-    if ((pend ?? []).length) {
-      await pantallaCribando(perfil, session, null, true);
-      olvidar('contratos', 'analizables');
-    }
-  } catch { /* si falla, se enseña lo que haya */ }
 
   const { data, error } = await pedirContratos(perfil.id, nuevos => {
     // Si algo cambió por detrás, se repinta sin que el cliente
