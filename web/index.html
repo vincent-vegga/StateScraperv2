@@ -3765,7 +3765,7 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         ${factorCriterios(c)}
         ${factorIncumbencia(inc, lider, d.soy_el_lider)}
         ${factorBaja(org)}
-        ${factorCompetencia(org)}
+        ${factorCompetencia(org, d.veredicto === 'cerrado')}
       </div>
 
       ${(inc.reparto?.length) ? `
@@ -3882,7 +3882,7 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
     </div>`;
   }
 
-  function factorCompetencia(org) {
+  function factorCompetencia(org, hayIncumbente = false) {
     // Con menos de cinco contratos, una media no describe nada: dos de
     // tres es una casualidad, no una costumbre del organismo.
     if (org.licitadores_muestra != null && org.licitadores_muestra < 5) {
@@ -3897,8 +3897,12 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         organismo.</p></div>`;
     }
     const n = String(org.licitadores_medio).replace('.', ',');
+    // Poca competencia NO es buena noticia si hay un proveedor que
+    // siempre gana: significa que los demás ya han dejado de
+    // presentarse. Solo se pinta en verde cuando el sitio está abierto.
+    const bueno = org.licitadores_medio <= 3 && !hayIncumbente;
     return `<div class="factor ${org.licitadores_medio >= 8 ? 'malo'
-                                : org.licitadores_medio <= 3 ? 'bueno' : ''}">
+                                : bueno ? 'bueno' : ''}">
       <h4>Cuánta competencia</h4>
       <div class="cifra">${n}</div>
       <span class="pie">empresas de media<br>
