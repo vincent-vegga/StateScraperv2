@@ -1168,6 +1168,10 @@ select:focus{
   display:grid;grid-template-columns:1fr 320px;gap:26px;align-items:start;
   margin-top:26px;
 }
+/* El titular y su explicación, arriba del todo de su columna.
+   La tarjeta de la derecha es más alta, y sin esto el navegador
+   repartía el sobrante y dejaba un hueco bajo el texto. */
+.cabeza-movimientos > div:first-child{align-self:start}
 .pulso{
   border:1px solid var(--linea);border-radius:10px;padding:20px;
   background:var(--superficie);box-shadow:var(--sombra-baja);
@@ -4082,99 +4086,6 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
     pintar(cual, data);
   }
 
-  function selectorAnios() {
-    // Un solo año no da nada que elegir.
-    if (disponibles.length < 2) return '';
-    const min = disponibles[0], max = disponibles[disponibles.length - 1];
-    // TODOS los años del rango, no solo los que tienen datos: con años
-    // sueltos repartidos a partes iguales, las etiquetas no caían donde
-    // se clavaba el asa.
-    const todos = [];
-    for (let a = min; a <= max; a++) todos.push(a);
-    // 15 px es el diámetro del asa: recorre de 7,5 px a (ancho − 7,5).
-    const pos = a => max === min ? 0 : (a - min) / (max - min);
-    const sitio = a => `calc(7.5px + (100% - 15px) * ${pos(a).toFixed(4)})`;
-
-    return `
-      <div class="anios">
-        <span class="rotulo">Periodo</span>
-        <div class="pista-anios">
-          <div class="riel-anios"></div>
-          <div class="tramo-elegido" style="left:${sitio(desde)};
-               width:calc(${sitio(hasta)} - ${sitio(desde)})"></div>
-          <input type="range" id="a-desde" min="${min}" max="${max}" step="1"
-                 value="${desde}" aria-label="Desde el año">
-          <input type="range" id="a-hasta" min="${min}" max="${max}" step="1"
-                 value="${hasta}" aria-label="Hasta el año">
-          <div class="marcas">${todos.map(a =>
-            `<span style="left:${sitio(a)}">${String(a).slice(2)}</span>`).join('')}</div>
-        </div>
-        <span class="elegido">${desde === hasta ? desde : `${desde}–${hasta}`}</span>
-      </div>`;
-  }
-
-  // Con pocos contratos una media no dice nada: tres adjudicaciones no
-  // describen cómo compra un ayuntamiento. Por debajo de este número la
-  // cifra no se enseña.
-  const MINIMO_PARA_MEDIA = 5;
-
-  function bloqueAdjudicacion(d) {
-    const trozos = [];
-
-    // Cada cifra va con la de su sector al lado. Un porcentaje suelto no
-    // distingue un organismo de otro; lo que informa es la diferencia.
-    const comparar = (valor, referencia, sufijo) => {
-      if (!referencia) return '';
-      const dif = Math.round((valor - referencia) * 10) / 10;
-      if (Math.abs(dif) < 0.5) return `igual que tu sector`;
-      return `${Math.abs(dif).toString().replace('.', ',')} ${sufijo} ${
-        dif > 0 ? 'más' : 'menos'} que tu sector`;
-    };
-
-    if (d.baja_media && d.con_baja >= MINIMO_PARA_MEDIA) {
-      const roza = comparar(d.baja_media, d.baja_sector, 'puntos');
-      trozos.push(`<div>
-        <dt>Se adjudica al</dt>
-        <dd>${d.baja_media} %
-          <span class="matiz">del presupuesto${roza ? ` · ${roza}` : ''}
-          <br>medido en ${d.con_baja} ${
-            d.con_baja === 1 ? 'contrato' : 'contratos'}</span>
-        </dd></div>`);
-    }
-
-    if (d.licitadores_medio && d.con_licitadores >= MINIMO_PARA_MEDIA) {
-      // Que la mitad de los contratos vayan con un solo licitador sí es
-      // propio de ese organismo, y responde a si merece la pena
-      // presentarse.
-      const solos = d.sin_competencia > d.con_licitadores / 2;
-      const roza = comparar(d.licitadores_medio, d.licitadores_sector, '');
-      trozos.push(`<div class="${solos ? 'alerta' : ''}">
-        <dt>Se presentan</dt>
-        <dd>${String(d.licitadores_medio).replace('.', ',')}
-          <span class="matiz">empresas de media${roza ? ` · ${roza}` : ''}
-          ${d.sin_competencia ? `<br><strong>${d.sin_competencia}</strong> de
-            ${d.con_licitadores} con un solo licitador` : ''}</span>
-        </dd></div>`);
-    }
-
-    if (d.procedimientos?.length) {
-      const p = d.procedimientos[0];
-      trozos.push(`<div>
-        <dt>Suele adjudicar por</dt>
-        <dd style="font-size:1.02rem">${esc(p.cual)}
-          <span class="matiz">${p.cuantos} de sus ${d.contratos}${
-            d.procedimientos.length > 1
-              ? ` · y ${d.procedimientos.length - 1} vía más` : ''}</span>
-        </dd></div>`);
-    }
-
-    if (!trozos.length) {
-      return `<p class="poca-muestra">Este organismo tiene pocos contratos
-        publicados en tus sectores como para decir cómo adjudica.</p>`;
-    }
-    return `<dl class="como-adjudica">${trozos.join('')}</dl>`;
-  }
-
   function pintar(cual, d) {
     const empresas = d.empresas ?? [];
     const contratos = d.contratos_lista ?? [];
@@ -4194,7 +4105,11 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
               ${d.provincia ? `<span>${esc(d.provincia)}</span>` : ''}
             </p>
           </div>
-          <div style="flex:1 1 260px;max-width:420px">${selectorAnios()}</div>
+          <!-- Sin selector de años.
+               Con histórico de 2024 a 2026 son dos o tres posiciones, así
+               que apenas cambia lo que se ve, y el control no respondía
+               al arrastrarlo. Un mando que no reacciona resta más de lo
+               que aporta un filtro que casi no filtra. -->
         </div>
 
         ${bloqueAdjudicacion(d)}
@@ -4284,35 +4199,6 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
 
     activarBarras(zona);
 
-    // El selector recarga la ficha con el periodo nuevo.
-    const dDesde = document.getElementById('a-desde');
-    const dHasta = document.getElementById('a-hasta');
-    if (!dDesde) return;
-
-    const min = disponibles[0], max = disponibles[disponibles.length - 1];
-    const pos = a => max === min ? 0 : (a - min) / (max - min);
-    const sitio = a => `calc(7.5px + (100% - 15px) * ${pos(a).toFixed(4)})`;
-
-    const previsualizar = () => {
-      let a = +dDesde.value, b = +dHasta.value;
-      if (a > b) [a, b] = [b, a];
-      const tramo = zona.querySelector('.tramo-elegido');
-      if (tramo) {
-        tramo.style.left = sitio(a);
-        tramo.style.width = `calc(${sitio(b)} - ${sitio(a)})`;
-      }
-      const texto = zona.querySelector('.anios .elegido');
-      if (texto) texto.textContent = a === b ? a : `${a}–${b}`;
-    };
-    const soltar = () => {
-      // Las asas no se cruzan: la que se mueve empuja a la otra.
-      let a = +dDesde.value, b = +dHasta.value;
-      if (a > b) { if (document.activeElement === dDesde) b = a; else a = b; }
-      desde = a; hasta = b;
-      abrir(cual, true);
-    };
-    dDesde.oninput = previsualizar; dHasta.oninput = previsualizar;
-    dDesde.onchange = soltar; dHasta.onchange = soltar;
   }
 
   if (organo) { campo.value = organo; abrir(organo); }
@@ -4738,6 +4624,25 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       sb.rpc('competencia'),
       sb.rpc('mi_seguimiento'),
     ]);
+
+    // Un fallo NO se enseña como «no hay empresas».
+    //
+    // Con `comp.data ?? []`, cualquier error se convertía en una lista
+    // vacía y la pantalla afirmaba que el cliente no tiene competencia.
+    // Eso no es una pantalla en blanco: es un dato falso.
+    if (comp.error || seg.error) {
+      const fallo = comp.error || seg.error;
+      zona.innerHTML = `<div class="aviso mal">
+        No hemos podido cargar las empresas de tu sector.
+        <div style="margin-top:10px;font-size:.86rem;color:var(--tenue)">
+          ${esc(fallo.message || '')}</div>
+        <div style="margin-top:14px">
+          <button class="secundario" id="reintentar-emp">Reintentar</button>
+        </div></div>`;
+      alPulsar('reintentar-emp', verListas);
+      return;
+    }
+
     const competencia = comp.data ?? [];
     const seguidas = seg.data ?? [];
 
