@@ -260,13 +260,25 @@ def leer_pendientes(cliente, perfil_id: str, limite: int) -> list[dict]:
     agotaba el tiempo de consulta. La función acota por perfil antes de
     recorrer nada.
     """
-    try:
-        respuesta = cliente.rpc("pendientes_de_perfil",
-                                {"perfil": perfil_id, "tope": limite}).execute()
-        return respuesta.data or []
-    except Exception as error:
-        logging.error("No se pudo leer la cola del perfil: %s", error)
-        return []
+    # Un reintento con pausa antes de rendirse: el fallo típico es un
+    # tiempo de espera agotado, y a veces basta con esperar un momento.
+    for intento in range(2):
+        try:
+            respuesta = cliente.rpc("pendientes_de_perfil",
+                                    {"perfil": perfil_id, "tope": limite}).execute()
+            return respuesta.data or []
+        except Exception as error:
+            if intento == 0:
+                time.sleep(5)
+                continue
+            # Se propaga: devolver una lista vacía hacía que el cribador
+            # anunciara «Sin novedades que clasificar» cuando en realidad
+            # no había podido mirar. Dos empresas con 683 contratos
+            # pendientes se quedaron sin cribar y su cuenta salía vacía,
+            # sin que nada lo advirtiera.
+            raise RuntimeError(
+                f"No se pudo leer la cola del perfil {perfil_id}: {error}"
+            ) from error
 
 
 def cola_de_mercado(cliente, perfil_id: str, dias: int = 30) -> list[dict]:
@@ -363,6 +375,9 @@ def publicar_informe(por_perfil: dict[str, Counter], fallos: int) -> None:
     total = sum(sum(c.values()) for c in por_perfil.values())
 
     logging.info("--- RESUMEN ---")
+    if fallos_de_cola:
+        logging.error("%d perfil(es) no se pudieron cribar: su cuenta se "
+                      "quedará vacía hasta que se resuelva.", fallos_de_cola)
     for nombre, reparto in por_perfil.items():
         n = sum(reparto.values())
         logging.info("  %-28s %4d  ·  sí %d · quizás %d · no %d",
@@ -424,8 +439,19 @@ def main() -> int:
     fallos = 0
     guardados_total = 0
 
+    fallos_de_cola = 0
+
     for perfil in perfiles:
-        pendientes = leer_pendientes(cliente, perfil["id"], limite)
+        # Un perfil que falla no debe impedir que se criben los demás,
+        # pero sí tiene que constar: antes se anunciaba como «sin
+        # novedades» y nadie se enteraba.
+        try:
+            pendientes = leer_pendientes(cliente, perfil["id"], limite)
+        except RuntimeError as error:
+            fallos_de_cola += 1
+            logging.error("[%s] NO SE HA PODIDO CRIBAR: %s",
+                          perfil["nombre"], error)
+            continue
         if not pendientes:
             logging.info("[%s] Sin novedades que clasificar.", perfil["nombre"])
             continue
