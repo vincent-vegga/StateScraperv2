@@ -1065,9 +1065,19 @@ select:focus{
 .dictamen .solo{color:var(--tenue)}
 
 /* Los cuatro factores, cada uno con su dato detrás. */
+/* Rejilla fija, no `auto-fit`.
+   Con `minmax(190px,1fr)` cabían dos, tres o cuatro tarjetas por fila
+   según el largo del texto, así que la forma cambiaba entre un contrato
+   y otro. Ahora: el reparto de puntuación arriba a todo lo ancho —que
+   es lo que más espacio necesita— y los otros tres debajo. */
 .factores{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
   gap:14px;margin-top:16px;
+}
+.factores > .ancho-entero{grid-column:1 / -1}
+
+@media(max-width:860px){
+  .factores{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 .factor{
   border:1px solid var(--linea);border-radius:10px;padding:18px;
@@ -1339,6 +1349,25 @@ select:focus{
    se va con ello. */
 @media(max-width:640px){
   html, body{overflow-x:hidden}
+
+  /* El panel de usuario, en una columna.
+     Con `180px 1fr`, en 390 px quedaban menos de 130 para el valor y
+     el correo o el nombre de la empresa se cortaban. */
+  .panel{padding:20px 0}
+  .bloque{padding:18px}
+  .bloque dl{grid-template-columns:1fr;gap:3px 0}
+  .bloque dt{font-size:.82rem;margin-top:12px}
+  .bloque dt:first-of-type{margin-top:0}
+  .bloque dd{font-size:.97rem;overflow-wrap:anywhere}
+
+  /* Y las tarjetas de viabilidad, en una sola columna: con
+     `minmax(190px,1fr)` cabían dos a veces y una otras, según el largo
+     del texto, y la rejilla cambiaba de forma entre contratos. */
+  .factores{grid-template-columns:1fr}
+  .factor[style*="span 2"]{grid-column:span 1 !important}
+  .dictamen{padding:20px}
+  .como-adjudica{grid-template-columns:1fr;gap:14px}
+
   .envoltorio{max-width:100%;overflow-x:hidden}
   table{display:block;overflow-x:auto;max-width:100%}
   .reparto, .apilada, .quesito, .pesos{max-width:100%}
@@ -3688,8 +3717,8 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         señales en contra, no que no las haya.</p>` : ''}
 
       <div class="factores">
-        ${factorIncumbencia(inc, lider, d.soy_el_lider)}
         ${factorCriterios(c)}
+        ${factorIncumbencia(inc, lider, d.soy_el_lider)}
         ${factorBaja(org)}
         ${factorCompetencia(org)}
       </div>
@@ -3744,14 +3773,14 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
 
   function factorCriterios(c) {
     if (c.peso_objetivo == null) {
-      return `<div class="factor"><h4>Cómo se puntúa</h4>
+      return `<div class="factor ancho-entero"><h4>Cómo se puntúa</h4>
         <p class="vacio-factor">Este expediente no publica el reparto de
         la puntuación.</p></div>`;
     }
     const juicio = c.peso_subjetivo ?? 0;
     const lista = Array.isArray(c.criterios) ? c.criterios : [];
-    return `<div class="factor ${juicio >= 40 ? 'malo' : juicio === 0 ? 'bueno' : ''}"
-                 style="grid-column:span 2">
+    return `<div class="factor ancho-entero ${
+      juicio >= 40 ? 'malo' : juicio === 0 ? 'bueno' : ''}">
       <h4>Cómo se puntúa</h4>
       <div class="pesos">
         ${c.peso_objetivo ? `<span class="formula"
