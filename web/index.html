@@ -1384,8 +1384,19 @@ select:focus{
   /* Que el bloque del título pueda ENCOGER. Sin `min-width:0`, un
      contenedor flexible se niega a bajar del ancho de su contenido, y
      la barra de pestañas de dentro empujaba toda la cabecera. */
-  .cabecera-app > div:first-child{min-width:0;flex:1 1 auto}
-  .cabecera-app > div:last-child{flex:0 0 auto}
+  .cabecera-app{position:relative;flex-wrap:wrap}
+  .cabecera-app > div:first-child{min-width:0;flex:1 1 100%}
+  .cabecera-app > div:last-child{
+    flex:0 0 auto;position:absolute;top:12px;right:0;
+  }
+
+  /* El título deja sitio a la campana y al menú, pero las PESTAÑAS no:
+     van por debajo y pueden usar todo el ancho. Cortarlas donde
+     empiezan los botones dejaba un hueco vacío a su derecha. */
+  .cabecera-app > div:first-child > strong,
+  .cabecera-app > div:first-child > .quien{
+    display:block;padding-right:96px;
+  }
 
   .cabecera-app strong{font-size:.98rem}
   .cabecera-app .quien{font-size:.78rem}
@@ -3216,7 +3227,7 @@ async function pantallaEntrenar(perfil, prefijos, session, items) {
 // 5 · Cribado inicial, con progreso real
 // ============================================================
 
-async function pantallaCribando(perfil, session, lectura) {
+async function pantallaCribando(perfil, session, lectura, volviendo = false) {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
     <div class="paso ancha">
@@ -3252,6 +3263,10 @@ async function pantallaCribando(perfil, session, lectura) {
     document.getElementById('relleno').style.width = `${total ? hechas/total*100 : 0}%`;
     document.getElementById('progreso').textContent = `${hechas} de ${total} contratos`;
   }
+
+  // Al volver desde la lista, se devuelve el control y la pinta ella:
+  // volver a llamarla aquí crearía un bucle.
+  if (volviendo) return;
 
   const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
   const actualizado = data?.[0] ?? perfil;
@@ -5244,6 +5259,24 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   if (!volviendo) irA('contratos', { pestana: 'todo' }, true);
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando tus contratos...</p></div>`;
+
+  // Si queda algo sin clasificar, se clasifica AHORA.
+  //
+  // El cribado se hacía solo al final del alta. Si se interrumpía —o si
+  // alguien se daba de alta entre dos pasadas del scraper— la lista
+  // salía vacía hasta la madrugada siguiente, y un cliente que entra y
+  // no ve nada no vuelve.
+  //
+  // Aquí se comprueba en cada visita, así que también recoge lo que
+  // haya entrado desde la última vez.
+  try {
+    const { data: pend } = await sb.rpc('pendientes_de_perfil',
+      { perfil: perfil.id, tope: 1 });
+    if ((pend ?? []).length) {
+      await pantallaCribando(perfil, session, null, true);
+      olvidar('contratos', 'analizables');
+    }
+  } catch { /* si falla, se enseña lo que haya */ }
 
   const { data, error } = await pedirContratos(perfil.id, nuevos => {
     // Si algo cambió por detrás, se repinta sin que el cliente
