@@ -435,7 +435,10 @@ textarea:focus-visible{
   width:0;
   height:100%;
   border-radius:inherit;
-  background:var(--acento);
+  /* El naranja está reservado para lo que reclama atención: un plazo
+     que vence, un criterio subjetivo. Una barra de progreso no es un
+     aviso, así que va con el color del texto. */
+  background:var(--texto);
   transition:width .3s ease;
 }
 
@@ -3808,13 +3811,18 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
     // «una ha ganado el 25 %» es arbitrario y sugiere un dominio que no
     // existe.
     if (inc.reparto_equitativo) {
+      // «Nadie» decía que no hay ganadores, cuando lo que pasa es lo
+      // contrario: hay muchos y ninguno destaca. La cifra que importa es
+      // cuántas empresas se lo reparten.
       return `<div class="factor bueno">
         <h4>Quién suele ganar</h4>
-        <div class="cifra">Nadie</div>
-        <span class="pie">${inc.ediciones}
-          ${inc.ediciones === 1 ? 'adjudicación repartida' : 'adjudicaciones repartidas'}
-          entre ${inc.empresas} ${inc.empresas === 1 ? 'empresa' : 'empresas'}
-          <br>ninguna repite más que las demás</span>
+        <div class="cifra">${inc.empresas}
+          <span style="font-size:.9rem;font-weight:400"> ${
+            inc.empresas === 1 ? 'empresa' : 'empresas'}</span></div>
+        <span class="pie">se reparten ${inc.ediciones}
+          ${inc.ediciones === 1 ? 'adjudicación' : 'adjudicaciones'}
+          <br>ninguna repite más que las demás: no hay proveedor de
+          referencia</span>
       </div>`;
     }
 
