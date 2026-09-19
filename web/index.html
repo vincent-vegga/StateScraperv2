@@ -2725,9 +2725,17 @@ async function arrancar(volviendo = false) {
   // pasan TODAS las entradas a la aplicación, se llegue a la pantalla
   // que se llegue.
   if (perfil.paso_alta === 'listo' && !volviendo) {
+    // Con un timeout corto: si la consulta tarda más de 4 segundos
+    // algo va mal y es mejor entrar con lo que haya que quedarse
+    // bloqueado en una pantalla vacía.
     try {
-      const { data: pend } = await sb.rpc('pendientes_de_perfil',
-        { perfil: perfil.id, tope: 1 });
+      // Race entre la consulta y un timeout de 4 segundos. Si tarda,
+      // se entra con lo que haya y el workflow criba en segundo plano.
+      const pend = await Promise.race([
+        sb.rpc('pendientes_de_perfil', { perfil: perfil.id, tope: 1 })
+          .then(r => r.data),
+        new Promise(res => setTimeout(() => res(null), 4000)),
+      ]);
       if ((pend ?? []).length) await pantallaCribando(perfil, session, null, true);
     } catch { /* si falla, se enseña lo que haya */ }
   }
