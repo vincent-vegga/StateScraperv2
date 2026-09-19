@@ -375,9 +375,13 @@ def publicar_informe(por_perfil: dict[str, Counter], fallos: int) -> None:
     total = sum(sum(c.values()) for c in por_perfil.values())
 
     logging.info("--- RESUMEN ---")
-    if fallos_de_cola:
+    # El parámetro se llama `fallos`: escribir aquí el nombre de la
+    # variable de `main` reventaba el informe DESPUÉS de haber guardado
+    # bien los veredictos, así que el workflow salía en rojo con el
+    # trabajo hecho.
+    if fallos:
         logging.error("%d perfil(es) no se pudieron cribar: su cuenta se "
-                      "quedará vacía hasta que se resuelva.", fallos_de_cola)
+                      "quedará vacía hasta que se resuelva.", fallos)
     for nombre, reparto in por_perfil.items():
         n = sum(reparto.values())
         logging.info("  %-28s %4d  ·  sí %d · quizás %d · no %d",
@@ -532,7 +536,7 @@ def main() -> int:
                 logging.error("[%s] Se clasificaron %d y no se guardó ninguna.",
                               perfil["nombre"], len(resultados))
 
-    publicar_informe(por_perfil, fallos)
+    publicar_informe(por_perfil, fallos + fallos_de_cola)
 
     if es_prueba:
         logging.info("MODO PRUEBA: no se ha guardado nada.")
