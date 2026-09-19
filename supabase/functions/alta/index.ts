@@ -52,16 +52,21 @@ const SIMULTANEAS = 20;
 
 
 
-const cors = {
-  "Access-Control-Allow-Origin": Deno.env.get("ORIGEN_PERMITIDO") ?? "*",
+const ORIGENES = new Set([
+  "https://statescraperv2.pages.dev",
+  "https://statescraper.com",
+  "https://www.statescraper.com",
+]);
+const corsHeaders = (o: string | null) => ({
+  "Access-Control-Allow-Origin": o && ORIGENES.has(o) ? o : "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+});
 
-const responder = (cuerpo: unknown, estado = 200) =>
+const responder = (cuerpo: unknown, estado = 200, origen: string | null = null) =>
   new Response(JSON.stringify(cuerpo), {
     status: estado,
-    headers: { ...cors, "Content-Type": "application/json" },
+    headers: { ...corsHeaders(origen), "Content-Type": "application/json" },
   });
 
 // ------------------------------------------------------------
@@ -537,7 +542,8 @@ async function clasificar(criterio: string, licitacion: {
 // ------------------------------------------------------------
 
 Deno.serve(async (peticion) => {
-  if (peticion.method === "OPTIONS") return new Response("ok", { headers: cors });
+  const origen = peticion.headers.get("origin");
+  if (peticion.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origen) });
 
   try {
     const autorizacion = peticion.headers.get("Authorization");
