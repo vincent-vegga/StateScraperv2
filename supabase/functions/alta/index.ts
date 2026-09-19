@@ -228,11 +228,20 @@ para decidir, sobre contratos futuros, si le interesan a esta empresa.
 ganado vestuario para policía local, el principio es equipar a cuerpos de \
 seguridad, no "vestuario de Valdemorillo".
    · Identifica primero QUÉ EJES distinguen sus contratos de los demás. \
-Según el negocio pueden ser el producto, el destinatario, el ámbito \
-geográfico o el tamaño del contrato. En uniformidad policial el eje es el \
-destinatario; en material de oficina, donde el destinatario da igual, \
-serán otros. Escribe el criterio en función de los ejes que de verdad \
-separan, no de los que suenan bien.
+Según el negocio pueden ser el producto, el destinatario o el tamaño del \
+contrato. En uniformidad policial el eje es el destinatario; en material \
+de oficina, donde el destinatario da igual, serán otros. Escribe el \
+criterio en función de los ejes que de verdad separan, no de los que \
+suenan bien.
+   · NUNCA uses el territorio como criterio. Ni provincia, ni comunidad, \
+ni ciudad, ni "especialmente en X". Que sus contratos anteriores sean de \
+una zona solo dice dónde ha trabajado hasta ahora, no dónde puede \
+trabajar: una productora de Las Palmas puede presentarse a una cabalgata \
+en Barcelona. El cliente filtra por territorio cuando quiere, con un \
+selector propio; el criterio es SOLO sobre qué hace la empresa.
+   · Tampoco uses el tamaño del organismo ni su nombre concreto. \
+"Ayuntamientos grandes" o "el Ayuntamiento de X" son la misma trampa: \
+describen su pasado, no su capacidad.
    · DEFINE EL "NO" CON EL VECINO MÁS PARECIDO, no con lo lejano. Decir \
 "no cuando sea software o maquinaria" no sirve de nada: nadie confunde eso. \
 Lo que hay que nombrar es el caso que SÍ se parece y aun así no encaja \
@@ -390,11 +399,15 @@ REGLAS:
 3. Deduce el PRINCIPIO que separa los casos, no enumeres los ejemplos. Si \
 marcó "no" a ropa de bomberos y "sí" a uniformidad policial, el principio \
 es el destinatario, no la prenda.
-4. Incluye la prueba decisiva: ¿podría esta empresa ser el proveedor \
+4. NUNCA uses el territorio como criterio —ni provincia, ni comunidad, \
+ni ciudad, ni "especialmente en X"—. Dónde ha trabajado no dice dónde \
+puede trabajar, y el cliente ya filtra por zona con un selector propio.
+
+5. Incluye la prueba decisiva: ¿podría esta empresa ser el proveedor \
 principal de este contrato?
-5. Ante duda razonable entre "quizás" y "no", elige "quizás". Perder una \
+6. Ante duda razonable entre "quizás" y "no", elige "quizás". Perder una \
 oportunidad es mucho más grave que mostrar una de más.
-6. Máximo 400 palabras. Un criterio largo se aplica peor.
+7. Máximo 400 palabras. Un criterio largo se aplica peor.
 
 Devuelve EXCLUSIVAMENTE JSON:
 {"criterio":"el texto del criterio","resumen":"una frase para el cliente"}`;
