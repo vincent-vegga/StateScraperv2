@@ -2864,13 +2864,13 @@ function pantallaEmpresa(perfil, session) {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
     <div class="paso">
-      <h1>¿Cuál es el CIF de tu empresa?</h1>
+      <h1>¿Cuál es el NIF de tu empresa?</h1>
       <p class="guia">Con él encontramos los contratos públicos que ya has
       ganado. De ahí sabemos a qué te presentas, sin que tengas que
       explicárnoslo.</p>
       <div class="campo">
         <input type="text" id="cif" class="clave" placeholder="B12345678"
-               autocomplete="off" aria-label="CIF de tu empresa">
+               autocomplete="off" aria-label="NIF de tu empresa">
       </div>
       <button class="principal" id="buscar">Buscar</button>
       <button class="enlace" id="sin-cif">No tengo contratos públicos todavía</button>
@@ -2886,7 +2886,7 @@ function pantallaEmpresa(perfil, session) {
     const cif = campo.value.trim();
     if (cif.length < 8) {
       document.getElementById('resultado').innerHTML =
-        `<div class="aviso mal">Ese CIF no parece completo.</div>`;
+        `<div class="aviso mal">Ese NIF no parece completo.</div>`;
       return;
     }
     boton.disabled = true;
@@ -2895,7 +2895,7 @@ function pantallaEmpresa(perfil, session) {
       const r = await llamar('buscar_empresa', { cif });
       if (!r.empresas.length) {
         document.getElementById('resultado').innerHTML = `
-          <div class="aviso">No encontramos contratos con ese CIF. Puede que
+          <div class="aviso">No encontramos contratos con ese NIF. Puede que
           tu empresa aún no haya ganado ninguno, o que conste con otro
           identificador.</div>
           <button class="secundario" id="por-nombre" style="margin-top:14px">Buscar por nombre</button>`;
@@ -4655,11 +4655,11 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     <h1 style="margin-top:26px">Quién gana en tu sector</h1>
     <p class="guia">Los contratos públicos son datos abiertos: quién los
     gana, por cuánto y de qué organismo. Mira tu propio historial, busca
-    una empresa por su CIF, o averigua quién se lleva los contratos de tus
+    una empresa por su NIF, o averigua quién se lleva los contratos de tus
     sectores.</p>
 
     <div class="buscador-cif">
-      <input type="text" id="cif-buscar" placeholder="CIF de una empresa"
+      <input type="text" id="cif-buscar" placeholder="NIF de una empresa"
              autocomplete="off">
       <button class="principal" id="buscar-cif">Buscar</button>
       ${perfil.cif ? `<button class="secundario" id="ver-mia">Ver mi
@@ -4754,7 +4754,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
           <span class="cuantas">${seguidas.length || 'vacía'}</span></h3>
         ${seguidas.length ? tabla(seguidas, 't-seguimiento', true) : `
           <p class="vacio-seguimiento">Todavía no sigues a ninguna empresa.
-          Busca una por su CIF o elígela de la lista de abajo, y pulsa
+          Busca una por su NIF o elígela de la lista de abajo, y pulsa
           <strong>Seguir</strong> en su ficha para tenerla aquí a mano.</p>`}
       </div>
 
@@ -4838,7 +4838,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       zona.innerHTML = `
         <button class="volver-listas" id="volver-listas">← Volver a las listas</button>
         <div class="aviso">No hemos encontrado contratos adjudicados con ese
-        CIF. Puede que no haya ganado ninguno todavía.</div>`;
+        NIF. Puede que no haya ganado ninguno todavía.</div>`;
       alPulsar('volver-listas', () => history.back());
       return;
     }
@@ -5111,7 +5111,7 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         <h3>Tu empresa</h3>
         <dl>
           <dt>Nombre</dt><dd>${esc(p.empresa ?? '—')}</dd>
-          <dt>CIF</dt><dd>${esc(p.cif ?? '—')}</dd>
+          <dt>NIF</dt><dd>${esc(p.cif ?? '—')}</dd>
           <dt>Actividad</dt><dd>${esc(p.actividad ?? '—')}</dd>
           <dt>Correo</dt><dd>${esc(p.email ?? '—')}</dd>
           <dt>Cliente desde</dt><dd>${fecha(p.alta)}</dd>
@@ -5204,7 +5204,7 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
     const zona = document.getElementById('resultado');
     zona.innerHTML = `
       <div class="aviso">¿Seguro? Se borrará tu filtro actual y volverás a
-      empezar desde tu CIF.
+      empezar desde tu NIF.
       <div style="margin-top:14px;display:flex;gap:10px">
         <button class="secundario" id="no">Cancelar</button>
         <button class="principal" id="si">Sí, rehacerlo</button>
