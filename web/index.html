@@ -1335,6 +1335,12 @@ select:focus{
 }
 .grupo-mov .dentro .movimiento{padding:12px 0}
 
+.filtro-provincia{
+  display:flex;align-items:center;gap:10px;margin-top:20px;
+}
+.filtro-provincia label{color:var(--tenue);font-size:.88rem}
+.filtro-provincia select{max-width:260px}
+
 .movimiento{
   display:grid;grid-template-columns:1fr 150px;gap:20px;align-items:start;
   padding:17px 0;border-bottom:1px solid var(--linea);
@@ -4332,7 +4338,8 @@ async function cribarMercado() {
   }
 }
 
-async function pantallaMovimientos(perfil, session, volviendo = false) {
+async function pantallaMovimientos(perfil, session, volviendo = false,
+                                   provinciaElegida = '') {
   if (!volviendo) irA('movimientos');
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `
@@ -4401,8 +4408,37 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
     return;
   }
 
-  const lista = mov.data ?? [];
+  const todo = mov.data ?? [];
   const p = pul.data ?? {};
+
+  // Solo las provincias que de verdad aparecen en los datos: ofrecer un
+  // filtro que no devuelve nada es peor que no ofrecerlo.
+  const provincias = [...new Set(todo.map(m => m.provincia).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es'));
+
+  const lista = provinciaElegida
+    ? todo.filter(m => m.provincia === provinciaElegida)
+    : todo;
+
+  // Las cifras se calculan sobre lo FILTRADO. Con el filtro puesto, las
+  // de `pulso_mercado` son las de toda España y no cuadrarían con la
+  // lista de debajo.
+  const cifras = provinciaElegida
+    ? {
+        contratos: lista.length,
+        importe: lista.reduce((s, m) => s + (Number(m.importe) || 0), 0),
+        empresas: new Set(lista.map(m => m.cif).filter(Boolean)).size,
+        medio: Math.round(lista.reduce((s, m) => s + (Number(m.importe) || 0), 0)
+               / (lista.filter(m => m.importe).length || 1)),
+        mias: lista.filter(m => m.es_mia).length,
+      }
+    : {
+        contratos: p.contratos ?? 0,
+        importe: Number(p.importe) || 0,
+        empresas: p.empresas ?? 0,
+        medio: Number(p.importe_medio) || 0,
+        mias: p.mias ?? 0,
+      };
 
   // Los rankings salen de la misma lista que se enseña debajo, no de otra
   // consulta: así lo que se cuenta arriba y lo que se ve abajo coinciden
@@ -4581,19 +4617,29 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
     <div class="pulso">
       <h4>El mes en tu sector</h4>
       <dl>
-        <div><dt>Adjudicaciones</dt><dd>${p.contratos ?? 0}</dd></div>
+        <div><dt>Adjudicaciones</dt><dd>${cifras.contratos}</dd></div>
         <div><dt>Importe total</dt><dd>${
-          p.importe ? euros(Number(p.importe)) : '—'}</dd></div>
-        <div><dt>Empresas distintas</dt><dd>${p.empresas ?? 0}</dd></div>
-        ${p.importe_medio ? `<div><dt>Importe medio</dt>
-          <dd>${euros(Number(p.importe_medio))}</dd></div>` : ''}
-        ${p.mias ? `<div><dt>Las has ganado tú</dt>
-          <dd>${p.mias}</dd></div>` : ''}
+          cifras.importe ? euros(cifras.importe) : '—'}</dd></div>
+        <div><dt>Empresas distintas</dt><dd>${cifras.empresas}</dd></div>
+        ${cifras.medio ? `<div><dt>Importe medio</dt>
+          <dd>${euros(cifras.medio)}</dd></div>` : ''}
+        ${cifras.mias ? `<div><dt>Las has ganado tú</dt>
+          <dd>${cifras.mias}</dd></div>` : ''}
         <p class="destacado">Cada lote de un contrato cuenta como una
         adjudicación, así que el importe medio es por adjudicación y no por
         expediente.</p>
       </dl>
     </div>
+
+    ${provincias.length > 1 ? `
+      <div class="filtro-provincia">
+        <label for="f-provincia">Ver solo</label>
+        <select id="f-provincia">
+          <option value="">Toda España</option>
+          ${provincias.map(pr => `<option value="${esc(pr)}"${
+            pr === provinciaElegida ? ' selected' : ''}>${esc(pr)}</option>`).join('')}
+        </select>
+      </div>` : ''}
 
     ${(porEmpresa.length || porOrgano.length) ? `
     <div class="dos-columnas">
@@ -4602,6 +4648,10 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
     </div>` : ''}
 
     <div style="margin-top:32px">${cuerpo}</div>`;
+
+  const selProv = document.getElementById('f-provincia');
+  if (selProv) selProv.onchange = () =>
+    pantallaMovimientos(perfil, session, true, selProv.value);
 
   // Cada tramo dice de qué contrato es. Sin esto la barra solo compara
   // tamaños; con esto se puede ir al detalle sin bajar a la lista.
