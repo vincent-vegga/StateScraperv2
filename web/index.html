@@ -2787,7 +2787,7 @@ function pantallaEntrar() {
       </div>
       <button class="principal" id="enviar">Entrar</button>
       <p class="guia" style="margin-top:20px;font-size:.87rem">
-      Te mandamos un enlace al correo. Sin contraseñas que recordar.</p>
+      Te mandamos un código al correo. Sin contraseñas que recordar.</p>
       <div id="resultado"></div>
     </div>`;
 
@@ -2804,15 +2804,84 @@ function pantallaEntrar() {
     }
     boton.disabled = true;
     boton.textContent = 'Enviando...';
+    // Un CÓDIGO, no un enlace.
+    //
+    // Los filtros antiphishing de correo corporativo —Safe Links de
+    // Microsoft, que viene activado por defecto en Microsoft 365—
+    // ABREN el enlace antes que el destinatario para comprobar si es
+    // malicioso. Y un enlace mágico solo sirve una vez: cuando el
+    // cliente pincha, ya está gastado y aterriza sin sesión.
+    //
+    // Un código de seis dígitos no se gasta al mirarlo: hay que
+    // escribirlo. Y además funciona aunque abra el correo en otro
+    // dispositivo.
     const { error } = await sb.auth.signInWithOtp({
-      email, options: { emailRedirectTo: window.location.origin },
+      email, options: { shouldCreateUser: true },
     });
-    document.getElementById('resultado').innerHTML = error
-      ? `<div class="aviso mal">No se ha podido enviar: ${esc(error.message)}</div>`
-      : `<div class="aviso bien">Te hemos enviado un enlace a ${esc(email)}.
-         Ábrelo desde este mismo dispositivo.</div>`;
-    boton.disabled = false;
-    boton.textContent = 'Entrar';
+    if (error) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">No se ha podido enviar: ${esc(error.message)}</div>`;
+      boton.disabled = false;
+      boton.textContent = 'Entrar';
+      return;
+    }
+    pantallaCodigoCorreo(email);
+  };
+}
+
+// Donde se escribe el código que ha llegado por correo.
+function pantallaCodigoCorreo(email) {
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div class="paso ancha">
+      <h1>Revisa tu correo</h1>
+      <p class="guia">Hemos enviado un código de seis dígitos a
+      <strong>${esc(email)}</strong>. Escríbelo aquí para entrar.</p>
+      <div class="campo">
+        <input type="text" id="codigo-correo" inputmode="numeric"
+               autocomplete="one-time-code" maxlength="6"
+               placeholder="000000" aria-label="Código recibido por correo"
+               style="letter-spacing:.35em;text-align:center;font-size:1.35rem">
+      </div>
+      <button class="principal" id="comprobar">Entrar</button>
+      <button class="enlace" id="otro-correo">Usar otro correo</button>
+      <p class="guia" style="margin-top:18px;font-size:.85rem">
+      Si no lo ves, mira en la carpeta de correo no deseado.</p>
+      <div id="resultado"></div>
+    </div>`;
+
+  const campo = document.getElementById('codigo-correo');
+  const boton = document.getElementById('comprobar');
+  campo.focus();
+  campo.addEventListener('keydown', e => { if (e.key === 'Enter') boton.click(); });
+  // Entrar solo al escribir el sexto dígito: seis teclas y dentro.
+  campo.addEventListener('input', () => {
+    campo.value = campo.value.replace(/\D/g, '');
+    if (campo.value.length === 6) boton.click();
+  });
+
+  alPulsar('otro-correo', () => pantallaEntrar());
+
+  boton.onclick = async () => {
+    const token = campo.value.trim();
+    if (token.length !== 6) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">El código tiene seis dígitos.</div>`;
+      return;
+    }
+    boton.disabled = true;
+    boton.textContent = 'Comprobando...';
+    const { error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
+    if (error) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">Ese código no es válido o ha caducado.
+         Pide otro con «usar otro correo».</div>`;
+      boton.disabled = false;
+      boton.textContent = 'Entrar';
+      campo.select();
+      return;
+    }
+    // Al entrar, el detector de sesión arranca la aplicación solo.
   };
 }
 
