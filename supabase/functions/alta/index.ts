@@ -836,9 +836,12 @@ Deno.serve(async (peticion) => {
       // salen del vecindario —contratos que mencionan lo que vende— y
       // lo que los separa es el destinatario.
       const mitad = Math.floor(CUANTAS / 2);
+      // El parámetro se llama `prefijos_buscados` en la base, no
+      // `prefijos`. Enviarlo mal hacía que PostgREST no encontrara la
+      // función y el alta sin historial fallara con «algo ha fallado».
       const argumentos = {
-        prefijos: lista, producto, destinatario,
-        solo_vivas: false, tope: 200,
+        prefijos_buscados: lista, producto, destinatario,
+        solo_vivas: false, tope: 60,
       };
 
       const [encajan, frontera] = await Promise.all([
