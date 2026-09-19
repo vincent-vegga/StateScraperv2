@@ -205,9 +205,29 @@ jobs:
         #
         # Ni en diagnóstico ni en las pruebas: mandar correos de verdad
         # desde un ensayo sería el peor error posible.
-        if: env.MODO == 'normal' || env.MODO == 'solo_cribado'
+        #
+        # Y TAMPOCO en `solo_cribado`. Ese modo se usa para poner al día
+        # a los clientes nuevos, a veces varias veces al día, y ninguno
+        # espera un correo por eso. Correr el alertador ahí era mandar
+        # avisos a gente que acaba de darse de alta.
+        #
+        # El aviso diario sale del cron, en modo `normal`, una vez al
+        # día. Que es lo que el cliente espera.
+        #
+        # APAGADO A PROPÓSITO durante las pruebas.
+        #
+        # El cron corre cada mañana en modo `normal`, así que con esto en
+        # marcha saldrían avisos de verdad a gente que se dio de alta
+        # ayer y no espera un correo. Para reactivarlo, cambiar esta
+        # línea por:  if: env.MODO == 'normal'
+        if: env.MODO == 'nunca'
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Desde el dominio propio. Sin esto sale el remitente de
+          # pruebas de Resend, que SOLO puede escribir a la dirección
+          # con la que te registraste: los correos a clientes se
+          # rechazaban con un 403.
+          REMITENTE_ALERTA: ${{ vars.REMITENTE_ALERTA || 'State Scraper <hola@statescraper.com>' }}
         run: python alertador.py
 
       - name: Comprobar que el repositorio sigue limpio
