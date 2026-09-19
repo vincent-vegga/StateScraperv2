@@ -1164,28 +1164,38 @@ select:focus{
 /* ---------- Movimientos del mercado ----------
    Arriba, el titular a la izquierda y las cifras del mes a la derecha;
    debajo, la lista de lo adjudicado. */
-.cabeza-movimientos{
-  display:grid;grid-template-columns:1fr 320px;gap:26px;align-items:start;
-  margin-top:26px;
-}
-/* El titular y su explicación, arriba del todo de su columna.
-   La tarjeta de la derecha es más alta, y sin esto el navegador
-   repartía el sobrante y dejaba un hueco bajo el texto. */
-.cabeza-movimientos > div:first-child{align-self:start}
+/* En una columna, no en dos.
+   La tarjeta de cifras es mucho más alta que el titular, y a su lado
+   dejaba un vacío de varios cientos de píxeles bajo el texto. Como
+   franja horizontal ocupa lo que necesita y el hueco desaparece. */
+.cabeza-movimientos{margin-top:26px}
+.cabeza-movimientos > div:first-child{max-width:70ch}
+
 .pulso{
-  border:1px solid var(--linea);border-radius:10px;padding:20px;
+  margin-top:20px;padding:20px 22px;
+  border:1px solid var(--linea);border-radius:10px;
   background:var(--superficie);box-shadow:var(--sombra-baja);
 }
 .pulso h4{
-  margin:0 0 16px;font-size:.79rem;font-weight:650;color:var(--tenue);
+  margin:0 0 14px;font-size:.79rem;font-weight:650;color:var(--tenue);
   letter-spacing:.05em;text-transform:uppercase;
 }
-.pulso dl{display:grid;grid-template-columns:1fr auto;gap:11px 14px;margin:0}
-.pulso dt{color:var(--tenue);font-size:.88rem}
-.pulso dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;
-  text-align:right}
+.pulso dl{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:16px 26px;margin:0;
+}
+.pulso dl > div{min-width:0}
+.pulso dt{
+  color:var(--tenue);font-size:.79rem;letter-spacing:.04em;
+  text-transform:uppercase;margin:0 0 5px;
+}
+.pulso dd{
+  margin:0;font-size:1.32rem;font-weight:650;line-height:1.15;
+  font-variant-numeric:tabular-nums;
+}
 .pulso .destacado{
-  margin-top:16px;padding-top:14px;border-top:1px solid var(--linea);
+  grid-column:1 / -1;
+  margin:4px 0 0;padding-top:14px;border-top:1px solid var(--linea);
   color:var(--tenue);font-size:.86rem;line-height:1.55;
 }
 .pulso .destacado strong{color:var(--texto)}
@@ -4362,9 +4372,9 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
         <p class="guia" style="margin:0">Los contratos que se han cerrado en
         los últimos treinta días con los mismos códigos que los tuyos.</p>
       </div>
-      <div class="pulso"><h4>El mes en tu sector</h4>
-        <p class="guia" style="margin:0;font-size:.9rem">Cargando...</p></div>
-    </div>`;
+    </div>
+    <div class="pulso"><h4>El mes en tu sector</h4>
+      <p class="guia" style="margin:0;font-size:.9rem">Cargando...</p></div>`;
 
   const [mov, pul] = await Promise.all([
     pedir('movimientos_mercado', { dias: 30 }),
@@ -4566,22 +4576,23 @@ async function pantallaMovimientos(perfil, session, volviendo = false) {
         los ganó, de qué organismo y por cuánto.</p>
       </div>
 
-      <div class="pulso">
-        <h4>El mes en tu sector</h4>
-        <dl>
-          <dt>Adjudicaciones</dt><dd>${p.contratos ?? 0}</dd>
-          <dt>Importe total</dt><dd>${
-            p.importe ? euros(Number(p.importe)) : '—'}</dd>
-          <dt>Empresas distintas</dt><dd>${p.empresas ?? 0}</dd>
-          ${p.importe_medio ? `<dt>Importe medio</dt>
-            <dd>${euros(Number(p.importe_medio))}</dd>` : ''}
-        </dl>
-        ${p.mias ? `<p class="destacado">De ellas, <strong>${p.mias}</strong>
-          ${p.mias === 1 ? 'la has ganado tú' : 'las has ganado tú'}.</p>` : ''}
-        <p class="destacado" style="font-size:.8rem">Cada lote de un contrato
-        cuenta como una adjudicación, así que el importe medio es por
-        adjudicación y no por expediente.</p>
-      </div>
+    </div>
+
+    <div class="pulso">
+      <h4>El mes en tu sector</h4>
+      <dl>
+        <div><dt>Adjudicaciones</dt><dd>${p.contratos ?? 0}</dd></div>
+        <div><dt>Importe total</dt><dd>${
+          p.importe ? euros(Number(p.importe)) : '—'}</dd></div>
+        <div><dt>Empresas distintas</dt><dd>${p.empresas ?? 0}</dd></div>
+        ${p.importe_medio ? `<div><dt>Importe medio</dt>
+          <dd>${euros(Number(p.importe_medio))}</dd></div>` : ''}
+        ${p.mias ? `<div><dt>Las has ganado tú</dt>
+          <dd>${p.mias}</dd></div>` : ''}
+        <p class="destacado">Cada lote de un contrato cuenta como una
+        adjudicación, así que el importe medio es por adjudicación y no por
+        expediente.</p>
+      </dl>
     </div>
 
     ${(porEmpresa.length || porOrgano.length) ? `
