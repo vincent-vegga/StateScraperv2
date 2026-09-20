@@ -567,7 +567,7 @@ Deno.serve(async (peticion) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { accion, descripcion, prefijos, respuestas, cif, empresa, dias } =
+    const { accion, descripcion, prefijos, respuestas, cif, dias } =
       await peticion.json();
 
     const { data: perfiles } = await comoUsuario.from("perfiles")
@@ -585,9 +585,20 @@ Deno.serve(async (peticion) => {
     // Ese dato no hay que adivinarlo: está publicado. Los contratos que
     // ha ganado llevan su CIF, así que basta con que se identifique.
     if (accion === "buscar_empresa") {
+      // SOLO por CIF. La búsqueda por nombre se retiró el 20/09/2026:
+      // hacía un recorrido completo de `licitaciones` (12 s contra un
+      // límite de 8 s, o sea fallo seguro con nombres poco comunes) y
+      // servía para disimular un resultado que ya era correcto. Buscar
+      // por CIF es exacto, va por índice y tarda 73 ms: si no encuentra
+      // contratos, es que no los hay.
+      //
+      // El parámetro `empresa` ya no se lee. Se deja de aceptar aquí, y
+      // no solo en la interfaz, para que esa consulta lenta no siga
+      // siendo alcanzable con una petición hecha a mano.
+      if (!cif) return responder({ error: "sin_cif" }, 400);
+
       const { data, error: fallo } = await admin.rpc("buscar_empresa", {
-        cif_buscado: cif ?? null,
-        nombre_buscado: empresa ?? null,
+        cif_buscado: cif,
       });
       if (fallo) {
         console.error("Fallo al buscar empresa:", fallo);
