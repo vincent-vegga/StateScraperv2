@@ -131,55 +131,6 @@ def prefijos_de_los_perfiles(cliente) -> tuple[str, ...]:
     return tuple(sorted(minimos))
 
 
-def refrescar_agregados(cliente) -> int:
-    """
-    Rehace los dos agregados de los que viven las pestañas de mercado:
-    `organismos_por_prefijo` (Organismos) y `empresas_por_cif` (la lista
-    de seguimiento, dentro de Empresas).
-
-    POR QUÉ EXISTE. Antes, cada perfil recorría `licitaciones` por su
-    cuenta cada vez que abría la pestaña. En un sector grande eso son
-    veinte mil filas, cada una en un bloque de disco distinto: 30 s en
-    frío contra un límite de 8 s. Los perfiles grandes nunca llegaban a
-    calcular nada y la pestaña estaba vacía de forma permanente, y cada
-    visita relanzaba la consulta y volvía a morir.
-
-    TODOS LOS SECTORES, no solo los de los clientes actuales. Son los
-    1.240 que hay en la base, y se hace de una sola pasada. Cuesta
-    67,8 s medidos; refrescar solo los cuarenta y pico en uso, uno por
-    uno, no salía más barato, porque saltar de sector en sector va
-    buscando filas sueltas repartidas por el disco mientras que leer de
-    corrido no.
-
-    Y hacerlos todos quita el hueco del primer día: un cliente que se
-    da de alta en un sector donde no había nadie encuentra su pestaña
-    con los datos de anoche, no vacía ni con los de hace meses. Con
-    betatesters entrando por tandas, eso es justo lo que hace falta.
-
-    LA LISTA DE SEGUIMIENTO tenía la misma trampa: sumaba el historial
-    completo de cada empresa seguida, 4,6 s con cinco empresas grandes.
-    Ahora lee del agregado en 1 ms.
-
-    Nunca hace fallar la ejecución: si un agregado no se refresca, la
-    pestaña enseña los datos de ayer, que es mucho mejor que un robot
-    en rojo.
-    """
-    total = 0
-    # Dos llamadas y no una: cada una es su propia transacción, así que
-    # si la de empresas falla, la de organismos ya está hecha.
-    for nombre, etiqueta in (("refrescar_organismos", "organismos"),
-                             ("refrescar_empresas", "empresas")):
-        try:
-            respuesta = cliente.rpc(nombre, {}).execute()
-            filas = int(respuesta.data or 0)
-            total += filas
-            logging.info("Agregado de %s: %d filas al día.", etiqueta, filas)
-        except Exception as error:
-            logging.warning("No se pudo refrescar el agregado de %s: %s",
-                            etiqueta, error)
-    return total
-
-
 def _leer_prefijos_cpv() -> tuple[str, ...]:
     """Lee los prefijos de la variable de entorno; si no hay, usa los de serie."""
     bruto = os.environ.get("CPV_PREFIJOS", "").strip()
@@ -2361,10 +2312,16 @@ def main() -> int:
     mostrar_resumen(resultados)
     publicar_informe_actions(resultados)
 
-    # El agregado se rehace DESPUÉS de guardar: si se hiciera antes, la
-    # pestaña de Organismos enseñaría el mercado de ayer teniendo ya lo
-    # de hoy en la tabla.
-    refrescar_agregados(cliente)
+    # LOS AGREGADOS DE MERCADO NO SE REFRESCAN DESDE AQUÍ.
+    #
+    # Se intentó, por RPC al terminar la pasada, y no podía funcionar:
+    # una llamada RPC entra por PostgREST, y ahí la sesión corta a los
+    # 8 s. Los refrescos tardan 67,8 s y ~50 s. Peor aún, el aviso se
+    # habría quedado en una línea del registro sin poner el robot en
+    # rojo: dos pestañas congeladas para siempre y nada señalándolo.
+    #
+    # Ahora los lanza pg_cron desde dentro de la base, escalonados tras
+    # esta pasada: organismos 06:30, empresas 06:40, catálogo 06:50.
 
     logging.info("Ejecución completada: %d licitaciones nuevas guardadas.",
                  len(resultados))
