@@ -184,3 +184,106 @@ order by idx_scan, pg_relation_size(indexrelid) desc;
 
 Y en el panel, los timeouts se ven en **Logs → Postgres**, buscando
 `canceling statement due to statement timeout`. El 19/09 había 153.
+
+---
+
+## Viabilidad, guardada en el cajón (20/09/2026)
+
+La pestaña está **escondida, no borrada**. El interruptor es
+`VIABILIDAD_VISIBLE` en `web/index.html`, junto a `ZONA`. Poniéndolo en
+`true` vuelve exactamente como estaba.
+
+Se cerraron las TRES entradas que tenía, no solo la pestaña:
+
+1. El botón de la barra de navegación.
+2. El botón "Analizar viabilidad" dentro de cada oportunidad.
+3. La restauración de estado guardado, que devolvía a esa pantalla a
+   quien la tuviera abierta al recargar.
+
+No se ha tocado nada más: `pantallaViabilidad` sigue en el fichero, y
+en la base siguen `viabilidad`, `incumbencia` y `ediciones_anteriores`
+con sus permisos.
+
+### Por qué se esconde
+
+No es por rendimiento, que está resuelto (`incumbencia` 370 ms en el
+peor caso, `ediciones_anteriores` 1,9 s). Es porque **el criterio de
+emparejamiento no discrimina**: en grupos grandes de un mismo órgano y
+familia CPV, el 90% de los contratos pasa el filtro de parecido (4.845
+de 5.365 medidos). Decir "X ha ganado 8 de las últimas 10 convocatorias
+de este contrato" cuando son diez contratos distintos es peor que
+callar.
+
+Y falta histórico: hay desde septiembre de 2021.
+
+### Cabo suelto: la sección nueva nunca se vio en pantalla
+
+La lista de convocatorias anteriores se conectó (commit b02246f), se
+desplegó y **no llegó a verificarse visualmente**. El SQL sí está
+comprobado: 60 licitaciones contrastadas contra la versión anterior,
+46 filas por versión, cero diferencias.
+
+Al buscarla no aparecía, y lo más probable es simple estadística: solo
+el **39%** de las licitaciones vivas tiene convocatorias anteriores
+(78 de 200 muestreadas al azar), así que pinchando dos o tres es fácil
+no ver ninguna.
+
+Pero NO está descartado que haya un fallo de pintado. Al retomarlo,
+poner `VIABILIDAD_VISIBLE = true` y probar con una licitación que se
+sepa que tiene anteriores:
+
+    select l.id_licitacion, l.titulo,
+           (select count(*) from public.ediciones_anteriores(l.id_licitacion, 0.4)) as anteriores
+    from public.licitaciones l
+    where coalesce(l.estado_licitacion,'')='PUB'
+      and coalesce(l.fecha_limite,'infinity'::timestamptz) >= now()
+    order by anteriores desc nulls last
+    limit 5;
+
+### Al retomarlo, empezar por aquí
+
+La pista es `expediente`, con cobertura del 100%. Quitándole los
+dígitos al expediente para quedarse con el tronco, **441.897 contratos
+(41,7%) caen en series repetidas** del mismo órgano. Sin comparar un
+solo título y con un índice btree corriente.
+
+Encaja con cómo lo hacen los productos del sector (Tussell,
+TenderLedger, Hermix): emparejan por señales estructurales —órgano,
+CPV, vencimiento y duración del contrato anterior— y no por parecido
+del texto. Trabajan hacia atrás desde la fecha de expiración, porque
+las re-licitaciones salen de tres a seis meses antes.
+
+Falta validar que esos troncos no sean demasiado genéricos. No está
+comprobado, es una línea de trabajo.
+
+### Cuánto histórico aguanta la base
+
+Estado a 20/09/2026: la base entera ocupa **2.699 MB** con 1.061.075
+filas, a razón de **213.396 filas al año** (datos desde 2021-09).
+
+  licitaciones ........ 2.267 MB  (1.658 datos + 570 índices)
+  palabras_titulo ......  414 MB  (268 datos + 146 índices)
+
+Proyección añadiendo histórico hacia atrás:
+
+  +3 años  ->  ~640.000 filas más  ->  ~4,3 GB
+  +4 años  ->  ~850.000 filas más  ->  ~4,8 GB
+
+Cabe sin problema en el disco de un plan Pro (8 GB de partida), aunque
+conviene mirar el disco contratado antes de lanzarlo.
+
+**Lo importante no es el tamaño, es que no frena las consultas.**
+`incumbencia` y `ediciones_anteriores` filtran por
+`fecha_actualizacion >= now() - N years`, así que meter datos de 2017
+no añade ni una fila a la ventana que miran. Su coste no se mueve.
+
+El coste sube si se AMPLÍA la ventana, que es justo el motivo para
+querer más histórico. Con `anios` de 4 a 8, los grupos aproximadamente
+doblan y el coste también: `incumbencia` pasaría de ~370 ms a ~700-800
+ms. Sigue sobrado bajo el límite de 8 segundos.
+
+**El riesgo real está en la importación, no en el resultado.** Meter
+640.000 filas dispara los seis triggers BEFORE de `licitaciones` por
+cada una y deja una tupla muerta por fila actualizada. Hay que hacerlo
+por lotes y con `VACUUM` por el camino, no de una tacada. Es la misma
+lección del backfill de `palabras_titulo` de hoy.

@@ -2652,7 +2652,9 @@ window.addEventListener('popstate', async (ev) => {
   const perfil = perfiles?.[0];
   if (!perfil) return arrancar(true);
 
-  if (estado.vista === 'viabilidad')
+  // Quien tuviera guardada la vista de viabilidad no se queda en una
+  // pantalla inalcanzable: cae en la lista de contratos como cualquiera.
+  if (estado.vista === 'viabilidad' && VIABILIDAD_VISIBLE)
     return pantallaViabilidad(perfil, session, true, estado.contrato ?? null);
   if (estado.vista === 'organismos')
     return pantallaOrganismos(perfil, session, true, estado.organo ?? null);
@@ -2679,6 +2681,34 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
 const euros = n => n == null ? null : new Intl.NumberFormat('es-ES',
   {style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n);
 const ZONA = 'Europe/Madrid';
+
+// ------------------------------------------------------------
+// VIABILIDAD, GUARDADA EN EL CAJÓN (20/09/2026)
+//
+// La pantalla funciona y es rápida —incumbencia 370 ms en el peor
+// caso, las convocatorias anteriores 1,9 s—, pero se esconde porque
+// lo que enseña todavía no es de fiar:
+//
+//   · El emparejamiento no discrimina. En grupos grandes de un mismo
+//     órgano y familia CPV, el 90% de los contratos pasa el filtro de
+//     parecido (4.845 de 5.365 medidos). Decir "X ha ganado 8 de las
+//     últimas 10 convocatorias de este contrato" cuando en realidad
+//     son diez contratos distintos es peor que no decir nada.
+//
+//   · Falta histórico. Hay desde 2021; para ver series de verdad
+//     hacen falta tres o cuatro años más hacia atrás.
+//
+// NO se ha borrado nada: ni pantallaViabilidad, ni las funciones de
+// la base (viabilidad, incumbencia, ediciones_anteriores), ni sus
+// permisos. Poniendo esto en true vuelve tal y como estaba.
+//
+// Al retomarlo, mirar primero `expediente`: el 41,7% de los contratos
+// caen en series identificables por el tronco de su referencia, sin
+// comparar títulos. Los productos del sector emparejan por señales
+// estructurales —órgano, CPV, vencimiento del contrato anterior— y no
+// por parecido del texto. Está anotado en supabase/LEEME.md.
+// ------------------------------------------------------------
+const VIABILIDAD_VISIBLE = false;
 const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
 // Todas las fechas en hora peninsular, sea cual sea la del visitante: un
@@ -3544,7 +3574,7 @@ function navPrincipal(donde) {
       <button data-nav="movimientos" aria-current="${donde === 'movimientos'}">Movimientos</button>
       <button data-nav="mercado" aria-current="${donde === 'mercado'}">Empresas</button>
       <button data-nav="organismos" aria-current="${donde === 'organismos'}">Organismos</button>
-      <button data-nav="viabilidad" aria-current="${donde === 'viabilidad'}">Viabilidad</button>
+      ${VIABILIDAD_VISIBLE ? `<button data-nav="viabilidad" aria-current="${donde === 'viabilidad'}">Viabilidad</button>` : ''}
     </div>`;
 }
 
@@ -5615,8 +5645,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
             o.dias_sin_verificar > 90
               ? ' — lleva mucho parado, conviene comprobarlo' : ''}</dd>
         </dl>
-        <button class="principal" data-analizar="${esc(o.id_licitacion)}"
-                style="margin-right:10px">Analizar viabilidad</button>
+        ${VIABILIDAD_VISIBLE ? `<button class="principal" data-analizar="${esc(o.id_licitacion)}"
+                style="margin-right:10px">Analizar viabilidad</button>` : ''}
         ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
       </section></div>`).join('')
       : pestana === 'hoy'
