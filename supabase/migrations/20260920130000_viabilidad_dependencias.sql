@@ -1,0 +1,40 @@
+-- ============================================================
+-- 3/3 · LAS DEPENDENCIAS INTERNAS DE `viabilidad`
+-- ============================================================
+--
+-- Aplicada el 20/09/2026.
+--
+-- EL FALLO
+-- La migración 1/2 dejó `viabilidad` accesible a `authenticated`,
+-- pero le quitó el permiso a las dos funciones que llama por
+-- dentro. La pestaña de viabilidad devolvía:
+--
+--     permission denied for function incumbencia
+--
+-- POR QUÉ SOLO LE PASA A ESTA
+-- De las 19 funciones que usa el navegador, 18 son SECURITY
+-- DEFINER: su cuerpo se ejecuta como `postgres`, que conserva
+-- todos los permisos, así que sus llamadas internas dan igual.
+--
+-- `viabilidad` es la ÚNICA SECURITY INVOKER. Su cuerpo corre con
+-- los permisos del cliente, y el cliente ya no los tenía.
+--
+-- Comprobado con un barrido de todas las funciones expuestas
+-- contra las revocadas: estas dos son las únicas cadenas rotas.
+-- Las de `rellenar_*` que aparecían en el barrido son funciones
+-- de trigger, disparadas por el scraper con clave de servicio,
+-- que sí conserva el permiso.
+--
+-- POR QUÉ ES SEGURO CONCEDERLAS
+--   · incumbencia  -> SECURITY DEFINER, solo lee `licitaciones`.
+--                     `authenticated` ya tiene SELECT sobre esa
+--                     tabla (política "lectura autenticada", qual
+--                     true), así que no expone nada nuevo.
+--   · baja_real    -> IMMUTABLE, aritmética pura sobre sus propios
+--                     argumentos. No toca ninguna tabla.
+--
+-- A `anon` no se le concede ninguna de las dos.
+-- ============================================================
+
+grant execute on function public.incumbencia(text, integer) to authenticated;
+grant execute on function public.baja_real(numeric, numeric, integer, text) to authenticated;

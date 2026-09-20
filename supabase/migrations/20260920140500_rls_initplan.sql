@@ -1,0 +1,41 @@
+-- ============================================================
+-- RLS: EVALUAR auth.uid() UNA VEZ, NO POR FILA
+-- ============================================================
+--
+-- PENDIENTE DE APLICAR. Prioridad baja.
+--
+-- El linter marca 16 políticas que llaman a auth.uid() sin envolver.
+-- Postgres lo reevalúa FILA A FILA en lugar de una sola vez. La
+-- solución es `(select auth.uid())`, que el planificador trata como
+-- InitPlan y calcula una vez.
+--
+-- Por qué es prioridad baja AHORA: las tablas afectadas son pequeñas
+-- (veredictos 1.888 filas, perfiles 17). Con 30 betatesters no se va a
+-- notar. Se deja escrito porque cuando `veredictos` crezca —una fila
+-- por licitación y perfil— sí empezará a pesar.
+--
+-- Las políticas quedan con el MISMO significado. Solo cambia cuándo se
+-- evalúa la llamada.
+--
+-- Generar el SQL exacto con esta consulta y revisarlo antes de correrlo:
+--
+--   select format(
+--     'alter policy %I on public.%I using (%s);',
+--     policyname, tablename,
+--     replace(qual::text, 'auth.uid()', '(select auth.uid())'))
+--   from pg_policies
+--   where schemaname = 'public' and qual::text like '%auth.uid()%'
+--     and qual::text not like '%select auth.uid()%';
+--
+--   -- y para las de INSERT, que usan with_check en vez de qual:
+--   select format(
+--     'alter policy %I on public.%I with check (%s);',
+--     policyname, tablename,
+--     replace(with_check::text, 'auth.uid()', '(select auth.uid())'))
+--   from pg_policies
+--   where schemaname = 'public' and with_check::text like '%auth.uid()%'
+--     and with_check::text not like '%select auth.uid()%';
+--
+-- No se deja el ALTER generado a ciegas aquí: reescribir 16 políticas
+-- de seguridad con un replace de texto sin mirar el resultado es
+-- exactamente como se abre un agujero.
