@@ -3,6 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+/* El dominio antiguo de Cloudflare Pages se cae a ratos y los betatesters
+   lo tienen guardado. Antes de cargar nada, mandamos esa visita al dominio
+   bueno conservando ruta, parámetros y ancla. Va aquí arriba, sin esperar a
+   nada más, para que no llegue a pintarse la interfaz vieja. */
+(function(){
+  if (location.hostname === 'stescraperv2.pages.dev') {
+    location.replace('https://statescraper.com' + location.pathname + location.search + location.hash);
+  }
+})();
+</script>
 <title>Contratos públicos para tu negocio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
