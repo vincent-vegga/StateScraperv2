@@ -1,0 +1,59 @@
+-- ============================================================
+-- LOS AGREGADOS NOCTURNOS, POR pg_cron Y NO POR RPC
+-- ============================================================
+--
+-- Aplicada el 20/09/2026.
+--
+-- EL FALLO, detectado antes de que se manifestara
+-- lector_atom.py refresca los agregados así:
+--
+--     cliente.rpc("refrescar_organismos", {}).execute()
+--     cliente.rpc("refrescar_empresas", {}).execute()
+--
+-- Eso va por PostgREST, que conecta con el rol `authenticator` y ese
+-- rol tiene statement_timeout = 8s. Usar la clave de servicio NO
+-- exime: el límite es de la sesión, no del rol al que se cambia.
+--
+-- Y esas funciones tardan, por diseño y con razón:
+--     refrescar_organismos()   1.240 sectores    67,8 s
+--     refrescar_empresas()     193.312 empresas  ~50 s
+--
+-- Las dos habrían expirado en CADA pasada. Y el propio código las
+-- envuelve en un try que solo registra un aviso —"Nunca hace fallar la
+-- ejecución"—, que es la decisión correcta para un robot pero hace que
+-- el fallo sea invisible: no habría robot en rojo, solo dos pestañas
+-- congeladas para siempre en los datos del día que se creó la tabla.
+--
+-- No llegó a ocurrir porque las tablas se poblaron a mano al aplicar
+-- la migración. Habría fallado en la primera pasada real del scraper.
+--
+-- LA SOLUCIÓN
+-- pg_cron ejecuta DENTRO de la base: no hay PostgREST, no hay 8 s.
+-- Se programan después de la pasada del scraper (06:00 UTC) y
+-- separados entre sí para no solaparse:
+--
+--     06:30  refrescar_organismos()           ~68 s
+--     06:40  refrescar_empresas()             ~50 s
+--     06:50  refrescar_catalogo_empresas()    ~33 s
+--
+-- `refrescar_empresas()` exige que auth.uid() sea null; en pg_cron no
+-- hay JWT, así que pasa el control. Comprobado.
+--
+-- PENDIENTE EN EL SCRAPER
+-- Las llamadas RPC de refrescar_agregados() en lector_atom.py ya no
+-- hacen falta. Mientras sigan ahí no rompen nada —fallarán por timeout
+-- y quedará un aviso en el log—, pero conviene quitarlas para que ese
+-- aviso no despiste a quien mire los registros.
+--
+--   select jobid, jobname, schedule, active from cron.job;
+--   select jobname, status, start_time, end_time
+--   from cron.job_run_details order by start_time desc limit 10;
+-- ============================================================
+
+-- Ya ejecutado:
+--   select cron.schedule('refrescar-organismos', '30 6 * * *',
+--                        $$select public.refrescar_organismos()$$);
+--   select cron.schedule('refrescar-empresas-por-cif', '40 6 * * *',
+--                        $$select public.refrescar_empresas()$$);
+--   select cron.schedule('refrescar-catalogo-empresas', '50 6 * * *',
+--                        $$select public.refrescar_catalogo_empresas()$$);
