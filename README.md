@@ -1,72 +1,30 @@
-# Detector de licitaciones
+# State Scraper V2
 
-Detecta contratos públicos relevantes para un profesional concreto, y le
-avisa solo de los que puede aprovechar.
+Detecta contratos públicos relevantes para una empresa concreta y los presenta con contexto de mercado: quién gana habitualmente, a qué precio adjudica cada organismo, y si merece la pena presentarse.
 
-El problema no es encontrar licitaciones: hay agregadores de sobra que las
-listan. El problema es que **están mal filtradas**. Un profesional que recibe
-veinte contratos al día y descarta dieciséis no tiene una herramienta, tiene
-una tarea más.
+El problema no es encontrar licitaciones: hay agregadores que las listan. El problema es que **están mal filtradas**. Un proveedor que recibe veinte contratos al día y descarta dieciséis no tiene una herramienta, tiene una tarea más.
 
-La causa está en cómo se clasifican los contratos públicos. El código CPV
-—el vocabulario europeo de clasificación— es demasiado grueso en unos
-sectores y demasiado concreto en otros, y en ningún caso captura la
-intención de quien busca. `92312250` significa "servicios prestados por
-artistas individuales" y lo usan por igual un cantautor y un apoderado
-taurino.
-
-**La propuesta de valor no es el filtro: es el proceso que construye el
-filtro.** El cliente describe su negocio en lenguaje natural, marca sobre
-licitaciones reales cuáles le interesan, y de ahí sale un criterio a su
-medida. Ningún competidor lo hace: todos asumen que el cliente ya sabe qué
-códigos quiere.
+**La propuesta de valor es el proceso que construye el filtro.** El sistema busca qué ha ganado la empresa antes, deduce un criterio en prosa y lo aplica cada mañana. El cliente no necesita saber qué es un CPV.
 
 ---
 
-## Estado
+## Estado (septiembre 2026)
 
-Este repositorio parte de un MVP funcionando en producción, validado en un
-sector concreto —espectáculo en vivo— durante tres semanas.
-
-**Lo que ya funciona y se hereda:**
+En producción con primeros usuarios reales. El core funciona; hay deuda técnica conocida.
 
 | | |
 |---|---|
 | Lectura de feeds ATOM oficiales, con ventana adaptativa | ✅ |
-| Filtro por CPV y control de estado en base de datos | ✅ |
-| Filtro por estado del expediente (solo lo que sigue abierto) | ✅ |
-| Cribado semántico con LLM, tres salidas y trazabilidad | ✅ |
-| Interfaz web generada a diario | ✅ |
-| Alerta diaria por correo | ✅ |
-| Importación de histórico desde los ZIP de datos abiertos | ✅ |
-
-**Lo que hay que construir:**
-
-| | Horas estimadas |
-|---|---|
-| Alta guiada: describir negocio → CPV → marcar ejemplos → criterio | 15-25 |
-| Usuarios, suscripciones y preferencias | 15-25 |
-| Web personalizada por cliente y alojamiento propio | 8-15 |
-| Extracción de requisitos del pliego (solvencia) | 8-12 |
-| Datos de adjudicatarios: quién ganó, por cuánto | 6-10 |
-
----
-
-## El resultado medido en el sector de partida
-
-| Etapa | Filas | Filtro |
-|---|---|---|
-| Capturado de los feeds | ~2.000 | prefijo CPV |
-| Vivo | 124 | estado del expediente |
-| Relevante | 53 | cribado semántico |
-| Mostrado | 34 | regla de vigencia |
-
-**Cero falsos negativos** en la evaluación del cribado, auditando 30
-rechazos al azar contra criterio humano. Es el único error que hace daño:
-una oportunidad descartada en silencio no vuelve a mirarse nunca.
-
-Como referencia del mercado: un servicio de pago existente entrega veinte
-contratos diarios de los que el cliente aprovecha cuatro.
+| Cribado semántico personalizado por empresa | ✅ |
+| Web multiusuario con sesión y autenticación | ✅ |
+| Alta guiada: CIF → historial → criterio → cribado | ✅ |
+| Pantalla de Contratos abiertos | ✅ |
+| Inteligencia de mercado: Empresas, Movimientos, Organismos | ✅ |
+| Viabilidad: puntuación por contrato | ✅ |
+| Alerta diaria por correo | ⚙️ Activa, apagada durante pruebas |
+| Histórico completo | ⚙️ Parcial (~25% del disponible) |
+| Sistemas dinámicos de adquisición marcados como tales | ⬜ Pendiente |
+| Alta sin historial: camino estable | ⬜ Frágil |
 
 ---
 
@@ -80,7 +38,6 @@ contratos diarios de los que el cliente aprovecha cuatro.
   lector_atom.py                  importar_historico.py
    ├─ descarga con reintentos              │
    ├─ parseo CODICE                        │
-   ├─ extractor por fuente                 │
    ├─ filtro por prefijo CPV               │
    └─ control de estado                    │
             │                                │
@@ -89,33 +46,20 @@ contratos diarios de los que el cliente aprovecha cuatro.
                  Supabase (PostgreSQL)
                  tabla `licitaciones`
                          │
-            ├──▶ cribador.py ──▶ veredicto de relevancia
-            │
-            ├──▶ generar_interfaz.py ──▶ web
-            │
-            └──▶ alertador.py ──▶ correo
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+    cribador.py    alertador.py     Edge Function
+    (semántico)    (correo)         /alta (onboarding)
+                                        │
+                                        ▼
+                                   web/index.html
+                                   (Cloudflare Pages)
 ```
 
-Todo se ejecuta en GitHub Actions. No requiere ninguna instalación local ni
-servidor propio.
+Todo corre en GitHub Actions. No requiere instalación local ni servidor propio.
 
-**Tres principios de diseño**, cada uno pagado con un error real
-documentado en `DECISIONES.md`:
-
-**La base de datos es la única fuente de verdad.** El repositorio contiene
-código y nada más. Se guarda todo, incluido lo ya adjudicado: el ruido de
-hoy es inteligencia de mercado mañana. El filtrado se hace al mirar, no al
-guardar.
-
-**Los fallos deben ser ruidosos.** Un sistema desatendido que devuelve cero
-resultados en silencio es indistinguible de uno que funciona en un mercado
-tranquilo. Tres incidentes reales lo confirmaron: una ventana temporal que
-cubría dos días creyendo cubrir siete, un indicador que medía lo que no
-tocaba, y un guardado que terminaba en verde sin escribir una fila.
-
-**Solo se enseña lo que se puede respaldar.** No saber si una licitación
-sigue abierta no es lo mismo que suponer que sí. Sin evidencia —plazo
-vigente o haberla visto hace poco— no se muestra.
+**URL de producción:** https://statescraper.com
+**Supabase:** swgrbzqxagrqdyddmvfy.supabase.co
 
 ---
 
@@ -124,116 +68,151 @@ vigente o haberla visto hace poco— no se muestra.
 | Fichero | Función |
 |---|---|
 | `lector_atom.py` | Lectura de feeds, filtro CPV y control de estado |
-| `importar_historico.py` | Carga histórico de un sector desde los ZIP oficiales |
-| `cribador.py` | Cribado semántico con LLM |
-| `generar_interfaz.py` | Construye la web desde la base de datos |
-| `alertador.py` | Alerta diaria por correo |
-| `esquema.sql` | Esquema completo y reproducible de la base de datos |
-| `requirements.txt` | Dependencias |
-| `.github/workflows/scraper.yml` | Programación y configuración |
-| `DECISIONES.md` | **Por qué el sistema es como es.** Leer antes de tocar nada |
+| `importar_historico.py` | Carga histórico desde los ZIP oficiales |
+| `cribador.py` | Cribado semántico con LLM, por perfil de empresa |
+| `alertador.py` | Alerta diaria por correo (Resend) |
+| `web/index.html` | Interfaz web completa: todo en un solo fichero |
+| `supabase/functions/alta/index.ts` | Edge Function: onboarding guiado |
+| `.github/workflows/scraper.yml` | Cron y modos de ejecución |
+| `DECISIONES.md` | Por qué el sistema es como es. Leer antes de tocar nada |
+
+Las migraciones SQL están en `migracion-*.sql`. Cada una explica en cabecera qué problema resuelve y por qué.
 
 ---
 
-## Puesta en marcha
+## Base de datos
 
-**1. Base de datos.** Proyecto nuevo en Supabase → SQL Editor → pegar
-`esquema.sql` entero → Run. Reconstruye la estructura desde cero.
+### Tablas principales
 
-**2. Credenciales.** En Settings → Secrets and variables → Actions:
-
-| Secret | De dónde sale |
+| Tabla | Función |
 |---|---|
-| `SUPABASE_URL` | Project Settings → Data API |
-| `SUPABASE_KEY` | Project Settings → API Keys → clave **secreta** |
-| `OPENAI_API_KEY` | Clave de un proyecto propio, para medir el gasto aparte |
-| `RESEND_API_KEY` | Solo si el envío de correo está activo |
-| `DESTINATARIOS_ALERTA` | Solo si el envío de correo está activo |
+| `licitaciones` | Todo lo descargado. Una fila = un expediente o lote |
+| `perfiles` | Una fila por empresa registrada. CPV, criterio, historial |
+| `veredictos` | Sí/quizás/no por contrato y perfil. El resultado del cribado |
+| `veredictos_mercado` | Cribado semántico del mercado (adjudicaciones históricas) |
+| `correcciones` | Cuando el cliente pulsa "no me interesa" o "sí me interesa" |
+| `seguimiento` | Empresas que el cliente ha marcado para seguir |
+| `codigos_acceso` | Códigos de acceso para el periodo de pruebas |
 
-La clave de Supabase debe ser la secreta, no la pública: con las políticas
-de acceso cerradas, la pública no puede escribir.
+### Tablas de caché
 
-**3. Configuración.** Todo en `.github/workflows/scraper.yml`, sin tocar
-Python. `CPV_PREFIJOS` define el sector vigilado.
+| Tabla | Qué guarda | Caduca |
+|---|---|---|
+| `competencia_guardada` | Las 25 empresas que más compiten en el sector | 1 día |
+| `organismos_guardados` | La lista de organismos del sector | 1 día |
+| `fichas_organismo` | Datos de cada organismo que alguien haya consultado | 1 día |
 
-**4. Primera carga.** Para trabajar con un sector nuevo hace falta material.
-El scraper diario tardaría días en acumularlo, así que se importa histórico:
+La caché existe porque calcular competencia o fichas sobre 25.000 contratos cada vez que alguien abre la pestaña agota el tiempo de espera. El resultado es el mismo; el trabajo se hace una vez.
 
-```
-python importar_historico.py --cpv 3581,1883 --anio 2026 --mes 8 --simulacro
-```
+### Funciones principales
 
-El simulacro descarga, procesa e informa **sin guardar nada**. Dice cuántas
-licitaciones de ese sector existen y enseña una muestra. Quitando
-`--simulacro`, las guarda.
+| Función | Qué hace |
+|---|---|
+| `pendientes_de_perfil(perfil, tope)` | Cola de contratos abiertos sin cribar |
+| `mis_oportunidades` (vista) | Lo que ve el cliente en Contratos |
+| `analizables()` | Lo que ve en Viabilidad — mismo filtro que mis_oportunidades |
+| `competencia()` | Las 25 empresas que más compiten, con caché |
+| `buscar_organismo(texto)` | Organismos del sector, con caché |
+| `ficha_organismo(organo)` | Datos de un organismo concreto, con caché |
+| `pulso_mercado()` | Cifras del mes: contratos, importe, empresas |
+| `viabilidad(id)` | Puntuación de viabilidad de un contrato concreto |
+| `canjear_codigo(codigo)` | Valida y consume un código de acceso (insensible a mayúsculas) |
 
 ---
 
 ## Operación
 
-**Ejecución automática:** cada mañana, sin intervención. El planificador de
-GitHub no garantiza puntualidad; la ventana adaptativa absorbe las
-ejecuciones perdidas.
+### Cron diario
 
-**Ejecución manual:** Actions → Run workflow, con estos modos:
+Cada mañana a las 06:00 UTC (08:00 peninsular en verano). Ejecuta el scraper y el cribado. La alerta de correo está apagada durante las pruebas.
+
+### Modos manuales
+
+Actions → Run workflow → parámetro `modo`:
 
 | Modo | Qué hace |
 |---|---|
-| `normal` | Ejecución completa |
-| `diagnostico` | Lee y mide **sin tocar la base de datos** |
-| `solo_cribado` | Clasifica sin releer los feeds |
-| `cribado_prueba` | Clasifica 20 y las imprime **sin guardar** |
+| `normal` | Scraper + cribado + correo (cuando se reactive) |
+| `solo_cribado` | Solo clasifica, sin leer feeds ni mandar correos |
+| `diagnostico` | Lee los feeds **sin tocar la base** |
+| `cribado_prueba` | Clasifica 20 y los imprime **sin guardar** |
 | `alerta_prueba` | Compone el correo y lo imprime **sin enviarlo** |
 
-Los parámetros `dias_solape` y `max_paginas` permiten una *pasada profunda*
-puntual, que relee semanas atrás y refresca estados y plazos. Vacíos, se
-usan los valores de siempre: así no hay que acordarse de revertir nada.
+`solo_cribado` es el modo habitual durante pruebas: pone al día a los clientes nuevos sin riesgo de mandar correos no esperados.
 
-**Qué mirar en el registro:**
+### Credenciales (secrets del repo)
 
-| Buscar | Significa |
+| Secret | De dónde sale |
 |---|---|
-| `Ventana cubierta hasta` | Profundidad real de vigilancia por feed |
-| `FRENO DE EMERGENCIA` | ⚠️ Posible hueco sin vigilar |
-| `Refrescado el estado de` | Expedientes conocidos actualizados |
-| `Guardados N de M veredictos` | ⚠️ Si N ≠ M, se perdió trabajo |
+| `SUPABASE_URL` | Project Settings → Data API |
+| `SUPABASE_KEY` | Project Settings → API Keys → clave **secreta** |
+| `OPENAI_API_KEY` | Clave de proyecto propio |
+| `RESEND_API_KEY` | Resend → API Keys |
+
+Variables de entorno opcionales:
+- `REMITENTE_ALERTA`: por defecto `State Scraper <hola@statescraper.com>`
+
+---
+
+## Alta de un usuario
+
+El flujo completo:
+
+1. El cliente entra en https://statescraper.com con un código de acceso.
+2. Introduce su NIF → la Edge Function `/alta` busca qué ha ganado.
+3. El LLM deduce los CPV y redacta el criterio en prosa.
+4. El cliente elige si quiere ampliar o afinar.
+5. Al entrar por primera vez, el arranque detecta pendientes y criba.
+6. Si hay muchos pendientes (>5s de espera), se muestra la lista vacía y el workflow los criba en la siguiente pasada.
+
+**Código de acceso activo:** `alpha` (100 usos, caduca dic 2026)
+
+Para crear uno nuevo:
+```sql
+insert into public.codigos_acceso (codigo, nota, usos_maximos, caduca)
+values ('nuevo', 'Descripción', 100, now() + interval '3 months');
+```
+
+---
+
+## Vigilar el estado en producción
+
+```sql
+-- Quién ha entrado y qué ve
+select p.empresa, p.email, to_char(p.fecha_alta, 'DD/MM HH24:MI') as alta,
+       (select count(*)
+        from public.veredictos v
+        join public.licitaciones l on l.id_licitacion = v.id_licitacion
+        left join public.correcciones c
+          on c.id_licitacion = l.id_licitacion and c.perfil_id = p.id
+        where v.perfil_id = p.id and v.veredicto in ('si','quizas')
+          and coalesce(l.estado_licitacion,'') = 'PUB'
+          and ((l.fecha_limite is not null and l.fecha_limite >= now())
+               or (l.fecha_limite is null
+                   and l.fecha_actualizacion >= now() - interval '14 days'))
+          and (c.interesa is null or c.interesa)) as le_salen
+from public.perfiles p order by p.fecha_alta desc;
+
+-- Códigos de acceso
+select codigo, usos, usos_maximos, caduca from public.codigos_acceso;
+```
 
 ---
 
 ## Límites conocidos
 
-- **El criterio de relevancia está escrito a mano** para un sector. Hacerlo
-  generable por el propio cliente es el objeto de este repositorio.
-- **Los canales principales excluyen los contratos menores** (por debajo de
-  15.000 €). Existe un canal específico, ya soportado por el importador
-  pero no integrado en el flujo diario.
-- **El estado solo se refresca en lo que reaparece** en el feed. Un
-  expediente adjudicado que no vuelva conservaría su plazo futuro. Con
-  ciclos cortos el refresco lo alcanza; es una probabilidad baja, no una
-  imposibilidad.
-- **La solvencia remite al pliego en el 23 % de los casos.** Ese contenido
-  solo existe en PDF, y es el que responde a "¿puedo presentarme?".
-- **No hay datos de adjudicatario.** Están en el feed y no se extraen
-  todavía. Es lo que permitiría enseñar quién ganó y por cuánto.
-- **La web lleva los datos incrustados** y es igual para todos. Con clientes
-  distintos habrá que consultar la base desde el navegador, lo que obliga a
-  escribir políticas de acceso reales. Es la parte donde un error es una
-  fuga de datos.
+- **El alta sin historial es frágil.** Con pocos contratos el criterio puede ser demasiado estrecho o demasiado territorial. El prompt está corregido para no usar geografía, pero con cuatro o cinco contratos el margen es pequeño.
+- **Los sistemas dinámicos de adquisición inundan algunos sectores.** Son contratos que técnicamente encajan pero son inscripciones a catálogos, no licitaciones. Están en la lista pero no se distinguen visualmente.
+- **`pendientes_de_perfil` tarda con sectores grandes.** Con 25.000 contratos en el sector, la primera visita de un usuario nuevo puede superar el tiempo de espera del navegador. El workflow lo resuelve, pero el usuario puede ver la pantalla vacía antes.
+- **El histórico es parcial.** La inteligencia de mercado funciona mejor cuanto más histórico hay. Ahora hay unos dos años en algunos sectores y menos en otros.
+- **Los criterios geográficos.** Si la empresa tiene todo su historial en una provincia, el modelo podía deducir un criterio territorial. El prompt está corregido, pero hay perfiles antiguos que pueden tener ese sesgo.
 
 ---
 
-## Antes de dar de alta a un tercero
+## Deuda técnica conocida
 
-Requisitos, no mejoras: baja en un clic, política de privacidad accesible y
-dominio verificado en el proveedor de correo. En cuanto se trate el correo
-de una persona ajena, aplica el RGPD.
-
----
-
-## Historia
-
-Este sistema nació como MVP en un programa de fellowship, construido en tres
-semanas por alguien sin experiencia previa en programación, trabajando con
-un asistente. `DECISIONES.md` recoge las 32 decisiones de arquitectura con
-su motivo, los datos que las respaldan y —lo más útil— las que hubo que
-rectificar.
+- Caché de `pendientes_de_perfil` — prioritario: resuelve el problema de entrada vacía
+- Etiqueta visual para sistemas dinámicos de adquisición
+- Alta sin historial: mejorar usando historial de empresas similares
+- `alertador.py` necesita actualizar el remitente (está en el workflow pero no en el código)
+- Índice en `perfiles.cif` — hay búsquedas lentas porque hace seq scan
