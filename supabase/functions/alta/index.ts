@@ -567,7 +567,7 @@ Deno.serve(async (peticion) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { accion, descripcion, prefijos, respuestas, cif, dias } =
+    const { accion, descripcion, prefijos, respuestas, cif, empresa, dias } =
       await peticion.json();
 
     const { data: perfiles } = await comoUsuario.from("perfiles")
@@ -585,20 +585,24 @@ Deno.serve(async (peticion) => {
     // Ese dato no hay que adivinarlo: está publicado. Los contratos que
     // ha ganado llevan su CIF, así que basta con que se identifique.
     if (accion === "buscar_empresa") {
-      // SOLO por CIF. La búsqueda por nombre se retiró el 20/09/2026:
-      // hacía un recorrido completo de `licitaciones` (12 s contra un
-      // límite de 8 s, o sea fallo seguro con nombres poco comunes) y
-      // servía para disimular un resultado que ya era correcto. Buscar
-      // por CIF es exacto, va por índice y tarda 73 ms: si no encuentra
-      // contratos, es que no los hay.
+      // Por CIF o por nombre.
       //
-      // El parámetro `empresa` ya no se lee. Se deja de aceptar aquí, y
-      // no solo en la interfaz, para que esa consulta lenta no siga
-      // siendo alcanzable con una petición hecha a mano.
-      if (!cif) return responder({ error: "sin_cif" }, 400);
+      // El nombre estuvo retirado unas horas el 20/09/2026, cuando la
+      // búsqueda recorría `licitaciones` entera: 12 s contra un límite
+      // de 8. Volvió al verse que hace falta de verdad: las matrices de
+      // los grupos NO licitan. Acciona S.A. (A08001851) y ACS
+      // (A28004885) tienen cero contratos a su nombre; los tienen sus
+      // filiales, cada una con el suyo. Quien escribe el CIF que conoce
+      // se queda fuera aunque su grupo tenga cientos de adjudicaciones.
+      //
+      // Ya no es lenta: busca contra `empresas`, una fila por CIF
+      // (193.312 en vez de 965.337) con índice de trigramas. 'DELOITTE'
+      // pasó de 12.294 ms a 7 ms.
+      if (!cif && !empresa) return responder({ error: "sin_cif" }, 400);
 
       const { data, error: fallo } = await admin.rpc("buscar_empresa", {
-        cif_buscado: cif,
+        cif_buscado: cif ?? null,
+        nombre_buscado: empresa ?? null,
       });
       if (fallo) {
         console.error("Fallo al buscar empresa:", fallo);
