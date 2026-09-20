@@ -131,6 +131,69 @@ def prefijos_de_los_perfiles(cliente) -> tuple[str, ...]:
     return tuple(sorted(minimos))
 
 
+def refrescar_agregado_organismos(cliente) -> int:
+    """
+    Rehace `organismos_por_prefijo`, el agregado del que vive la pestaña
+    de Organismos.
+
+    POR QUÉ EXISTE. Antes, cada perfil recorría `licitaciones` por su
+    cuenta cada vez que abría la pestaña. En un sector grande eso son
+    veinte mil filas, cada una en un bloque de disco distinto: 30 s en
+    frío contra un límite de 8 s. Los perfiles grandes nunca llegaban a
+    calcular nada y la pestaña estaba vacía de forma permanente, y cada
+    visita relanzaba la consulta y volvía a morir. Ahora el trabajo se
+    hace UNA VEZ aquí, por la noche, y lo aprovechan todos los perfiles
+    del mismo sector.
+
+    UNA LLAMADA POR PREFIJO, y no una sola con la lista entera: cada
+    llamada es su propia transacción y confirma por su cuenta. Si la
+    cuarenta falla, las treinta y nueve anteriores siguen hechas.
+
+    PREFIJOS EXACTOS, no los de `prefijos_de_los_perfiles`. Esa función
+    colapsa a los más cortos porque para filtrar feeds basta con el
+    tronco; aquí no vale, porque `buscar_organismo` compara
+    `prefijo_principal` con el prefijo tal cual lo guarda el perfil.
+
+    Nunca hace fallar la ejecución: si el agregado no se refresca, la
+    pestaña enseña los datos de ayer, que es mucho mejor que un robot
+    en rojo.
+    """
+    try:
+        filas = (cliente.table("perfiles").select("cpv_prefijos")
+                 .eq("activo", True).not_.is_("cpv_prefijos", "null")
+                 .execute().data) or []
+    except Exception as error:
+        logging.warning("No se pudieron leer los prefijos para el agregado: %s", error)
+        return 0
+
+    prefijos: set[str] = set()
+    for fila in filas:
+        for p in (fila.get("cpv_prefijos") or "").split(","):
+            p = p.strip()
+            if p:
+                prefijos.add(p)
+
+    if not prefijos:
+        logging.info("Agregado de organismos: ningún perfil activo tiene prefijos.")
+        return 0
+
+    total, fallidos = 0, 0
+    for prefijo in sorted(prefijos):
+        try:
+            respuesta = cliente.rpc("refrescar_organismos_por_prefijo",
+                                    {"prefijos": [prefijo]}).execute()
+            total += int(respuesta.data or 0)
+        except Exception as error:
+            fallidos += 1
+            logging.warning("Agregado de organismos: falló el prefijo %s: %s",
+                            prefijo, error)
+
+    logging.info("Agregado de organismos: %d filas en %d prefijos%s",
+                 total, len(prefijos) - fallidos,
+                 f" ({fallidos} fallidos)" if fallidos else "")
+    return total
+
+
 def _leer_prefijos_cpv() -> tuple[str, ...]:
     """Lee los prefijos de la variable de entorno; si no hay, usa los de serie."""
     bruto = os.environ.get("CPV_PREFIJOS", "").strip()
@@ -2311,6 +2374,12 @@ def main() -> int:
 
     mostrar_resumen(resultados)
     publicar_informe_actions(resultados)
+
+    # El agregado se rehace DESPUÉS de guardar: si se hiciera antes, la
+    # pestaña de Organismos enseñaría el mercado de ayer teniendo ya lo
+    # de hoy en la tabla.
+    refrescar_agregado_organismos(cliente)
+
     logging.info("Ejecución completada: %d licitaciones nuevas guardadas.",
                  len(resultados))
     return 0

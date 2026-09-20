@@ -99,10 +99,13 @@ Las migraciones SQL están en `migracion-*.sql`. Cada una explica en cabecera qu
 | Tabla | Qué guarda | Caduca |
 |---|---|---|
 | `competencia_guardada` | Las 25 empresas que más compiten en el sector | 1 día |
-| `organismos_guardados` | La lista de organismos del sector | 1 día |
+| `organismos_guardados` | La lista de organismos del sector, ya paginada | 1 día |
 | `fichas_organismo` | Datos de cada organismo que alguien haya consultado | 1 día |
+| `organismos_por_prefijo` | Agregado de organismos **por prefijo CPV**, no por perfil | Lo rehace el robot cada noche |
 
 La caché existe porque calcular competencia o fichas sobre 25.000 contratos cada vez que alguien abre la pestaña agota el tiempo de espera. El resultado es el mismo; el trabajo se hace una vez.
+
+`organismos_por_prefijo` es distinta de las demás: va **por prefijo y no por perfil**. Dos clientes del mismo sector hacían dos veces el mismo trabajo, y uno nuevo lo hacía desde cero. Ahora se calcula una vez por la noche y sirve a todos, incluido el que se dio de alta hace un minuto. Para un sector grande eso es la diferencia entre 11.900 ms —que no caben en el límite de 8 s, así que la pestaña salía vacía— y 344 ms.
 
 ### Funciones principales
 
