@@ -131,66 +131,52 @@ def prefijos_de_los_perfiles(cliente) -> tuple[str, ...]:
     return tuple(sorted(minimos))
 
 
-def refrescar_agregado_organismos(cliente) -> int:
+def refrescar_agregados(cliente) -> int:
     """
-    Rehace `organismos_por_prefijo`, el agregado del que vive la pestaña
-    de Organismos.
+    Rehace los dos agregados de los que viven las pestañas de mercado:
+    `organismos_por_prefijo` (Organismos) y `empresas_por_cif` (la lista
+    de seguimiento, dentro de Empresas).
 
     POR QUÉ EXISTE. Antes, cada perfil recorría `licitaciones` por su
     cuenta cada vez que abría la pestaña. En un sector grande eso son
     veinte mil filas, cada una en un bloque de disco distinto: 30 s en
     frío contra un límite de 8 s. Los perfiles grandes nunca llegaban a
     calcular nada y la pestaña estaba vacía de forma permanente, y cada
-    visita relanzaba la consulta y volvía a morir. Ahora el trabajo se
-    hace UNA VEZ aquí, por la noche, y lo aprovechan todos los perfiles
-    del mismo sector.
+    visita relanzaba la consulta y volvía a morir.
 
-    UNA LLAMADA POR PREFIJO, y no una sola con la lista entera: cada
-    llamada es su propia transacción y confirma por su cuenta. Si la
-    cuarenta falla, las treinta y nueve anteriores siguen hechas.
+    TODOS LOS SECTORES, no solo los de los clientes actuales. Son los
+    1.240 que hay en la base, y se hace de una sola pasada. Cuesta
+    67,8 s medidos; refrescar solo los cuarenta y pico en uso, uno por
+    uno, no salía más barato, porque saltar de sector en sector va
+    buscando filas sueltas repartidas por el disco mientras que leer de
+    corrido no.
 
-    PREFIJOS EXACTOS, no los de `prefijos_de_los_perfiles`. Esa función
-    colapsa a los más cortos porque para filtrar feeds basta con el
-    tronco; aquí no vale, porque `buscar_organismo` compara
-    `prefijo_principal` con el prefijo tal cual lo guarda el perfil.
+    Y hacerlos todos quita el hueco del primer día: un cliente que se
+    da de alta en un sector donde no había nadie encuentra su pestaña
+    con los datos de anoche, no vacía ni con los de hace meses. Con
+    betatesters entrando por tandas, eso es justo lo que hace falta.
 
-    Nunca hace fallar la ejecución: si el agregado no se refresca, la
+    LA LISTA DE SEGUIMIENTO tenía la misma trampa: sumaba el historial
+    completo de cada empresa seguida, 4,6 s con cinco empresas grandes.
+    Ahora lee del agregado en 1 ms.
+
+    Nunca hace fallar la ejecución: si un agregado no se refresca, la
     pestaña enseña los datos de ayer, que es mucho mejor que un robot
     en rojo.
     """
-    try:
-        filas = (cliente.table("perfiles").select("cpv_prefijos")
-                 .eq("activo", True).not_.is_("cpv_prefijos", "null")
-                 .execute().data) or []
-    except Exception as error:
-        logging.warning("No se pudieron leer los prefijos para el agregado: %s", error)
-        return 0
-
-    prefijos: set[str] = set()
-    for fila in filas:
-        for p in (fila.get("cpv_prefijos") or "").split(","):
-            p = p.strip()
-            if p:
-                prefijos.add(p)
-
-    if not prefijos:
-        logging.info("Agregado de organismos: ningún perfil activo tiene prefijos.")
-        return 0
-
-    total, fallidos = 0, 0
-    for prefijo in sorted(prefijos):
+    total = 0
+    # Dos llamadas y no una: cada una es su propia transacción, así que
+    # si la de empresas falla, la de organismos ya está hecha.
+    for nombre, etiqueta in (("refrescar_organismos", "organismos"),
+                             ("refrescar_empresas", "empresas")):
         try:
-            respuesta = cliente.rpc("refrescar_organismos_por_prefijo",
-                                    {"prefijos": [prefijo]}).execute()
-            total += int(respuesta.data or 0)
+            respuesta = cliente.rpc(nombre, {}).execute()
+            filas = int(respuesta.data or 0)
+            total += filas
+            logging.info("Agregado de %s: %d filas al día.", etiqueta, filas)
         except Exception as error:
-            fallidos += 1
-            logging.warning("Agregado de organismos: falló el prefijo %s: %s",
-                            prefijo, error)
-
-    logging.info("Agregado de organismos: %d filas en %d prefijos%s",
-                 total, len(prefijos) - fallidos,
-                 f" ({fallidos} fallidos)" if fallidos else "")
+            logging.warning("No se pudo refrescar el agregado de %s: %s",
+                            etiqueta, error)
     return total
 
 
@@ -2378,7 +2364,7 @@ def main() -> int:
     # El agregado se rehace DESPUÉS de guardar: si se hiciera antes, la
     # pestaña de Organismos enseñaría el mercado de ayer teniendo ya lo
     # de hoy en la tabla.
-    refrescar_agregado_organismos(cliente)
+    refrescar_agregados(cliente)
 
     logging.info("Ejecución completada: %d licitaciones nuevas guardadas.",
                  len(resultados))

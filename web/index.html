@@ -3019,18 +3019,23 @@ function pantallaEmpresa(perfil, session) {
     try {
       const r = await llamar('buscar_empresa', { cif });
       if (!r.empresas.length) {
-        // Sin rescate por nombre. La búsqueda por NIF es exacta y va por
-        // índice en decenas de milisegundos: si no encuentra nada, es que
-        // no hay nada, no que la búsqueda se haya quedado corta. Antes
-        // había aquí un "Buscar por nombre" que hacía un recorrido
-        // completo de la tabla (12 s contra un límite de 8) y acababa en
-        // "No hemos podido buscar": un callejón sin salida justo para
-        // quien ya venía de un intento fallido.
+        // El NIF no encuentra nada, y muchas veces NO es que la empresa
+        // no tenga contratos: las matrices de los grupos no licitan.
+        // Acciona S.A. y ACS tienen cero contratos a su nombre; los
+        // tienen sus filiales, cada una con el suyo. Quien escribe el
+        // NIF que conoce se quedaba fuera teniendo el grupo cientos de
+        // adjudicaciones.
+        //
+        // Por eso vuelve el rescate por nombre. Ya no es el recorrido
+        // de 12 segundos de antes: busca contra la tabla `empresas`,
+        // una fila por NIF y con índice de trigramas, en milisegundos.
         document.getElementById('resultado').innerHTML = `
           <div class="aviso">No encontramos contratos públicos con ese NIF.
-          Comprueba que esté bien escrito; si lo está, es que tu empresa
-          todavía no ha ganado ninguno.</div>
-          <button class="secundario" id="seguir-sin-cif" style="margin-top:14px">Continuar sin historial</button>`;
+          Puede que los tenga otra sociedad de tu grupo: las matrices no
+          suelen licitar directamente.</div>
+          <button class="secundario" id="por-nombre" style="margin-top:14px">Buscar por nombre</button>
+          <button class="enlace" id="seguir-sin-cif" style="margin-top:10px">No tenemos contratos públicos</button>`;
+        document.getElementById('por-nombre').onclick = () => pantallaPorNombre(perfil, session);
         document.getElementById('seguir-sin-cif').onclick = () => pantallaDescribir(perfil, session);
       } else {
         pantallaConfirmar(perfil, r.empresas[0], r.ultimos, session);
@@ -3038,6 +3043,58 @@ function pantallaEmpresa(perfil, session) {
     } catch {
       document.getElementById('resultado').innerHTML =
         `<div class="aviso mal">No hemos podido buscar. Inténtalo de nuevo.</div>`;
+    }
+    boton.disabled = false;
+    boton.textContent = 'Buscar';
+  };
+}
+
+function pantallaPorNombre(perfil, session) {
+  raiz.innerHTML = `
+    <div class="paso">
+      <h1>¿Cómo se llama tu empresa?</h1>
+      <p class="guia">Tal como aparecería en un contrato público. No hace
+      falta que incluyas la forma societaria.</p>
+      <div class="campo">
+        <input type="text" id="nombre" placeholder="Confecciones Ibéricas"
+               aria-label="Nombre de tu empresa">
+      </div>
+      <button class="principal" id="buscar">Buscar</button>
+      <button class="enlace" id="sin-historial">No encuentro mi empresa</button>
+      <div id="resultado"></div>
+    </div>`;
+
+  document.getElementById('sin-historial').onclick = () => pantallaDescribir(perfil, session);
+  const boton = document.getElementById('buscar');
+  boton.onclick = async () => {
+    const empresa = document.getElementById('nombre').value.trim();
+    if (empresa.length < 3) return;
+    boton.disabled = true;
+    boton.textContent = 'Buscando...';
+    try {
+      const r = await llamar('buscar_empresa', { empresa });
+      if (!r.empresas.length) {
+        document.getElementById('resultado').innerHTML = `
+          <div class="aviso">Sin resultados con ese nombre.</div>`;
+      } else if (r.empresas.length === 1) {
+        pantallaConfirmar(perfil, r.empresas[0], r.ultimos, session);
+      } else {
+        // Varias coincidencias: elige él, que sabe cuál es la suya.
+        document.getElementById('resultado').innerHTML = `
+          <p class="guia" style="margin-top:22px">Hemos encontrado varias. ¿Cuál es la tuya?</p>
+          ${r.empresas.map((e, i) => `
+            <button class="secundario" data-i="${i}"
+                    style="display:block;width:100%;text-align:left;margin-bottom:8px">
+              <strong>${esc(e.nombre)}</strong><br>
+              <span style="color:var(--tenue);font-size:.88rem">${esc(e.cif)} ·
+              ${e.contratos} contratos</span>
+            </button>`).join('')}`;
+        raiz.querySelectorAll('[data-i]').forEach(b => b.onclick = () =>
+          pantallaConfirmar(perfil, r.empresas[+b.dataset.i], [], session));
+      }
+    } catch {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">No hemos podido buscar.</div>`;
     }
     boton.disabled = false;
     boton.textContent = 'Buscar';
