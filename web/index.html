@@ -3760,7 +3760,19 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
     if (!restaurando) irA('viabilidad', { contrato: id });
     zona.innerHTML = `<p class="guia" style="margin-top:26px">Analizando...</p>`;
 
-    const { data: d, error } = await sb.rpc('viabilidad', { ficha: id });
+    // Las dos consultas a la vez y no una detrás de otra: el veredicto
+    // y las convocatorias anteriores son independientes, así que el
+    // usuario espera lo que tarde la más lenta, no la suma.
+    //
+    // El fallo de la segunda NO tumba la pantalla: si las ediciones
+    // anteriores no llegan, el análisis se enseña igual y esa sección
+    // simplemente no aparece. Es información que suma, no de la que
+    // dependa el veredicto.
+    const [analisis, anteriores] = await Promise.all([
+      sb.rpc('viabilidad', { ficha: id }),
+      sb.rpc('ediciones_anteriores', { ficha: id }).then(r => r, () => ({ data: null })),
+    ]);
+    const { data: d, error } = analisis;
     if (error || !d || d.error) {
       zona.innerHTML = `<div class="aviso mal" style="margin-top:26px">
         No hemos podido analizar este contrato.
@@ -3768,10 +3780,10 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
           ${esc(error.message)}</div>` : ''}</div>`;
       return;
     }
-    pintar(d);
+    pintar(d, anteriores?.error ? [] : (anteriores?.data ?? []));
   }
 
-  function pintar(d) {
+  function pintar(d, ediciones = []) {
     const c = d.contrato ?? {};
     const inc = d.incumbencia ?? {};
     const org = d.organismo ?? {};
@@ -3849,6 +3861,35 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
                 <span class="quien">${esc(r.nombre ?? '—')}</span>
                 <span class="cuando">${r.veces}
                   ${r.veces === 1 ? 'vez' : 'veces'}</span>
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+
+      ${ediciones.length ? `
+        <div class="seccion-mercado" style="margin-top:18px">
+          <h3>Las convocatorias anteriores</h3>
+          <p class="guia" style="margin:0 0 14px;font-size:.89rem">
+            Los contratos concretos que hemos encontrado detrás de este,
+            del mismo organismo y la misma familia. El de arriba es el que
+            más se parece.</p>
+          <div class="historial-contrato">
+            ${ediciones.map(e => `
+              <div class="${e.cif === perfil.cif ? 'mia' : ''}">
+                <span class="quien">
+                  ${esc(e.titulo ?? '—')}
+                  <span style="display:block;color:var(--tenue);font-size:.85rem;
+                               margin-top:3px">
+                    ${esc(e.empresa ?? 'Sin adjudicatario')}${
+                      e.licitadores
+                        ? ` · ${e.licitadores} ${e.licitadores === 1
+                            ? 'oferta' : 'ofertas'}` : ''}</span>
+                </span>
+                <span class="cuando">
+                  ${e.importe != null ? euros(Number(e.importe)) : '—'}
+                  <span style="display:block;margin-top:3px">${
+                    e.fecha ? new Date(e.fecha).toLocaleDateString('es-ES',
+                      { timeZone: ZONA, month: 'short', year: 'numeric' }) : ''}</span>
+                </span>
               </div>`).join('')}
           </div>
         </div>` : ''}

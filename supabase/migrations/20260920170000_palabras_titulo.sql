@@ -196,7 +196,8 @@ grant  execute on function public.parecido_arrays(text[], text[]) to authenticat
 -- perfil, solo una ficha; lo que devuelve son adjudicaciones públicas
 -- del mismo órgano, no datos de ningún cliente.
 --
--- FALTA la parte de interfaz: ninguna pantalla la llama todavía.
--- El sitio natural es la pestaña de viabilidad, debajo del resumen de
--- incumbencia, ya que es el mismo contrato visto en detalle.
+-- CONECTADA el 20/09/2026 a la pestaña de viabilidad, bajo el resumen
+-- de incumbencia. Se pide en paralelo con viabilidad (no en cadena) y
+-- su fallo no tumba la pantalla: si no llega, esa sección no aparece y
+-- el análisis se enseña igual.
 -- ------------------------------------------------------------
