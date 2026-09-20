@@ -25,14 +25,71 @@ Además se ejecutó a mano, una vez: `ANALYZE` y `VACUUM` sobre
 
 ### Pendiente, por orden de urgencia
 
-**1. `migrations/20260920140400_indices_sobrantes.sql`**
+**1. `migrations/20260920150000_indice_vivas_con_prefijos.sql` — LO MÁS IMPORTANTE**
+
+`arrancar()` en web/index.html llama a `pendientes_de_perfil` dentro de
+una carrera contra un timeout de 4 segundos, en CADA entrada a la
+aplicación. Medido el 20/09/2026: **4.807 ms con la caché fría**, o sea
+que la pierde. Cuando la pierde, el usuario entra sin que se haya
+cribado lo pendiente y puede ver la lista vacía.
+
+Necesita subir el límite de tiempo antes (ver más abajo), porque el
+índice tarda varios minutos en construirse.
+
+**2. Decidir qué hacer con `idx_licitaciones_titulo_trgm` — 407 MB**
+
+ACTUALIZACIÓN 20/09/2026: la lentitud que motivaba este índice ya está
+resuelta sin trigramas (ver `20260920170000_palabras_titulo.sql`), así
+que la balanza se inclina a borrarlo. Verificado a conciencia antes de
+decirlo: ninguna de las 42 funciones ni de las 9 vistas usa operadores
+de trigramas, ningún código cliente menciona `titulo_normal`, y el
+contador de usos lleva a cero desde que existe la base.
+
+Y conviene recordar que borrar un índice NO toca datos: la columna
+`titulo_normal` se queda como está. Si alguna vez hiciera falta, se
+reconstruye en minutos.
+
+
+Es el índice más grande de la tabla y tiene **0 usos en toda la vida de
+la base** (`stats_reset` es null, el contador es fiable). Es GIN de
+trigramas sobre `titulo_normal`, pero `incumbencia` compara títulos con
+`parecido_util()`, que es solapamiento de palabras: ese índice no puede
+entrar.
+
+NO es una decisión obvia, y conviene no despacharla como "índice
+muerto". Medido el 20/09/2026 sobre un grupo de 5.365 contratos:
+
+  · filtrar por trigramas EN LUGAR de parecido_util ....... 537 ms
+  · parecido_util (el criterio actual) ................. 10.758 ms
+  · trigramas COMO PREFILTRO + parecido_util ........... 10.384 ms
+
+O sea: como prefiltro no sirve de nada, porque en grupos grandes el 90%
+de los contratos pasa el filtro y no hay nada que descartar. Solo
+serviría si los trigramas SUSTITUYERAN a parecido_util como criterio,
+y eso cambia qué entiende el producto por "convocatoria parecida".
+
+Así que la pregunta no es técnica sino de producto:
+
+  · Si el criterio se queda como está -> son 407 MB de peso muerto que
+    encarecen cada escritura del scraper. Borrarlo.
+  · Si algún día el parecido pasa a ser por trigramas -> el índice ya
+    está construido y es 20 veces más rápido. Conservarlo.
+
+Mientras tanto, la lentitud que motivaba esto ya está resuelta por otra
+vía (ver `20260920160000_incumbencia_rapida.sql`).
+
+```sql
+-- solo si se decide lo primero:
+drop index concurrently if exists public.idx_licitaciones_titulo_trgm;
+```
+
+**3. `migrations/20260920140400_indices_sobrantes.sql`**
 
 Borra dos índices duplicados exactos. Sin prisa, pero acelera al scraper.
 
-**2. `migrations/20260920140500_rls_initplan.sql`**
-
-Optimización de 16 políticas RLS. No corre prisa: las tablas afectadas
-son pequeñas todavía.
+Los duplicados exactos ya se borraron el 20/09/2026. Lo que queda en
+ese fichero son los candidatos nunca usados, que conviene revisar tras
+unos días con betatesters dentro.
 
 ### Marcha atrás
 
