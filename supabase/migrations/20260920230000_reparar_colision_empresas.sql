@@ -1,0 +1,55 @@
+-- ============================================================
+-- REPARACIÓN · colisión de nombres en refrescar_empresas
+-- ============================================================
+--
+-- Aplicada el 20/09/2026.
+--
+-- QUÉ PASÓ
+-- Se construyeron en paralelo, sin saberlo, dos cosas distintas con el
+-- mismo nombre:
+--
+--   refrescar_empresas()             (migración 20260920220000)
+--       Agregado `empresas_por_cif`. Lo llama el scraper desde
+--       lector_atom.py y lo lee mi_seguimiento().
+--
+--   refrescar_empresas(timestamptz)  (migración 20260920180000)
+--       Catálogo `empresas` con nombre normalizado e índice de
+--       trigramas, para la búsqueda por nombre.
+--
+-- La segunda migración incluía un
+--     drop function if exists public.refrescar_empresas();
+-- que BORRÓ la primera. El scraper seguía llamando por RPC a
+-- `refrescar_empresas`, que habría resuelto a la función equivocada y
+-- habría dejado `empresas_por_cif` sin actualizarse en silencio. Como
+-- la tabla conserva sus datos, no habría saltado ningún error: solo
+-- se habría ido quedando vieja.
+--
+-- LO QUE SE HACE
+--   1. Restaurar refrescar_empresas() íntegra, tal como estaba.
+--   2. Renombrar la nueva a refrescar_catalogo_empresas(timestamptz),
+--      que además dice mejor lo que hace.
+--   3. Reapuntar el trabajo de pg_cron al nombre nuevo.
+--
+-- Las DOS tablas se quedan, porque sirven para cosas distintas:
+--   empresas_por_cif -> agregado para la lista de seguimiento
+--   empresas         -> catálogo para buscar por nombre
+--
+-- Comprobado después: 193.312 filas en cada una, 227.655 en
+-- organismos_por_prefijo, y service_role puede ejecutar las tres
+-- funciones de refresco.
+--
+-- LECCIÓN, que conviene dejar escrita: antes de un
+-- `drop function if exists`, mirar si ese nombre ya existe y de quién
+-- es. `create or replace` sobre una firma distinta no avisa de nada.
+--
+-- El cuerpo de las funciones está en la migración
+-- `reparar_colision_refrescar_empresas`.
+-- ============================================================
+
+-- Programación resultante:
+--   06:00  scraper (GitHub Actions)
+--   06:?   refrescar_organismos() y refrescar_empresas() desde el
+--          propio scraper, al terminar la pasada
+--   06:50  refrescar_catalogo_empresas() vía pg_cron
+--
+--   select jobid, jobname, schedule, active from cron.job;
