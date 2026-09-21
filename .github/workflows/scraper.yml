@@ -129,7 +129,14 @@ jobs:
       MAX_CRIBADO_POR_PERFIL: '5000'
       # Clasificaciones simultáneas. De una en una, mil licitaciones son
       # veinte minutos.
-      CRIBADO_SIMULTANEAS: '20'
+      #
+      # 8 y no 20 desde el 21/09/2026. La cuenta de OpenAI admite 500
+      # peticiones y 200.000 tokens por minuto, y cada clasificación gasta
+      # ~400 tokens: el techo real son ~500 por minuto por los dos lados.
+      # Con 20 hilos se pedían ~800 y se chocaba: 5.812 errores 429 en una
+      # pasada, 38 minutos de cribado y 73 licitaciones sin veredicto. Con
+      # 8 y ~1 s por respuesta salen ~480 por minuto, justo por debajo.
+      CRIBADO_SIMULTANEAS: '8'
       # El dominio propio. El de Cloudflare Pages se cae a ratos y la web
       # redirige desde él, así que un enlace ahí daba un salto de más.
       URL_INTERFAZ: 'https://statescraper.com'
