@@ -258,18 +258,33 @@ def descargar(conjunto: str, anio: int, mes: int) -> bytes | None:
     sesion = requests.Session()
     sesion.headers.update({"User-Agent": lector.USER_AGENT})
 
+    # Dos cosas vistas el 21/09/2026 al catalogar 2024:
+    #   · Fallos de red pasajeros en la máquina de GitHub (no resolvía el
+    #     nombre del servidor). Sin reintento, se saltaba al siguiente
+    #     nombre de fichero y el mes entero se perdía.
+    #   · Un nombre que no existe no siempre da 404: el servidor contesta
+    #     200 con cero bytes. Se daba por descargado y reventaba al abrirlo
+    #     como ZIP. Ahora solo vale un ZIP de verdad (empieza por "PK").
     for url in candidatas:
-        logging.info("Probando %s", url)
-        try:
-            respuesta = sesion.get(url, timeout=TIMEOUT, stream=True)
-            if respuesta.status_code == 404:
-                continue
-            respuesta.raise_for_status()
-            contenido = respuesta.content
-            logging.info("Descargado: %.1f MB", len(contenido) / (1024 * 1024))
-            return contenido
-        except requests.exceptions.RequestException as error:
-            logging.warning("  Falló: %s", error)
+        for intento in range(1, 4):
+            logging.info("Probando %s%s", url,
+                         f" (intento {intento})" if intento > 1 else "")
+            try:
+                respuesta = sesion.get(url, timeout=TIMEOUT, stream=True)
+                if respuesta.status_code == 404:
+                    break
+                respuesta.raise_for_status()
+                contenido = respuesta.content
+                if not contenido.startswith(b"PK"):
+                    logging.warning("  No es un ZIP (%d bytes): se prueba el "
+                                    "siguiente nombre.", len(contenido))
+                    break
+                logging.info("Descargado: %.1f MB", len(contenido) / (1024 * 1024))
+                return contenido
+            except requests.exceptions.RequestException as error:
+                logging.warning("  Falló: %s", error)
+                if intento < 3:
+                    time.sleep(10 * intento)
     return None
 
 
