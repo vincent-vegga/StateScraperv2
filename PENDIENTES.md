@@ -167,13 +167,15 @@ dirección, o recuperar el hueco con los ZIP mensuales del catálogo
 
 | Conjunto | Años | Filas aprox. |
 |---|---|---|
-| 643 (Estado) | 2024 (en curso el 21/09), 2025, 2026 ene-sep | ~560.000 |
+| 643 (Estado) | 2024 completo, 2025, 2026 ene-sep | ~495.000 |
 | 1044 (autonómicas) | 2024, 2025, 2026 ene-sep | ~175.000 |
 | 1143 (contratos menores) | solo 2025 | ~542.000 |
 
-2024 del 643 se cargó a trozos: marzo-septiembre por la tarde (con
-fallos por sobrecarga en Nano), y enero, febrero, octubre, noviembre y
-diciembre de noche, de uno en uno, ya en Micro. Reprocesar un mes es
+2024 del 643 está completo (152.504 filas, los 12 meses). Se cargó a
+trozos: marzo-septiembre por la tarde (con fallos por sobrecarga en Nano),
+y enero, febrero, octubre, noviembre y diciembre la noche del 21/09/2026,
+de uno en uno, ya en Micro: 11-18 minutos por mes, sin errores, y la API
+respondiendo en 0,2-0,6 s durante la importación. Reprocesar un mes es
 seguro: las inserciones ignoran lo existente y el completado solo rellena
 huecos.
 
