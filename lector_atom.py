@@ -1898,6 +1898,113 @@ def filtrar_ya_procesadas(
     return nuevas, conocidas
 
 
+# Filas por llamada a refrescar_licitaciones. Medido: 100 filas, 249 ms
+# con la base en caliente; 200 filas, 3,1 s en frío. Con 100 queda margen
+# de sobra frente a los 8 s que PostgREST concede a cada petición.
+LOTE_REFRESCO = 100
+
+
+def cambios_de_refresco(item: dict[str, Any]) -> dict[str, Any]:
+    """
+    Los campos que se refrescan de una licitación ya conocida.
+
+    Es el mismo diccionario que antes se construía dentro del bucle de
+    refrescar_conocidas, sin cambiar nada: lo usan igual el refresco por
+    lotes y el de fila a fila.
+    """
+    return {
+        "estado_licitacion": item["estado_licitacion"] or None,
+        "estado_nombre": item.get("estado_nombre") or None,
+        "fecha_limite": item.get("fecha_limite"),
+        "presupuesto": item["presupuesto"],
+        "procedimiento": item.get("procedimiento") or None,
+        "urgencia": item.get("urgencia") or None,
+        "licitadores": item.get("licitadores"),
+        "lotes": item.get("lotes") or 0,
+        # Lo que explica la adjudicación, para que un contrato que se
+        # resuelve entre en la inteligencia el mismo día.
+        #
+        # Sin esto, un expediente que el scraper vigila durante dos
+        # semanas y acaba adjudicándose se quedaba a medias: cambiaba
+        # de estado y desaparecía de la lista, pero su adjudicatario,
+        # sus licitadores y sus ofertas no se guardaban. Había que
+        # esperar a una pasada del catálogo para recogerlo.
+        "adjudicaciones": item.get("adjudicaciones") or [],
+        "adjudicatarios": len({
+            a.get("cif") for a in (item.get("adjudicaciones") or [])
+            if a.get("cif")}),
+        "presupuesto_base": item.get("presupuesto_base"),
+        "valor_estimado": item.get("valor_estimado"),
+        "sistema": item.get("sistema") or None,
+        "peso_objetivo": item.get("peso_objetivo"),
+        "peso_subjetivo": item.get("peso_subjetivo"),
+        "criterios": item.get("criterios") or None,
+        "adjudicatario": item.get("adjudicatario") or None,
+        "adjudicatario_cif": item.get("adjudicatario_cif") or None,
+        "importe_sin_iva": item.get("importe_sin_iva"),
+        "importe_adjudicacion": item.get("importe_adjudicacion"),
+        "oferta_baja": item.get("oferta_baja"),
+        "oferta_alta": item.get("oferta_alta"),
+        "motivo_adjudicacion": item.get("motivo_adjudicacion") or None,
+        "fecha_adjudicacion": item.get("fecha_adjudicacion") or None,
+        "gano_pyme": item.get("gano_pyme"),
+        # Verlo en el feed es la confirmación de que sigue como dice.
+        # Sin esta marca no se puede distinguir "está publicada" de
+        # "lo estaba la última vez que la vimos, hace tres semanas".
+        "ultima_verificacion": datetime.now(timezone.utc).isoformat(),
+        "fecha_actualizacion": (
+            f.isoformat() if (f := a_fecha(item["fecha_actualizacion"])) else None
+        ),
+    }
+
+
+def refrescar_fila_a_fila(cliente, filas: list[dict[str, Any]]) -> tuple[int, int]:
+    """
+    El refresco de siempre: un PATCH por fila. Devuelve (refrescadas, fallos).
+
+    Es el camino de reserva del refresco por lotes. Una fila con un dato que
+    la base no acepta solo se pierde a sí misma, no a las otras 99 del lote.
+    """
+    refrescadas = fallos = 0
+    for fila in filas:
+        cambios = {k: v for k, v in fila.items() if k != "id_licitacion"}
+        try:
+            respuesta = con_reintentos(
+                lambda: (
+                    cliente.table(TABLA_SUPABASE)
+                    .update(cambios)
+                    .eq("id_licitacion", fila["id_licitacion"])
+                    .execute()
+                ),
+                f"Refresco de {fila['id_licitacion'][-12:]}",
+            )
+            if respuesta.data:
+                refrescadas += 1
+        except Exception as error:
+            fallos += 1
+            if fallos <= 3:   # no inundar el registro con el mismo error
+                logging.error("Fallo al refrescar %s: %s",
+                              fila["id_licitacion"][:60], error)
+    return refrescadas, fallos
+
+
+def refresco_por_lotes_disponible(cliente) -> bool:
+    """
+    ¿Existe refrescar_licitaciones y la podemos llamar?
+
+    Se pregunta con un lote vacío, que no toca nada y devuelve 0. Si la
+    migración no está aplicada o el rol no tiene permiso, se sabe aquí y
+    se refresca fila a fila, sin gastar reintentos en cada lote.
+    """
+    try:
+        cliente.rpc("refrescar_licitaciones", {"filas": []}).execute()
+        return True
+    except Exception as error:
+        logging.warning("Refresco por lotes no disponible (%s). "
+                        "Se refresca fila a fila.", error)
+        return False
+
+
 def refrescar_conocidas(cliente, conocidas: list[dict[str, Any]]) -> int:
     """
     Actualiza los campos que cambian con el tiempo en licitaciones ya vistas.
@@ -1910,80 +2017,65 @@ def refrescar_conocidas(cliente, conocidas: list[dict[str, Any]]) -> int:
     NULL sobre la fila propuesta ANTES de detectar el conflicto, así que un
     upsert sin `fuente` ni `titulo` se rechaza aunque la fila ya exista.
 
+    POR LOTES desde el 21/09/2026. Antes era un PATCH por fila: el 20/09
+    fueron 5.914 peticiones y unos 28 de los 38,5 minutos del paso, casi
+    todo coste fijo por petición. Ahora van de LOTE_REFRESCO en
+    LOTE_REFRESCO a la función refrescar_licitaciones, que actualiza las
+    mismas columnas. Si un lote falla, ese lote se repite fila a fila como
+    antes; si la función no está, todo va fila a fila.
+
     No genera alertas: refrescar no es descubrir.
     """
     if not conocidas:
         return 0
 
-    refrescadas = 0
-    fallos = 0
-
+    # Una misma licitación puede venir dos veces: recorrer_feed la añade
+    # si está pendiente de verificar y otra vez si pasa el filtro CPV. Fila
+    # a fila se aplicaban las dos y quedaba la última; en un UPDATE por
+    # lotes, con dos filas para el mismo id, no se sabría cuál gana. Se
+    # conserva la última, que es lo que pasaba.
+    por_id: dict[str, dict[str, Any]] = {}
     for item in conocidas:
-        cambios = {
-            "estado_licitacion": item["estado_licitacion"] or None,
-            "estado_nombre": item.get("estado_nombre") or None,
-            "fecha_limite": item.get("fecha_limite"),
-            "presupuesto": item["presupuesto"],
-            "procedimiento": item.get("procedimiento") or None,
-            "urgencia": item.get("urgencia") or None,
-            "licitadores": item.get("licitadores"),
-            "lotes": item.get("lotes") or 0,
-            # Lo que explica la adjudicación, para que un contrato que se
-            # resuelve entre en la inteligencia el mismo día.
-            #
-            # Sin esto, un expediente que el scraper vigila durante dos
-            # semanas y acaba adjudicándose se quedaba a medias: cambiaba
-            # de estado y desaparecía de la lista, pero su adjudicatario,
-            # sus licitadores y sus ofertas no se guardaban. Había que
-            # esperar a una pasada del catálogo para recogerlo.
-            "adjudicaciones": item.get("adjudicaciones") or [],
-            "adjudicatarios": len({
-                a.get("cif") for a in (item.get("adjudicaciones") or [])
-                if a.get("cif")}),
-            "presupuesto_base": item.get("presupuesto_base"),
-            "valor_estimado": item.get("valor_estimado"),
-            "sistema": item.get("sistema") or None,
-            "peso_objetivo": item.get("peso_objetivo"),
-            "peso_subjetivo": item.get("peso_subjetivo"),
-            "criterios": item.get("criterios") or None,
-            "adjudicatario": item.get("adjudicatario") or None,
-            "adjudicatario_cif": item.get("adjudicatario_cif") or None,
-            "importe_sin_iva": item.get("importe_sin_iva"),
-            "importe_adjudicacion": item.get("importe_adjudicacion"),
-            "oferta_baja": item.get("oferta_baja"),
-            "oferta_alta": item.get("oferta_alta"),
-            "motivo_adjudicacion": item.get("motivo_adjudicacion") or None,
-            "fecha_adjudicacion": item.get("fecha_adjudicacion") or None,
-            "gano_pyme": item.get("gano_pyme"),
-            # Verlo en el feed es la confirmación de que sigue como dice.
-            # Sin esta marca no se puede distinguir "está publicada" de
-            # "lo estaba la última vez que la vimos, hace tres semanas".
-            "ultima_verificacion": datetime.now(timezone.utc).isoformat(),
-            "fecha_actualizacion": (
-                f.isoformat() if (f := a_fecha(item["fecha_actualizacion"])) else None
-            ),
-        }
-        try:
-            respuesta = con_reintentos(
-                lambda: (
-                    cliente.table(TABLA_SUPABASE)
-                    .update(cambios)
-                    .eq("id_licitacion", item["id_licitacion"])
-                    .execute()
-                ),
-                f"Refresco de {item['id_licitacion'][-12:]}",
-            )
-            if respuesta.data:
-                refrescadas += 1
-        except Exception as error:
-            fallos += 1
-            if fallos <= 3:   # no inundar el registro con el mismo error
-                logging.error("Fallo al refrescar %s: %s",
-                              item["id_licitacion"][:60], error)
+        por_id[item["id_licitacion"]] = {
+            "id_licitacion": item["id_licitacion"], **cambios_de_refresco(item)}
+    filas = list(por_id.values())
 
+    inicio = time.monotonic()
+    refrescadas = fallos = 0
+    lotes_fallidos = 0
+    por_lotes = refresco_por_lotes_disponible(cliente)
+
+    for lote in dividir_en_lotes(filas, LOTE_REFRESCO):
+        lote = list(lote)
+        if por_lotes:
+            try:
+                n = con_reintentos(
+                    lambda: cliente.rpc("refrescar_licitaciones",
+                                        {"filas": lote}).execute().data,
+                    f"Refresco de un lote de {len(lote)} filas",
+                )
+                # Un escalar; por si alguna versión de la librería lo
+                # entregara dentro de una lista, se aceptan las dos formas.
+                if isinstance(n, list):
+                    n = n[0] if n else 0
+                refrescadas += int(n or 0)
+                continue
+            except Exception as error:
+                lotes_fallidos += 1
+                logging.error("Lote de %d filas fallido (%s). Se repite fila "
+                              "a fila.", len(lote), error)
+        hechas, fallidas = refrescar_fila_a_fila(cliente, lote)
+        refrescadas += hechas
+        fallos += fallidas
+
+    if lotes_fallidos:
+        logging.warning("%d lotes se refrescaron fila a fila.", lotes_fallidos)
     if fallos:
         logging.error("%d licitaciones no se pudieron refrescar.", fallos)
-    logging.info("Refrescado el estado de %d licitaciones ya conocidas.", refrescadas)
+    logging.info("Refrescado el estado de %d licitaciones ya conocidas "
+                 "(%s, %.0f s).", refrescadas,
+                 "por lotes" if por_lotes else "fila a fila",
+                 time.monotonic() - inicio)
     return refrescadas
 
 
