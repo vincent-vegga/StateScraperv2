@@ -528,7 +528,11 @@ async function clasificar(criterio: string, licitacion: {
       { role: "system", content: instruccionesCribado(criterio) },
       { role: "user", content: ficha },
     ], 150);
-    const veredicto = String(salida.veredicto ?? "").toLowerCase();
+    // Sin tildes ni espacios: el modelo a veces contesta "sí" o "quizás",
+    // y eso se daba por respuesta no válida. La licitación se quedaba sin
+    // veredicto y el cribado no avanzaba.
+    const veredicto = String(salida.veredicto ?? "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
     if (!["si", "quizas", "no"].includes(veredicto)) return null;
     return { veredicto, motivo: String(salida.motivo ?? "").slice(0, 300) };
   } catch (error) {

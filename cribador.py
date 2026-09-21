@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import unicodedata
 import logging
 import os
 import sys
@@ -192,6 +193,18 @@ def construir_mensajes(criterio: str, licitacion: dict[str, Any]) -> list[dict]:
     ]
 
 
+def sin_tildes(texto: str) -> str:
+    """
+    "sí" -> "si", "quizás" -> "quizas".
+
+    El modelo a veces escribe el veredicto con tilde, y sin esto se daba
+    por respuesta no válida: en la pasada del 21/09/2026, varias
+    licitaciones agotaron sus tres intentos por contestar "sí".
+    """
+    return "".join(c for c in unicodedata.normalize("NFD", texto)
+                   if unicodedata.category(c) != "Mn")
+
+
 def clasificar(cliente_ia, criterio: str, licitacion: dict) -> dict | None:
     """
     Pide un veredicto para una licitación, con el criterio de su cliente.
@@ -211,7 +224,7 @@ def clasificar(cliente_ia, criterio: str, licitacion: dict) -> dict | None:
                 temperature=0, max_tokens=150,
             )
             datos = json.loads((respuesta.choices[0].message.content or "").strip())
-            veredicto = str(datos.get("veredicto", "")).strip().lower()
+            veredicto = sin_tildes(str(datos.get("veredicto", ""))).strip().lower()
             if veredicto not in VEREDICTOS_VALIDOS:
                 raise ValueError(f"veredicto no reconocido: {veredicto!r}")
             return {"veredicto": veredicto,
@@ -379,9 +392,13 @@ def publicar_informe(por_perfil: dict[str, Counter], fallos: int) -> None:
     # variable de `main` reventaba el informe DESPUÉS de haber guardado
     # bien los veredictos, así que el workflow salía en rojo con el
     # trabajo hecho.
+    # `fallos` son LICITACIONES sin veredicto, no perfiles. El mensaje
+    # decía "N perfil(es) no se pudieron cribar: su cuenta se quedará
+    # vacía" y era falso: una alarma que asusta sin motivo enseña a no
+    # hacerle caso.
     if fallos:
-        logging.error("%d perfil(es) no se pudieron cribar: su cuenta se "
-                      "quedará vacía hasta que se resuelva.", fallos)
+        logging.error("%d licitaciones se quedaron sin veredicto (el modelo no "
+                      "contestó a tiempo o no dio uno válido).", fallos)
     for nombre, reparto in por_perfil.items():
         n = sum(reparto.values())
         logging.info("  %-28s %4d  ·  sí %d · quizás %d · no %d",
