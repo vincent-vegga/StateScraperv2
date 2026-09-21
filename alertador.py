@@ -51,7 +51,7 @@ API_RESEND = "https://api.resend.com/emails"
 
 REMITENTE = os.environ.get("REMITENTE_ALERTA", "onboarding@resend.dev")
 URL_INTERFAZ = os.environ.get(
-    "URL_INTERFAZ", "https://statescraperv2.pages.dev"
+    "URL_INTERFAZ", "https://statescraper.com"
 )
 # Holgura sobre la última detección. Una pasada tarda minutos, no horas,
 # pero el margen absorbe ejecuciones que se solapen o se retrasen.
@@ -214,10 +214,15 @@ def dias_restantes(limite: str | None) -> str:
     if not fecha:
         return "sin plazo publicado"
     local = fecha.astimezone(ZONA_ESPANA)
-    dias = (fecha - datetime.now(timezone.utc)).days
+    ahora = datetime.now(timezone.utc)
     cuando = local.strftime("%d/%m a las %H:%M")
-    if dias < 0:
+    if fecha < ahora:
         return f"vencido ({cuando})"
+    # Días de CALENDARIO peninsular, no tramos de 24 horas. Con `.days`,
+    # un plazo de mañana a las 10:00 leído hoy a mediodía daba 0 y el
+    # correo decía "vence hoy, 10:00": alguien podía dar por perdido un
+    # contrato que aún estaba a tiempo de presentar.
+    dias = (local.date() - ahora.astimezone(ZONA_ESPANA).date()).days
     if dias == 0:
         return f"vence hoy, {local.strftime('%H:%M')}"
     plazo = "queda 1 día" if dias == 1 else f"quedan {dias} días"

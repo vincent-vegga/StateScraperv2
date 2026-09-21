@@ -9,12 +9,27 @@
    bueno conservando ruta, parámetros y ancla. Va aquí arriba, sin esperar a
    nada más, para que no llegue a pintarse la interfaz vieja. */
 (function(){
-  if (location.hostname === 'stescraperv2.pages.dev') {
+  // El nombre estaba mal escrito ("stescraperv2") y la redirección no
+  // saltaba nunca: el 21/09/2026 seguía entrando gente por
+  // statescraperv2.pages.dev. Se aceptan los dos por si acaso.
+  if (/^(sta|s)tescraperv2\.pages\.dev$/.test(location.hostname)) {
     location.replace('https://statescraper.com' + location.pathname + location.search + location.hash);
   }
 })();
 </script>
 <title>Contratos públicos para tu negocio</title>
+<!-- Lo que enseñan buscadores, WhatsApp, Slack o LinkedIn al pegar el
+     enlace. Sin og:image hasta que haya logo: una imagen genérica es peor
+     que ninguna. -->
+<meta name="description" content="Cada mañana, solo las licitaciones públicas que encajan con tu negocio. Deducimos a qué te dedicas a partir de los contratos que ya has ganado.">
+<link rel="canonical" href="https://statescraper.com/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="State Scraper">
+<meta property="og:locale" content="es_ES">
+<meta property="og:url" content="https://statescraper.com/">
+<meta property="og:title" content="Los contratos públicos que te interesan, sin buscarlos">
+<meta property="og:description" content="Cada mañana, solo las licitaciones públicas que encajan con tu negocio. Deducimos a qué te dedicas a partir de los contratos que ya has ganado.">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -353,6 +368,14 @@ textarea:focus-visible{
 .enlace:hover{
   color:var(--texto);
   text-decoration-color:currentColor;
+}
+/* Mientras corre la cuenta atrás de "Reenviar el código": que no parezca
+   pulsable ni reaccione al pasar por encima. */
+.enlace:disabled,
+.enlace:disabled:hover{
+  color:var(--fuerte);
+  text-decoration-color:transparent;
+  cursor:default;
 }
 
 .aviso{
@@ -2676,10 +2699,18 @@ const alPulsar = (id, hacer) => {
   else console.warn(`Falta el elemento #${id}`);
 };
 
+// "1 contrato", "3 contratos". Con el número delante siempre: repetir
+// el ternario en cada sitio acababa olvidándose y salía "1 contratos".
+const plural = (n, uno, varios) => `${n} ${Number(n) === 1 ? uno : varios}`;
+
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// `useGrouping: 'always'`: en español, Intl no separa los miles de los
+// números de cuatro cifras por defecto, y salía "3524 €" al lado de
+// "12.583 €" en la misma lista.
 const euros = n => n == null ? null : new Intl.NumberFormat('es-ES',
-  {style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n);
+  {style:'currency',currency:'EUR',maximumFractionDigits:0,
+   useGrouping:'always'}).format(n);
 const ZONA = 'Europe/Madrid';
 
 // ------------------------------------------------------------
@@ -2721,8 +2752,24 @@ const partes = iso => {
     .formatToParts(new Date(iso)).forEach(p => v[p.type] = p.value);
   return v;
 };
-const diasHasta = iso => iso
-  ? Math.floor((new Date(iso) - new Date()) / 86400000) : null;
+// Días de CALENDARIO peninsular, no tramos de 24 horas. Dividiendo la
+// diferencia en milisegundos, un plazo de mañana a las 10:00 consultado
+// hoy a las 20:00 daba 0 y la fila decía "22 sep · hoy": por la tarde
+// fallaba en la mitad de la lista.
+//
+// Un plazo que ya ha pasado es vencido aunque sea de hoy: contado por
+// calendario saldría "hoy" cuando ya no se puede presentar nada.
+const diaPeninsular = d => new Intl.DateTimeFormat('en-CA',
+  {timeZone:ZONA, year:'numeric', month:'2-digit', day:'2-digit'}).format(d);
+const diasHasta = iso => {
+  if (!iso) return null;
+  const plazo = new Date(iso), ahora = new Date();
+  if (plazo < ahora) return -1;
+  // Las dos fechas se leen como medianoche UTC, así que la resta es un
+  // número exacto de días, sin horario de verano de por medio.
+  return Math.round((Date.parse(diaPeninsular(plazo))
+    - Date.parse(diaPeninsular(ahora))) / 86400000);
+};
 
 async function llamar(accion, cuerpo = {}) {
   const { data: { session } } = await sb.auth.getSession();
@@ -2749,37 +2796,37 @@ async function arrancar(volviendo = false) {
   if (!session) return pantallaEntrar();
   sesionActual = session.user.id;
 
+  // Algo en pantalla desde el primer momento. Antes no se pintaba nada
+  // hasta tener el perfil y la comprobación de pendientes: hasta 4
+  // segundos de página en blanco en cada carga.
+  if (!raiz.innerHTML.trim())
+    raiz.innerHTML = `<div class="centro"><p class="guia">Cargando...</p></div>`;
+
   const { data: perfiles } = await sb.from('perfiles')
     .select('*').eq('usuario_id', session.user.id).limit(1);
   const perfil = perfiles?.[0];
 
   if (!perfil) return pantallaCodigo(session);
 
-  // Si queda algo sin clasificar, se clasifica ANTES de enseñar nada.
+  // Si queda algo sin clasificar, se clasifica, pero SIN hacer esperar.
   //
   // El cribado corría solo al final del alta. Si se interrumpía —o si
   // alguien se daba de alta entre dos pasadas del scraper— la lista
   // salía vacía hasta la madrugada siguiente, y un cliente que entra y
   // no ve nada no vuelve.
   //
+  // Antes esto iba ANTES de enseñar la lista, con un tope de 4 segundos.
+  // La consulta suele tardar 200 ms, pero cuando la base viene de estar
+  // ocupada pasa de 5 s (medido el 21/09/2026: mediana 2,1 s desde la
+  // web, y cuatro errores por tiempo agotado). Cada carga esperaba esos
+  // 4 segundos en blanco para nada, porque casi nunca queda algo
+  // pendiente. Ahora la lista sale ya, y lo pendiente se criba por
+  // detrás y la actualiza al terminar.
+  //
   // Va aquí y no en la pantalla de contratos porque por el arranque
   // pasan TODAS las entradas a la aplicación, se llegue a la pantalla
   // que se llegue.
-  if (perfil.paso_alta === 'listo' && !volviendo) {
-    // Con un timeout corto: si la consulta tarda más de 4 segundos
-    // algo va mal y es mejor entrar con lo que haya que quedarse
-    // bloqueado en una pantalla vacía.
-    try {
-      // Race entre la consulta y un timeout de 4 segundos. Si tarda,
-      // se entra con lo que haya y el workflow criba en segundo plano.
-      const pend = await Promise.race([
-        sb.rpc('pendientes_de_perfil', { perfil: perfil.id, tope: 1 })
-          .then(r => r.data),
-        new Promise(res => setTimeout(() => res(null), 4000)),
-      ]);
-      if ((pend ?? []).length) await pantallaCribando(perfil, session, null, true);
-    } catch { /* si falla, se enseña lo que haya */ }
-  }
+  if (perfil.paso_alta === 'listo' && !volviendo) cribarPendientesDeFondo(perfil);
 
   if (perfil.paso_alta === 'listo') {
     // La primera vez que llega a su lista, se le presenta cómo funciona.
@@ -2795,6 +2842,36 @@ async function arrancar(volviendo = false) {
   // cualquier descripción.
   if (!perfil.descripcion) return pantallaEmpresa(perfil, session);
   return pantallaDescribir(perfil, session);
+}
+
+// La lista de contratos abierta, si la hay, deja aquí cómo refrescarse.
+// Así el cribado de fondo puede actualizarla al terminar sin repintar la
+// pantalla entera, que borraría los filtros que el cliente haya puesto.
+let refrescarListaAbierta = null;
+let cribandoDeFondo = false;
+
+async function cribarPendientesDeFondo(perfil) {
+  if (cribandoDeFondo) return;
+  cribandoDeFondo = true;
+  try {
+    const { data, error } = await sb.rpc('pendientes_de_perfil',
+      { perfil: perfil.id, tope: 1 });
+    if (error || !data?.length) return;
+
+    recado('Revisando los contratos nuevos para ti...');
+    // Con la misma salida que pantallaCribando: si dos vueltas seguidas
+    // no clasifican nada, las siguientes tampoco lo harán.
+    let hechas = 0, sinAvance = 0;
+    for (let vuelta = 0; vuelta < 200; vuelta++) {
+      const r = await llamar('cribar');
+      hechas += r.hechas || 0;
+      if (r.terminado) break;
+      sinAvance = r.hechas ? 0 : sinAvance + 1;
+      if (sinAvance >= 2) break;
+    }
+    if (hechas && refrescarListaAbierta) await refrescarListaAbierta();
+  } catch { /* lo que quede lo criba el scraper por la noche */ }
+  finally { cribandoDeFondo = false; }
 }
 
 // Supabase renueva el token cada pocos minutos y eso dispara un evento
@@ -2893,6 +2970,7 @@ function pantallaCodigoCorreo(email) {
                style="letter-spacing:.3em;text-align:center;font-size:1.3rem">
       </div>
       <button class="principal" id="comprobar">Entrar</button>
+      <button class="enlace" id="reenviar" disabled>Reenviar el código</button>
       <button class="enlace" id="otro-correo">Usar otro correo</button>
       <p class="guia" style="margin-top:18px;font-size:.85rem">
       Si no lo ves, mira en la carpeta de correo no deseado.</p>
@@ -2912,6 +2990,45 @@ function pantallaCodigoCorreo(email) {
 
   alPulsar('otro-correo', () => pantallaEntrar());
 
+  // Reenviar sin volver a escribir el correo. Antes, si el código no
+  // llegaba o caducaba, el aviso decía que se pidiera otro con «usar otro
+  // correo»: había que volver atrás y teclear la misma dirección.
+  //
+  // Con cuenta atrás de 60 s porque es lo que admite Supabase por
+  // dirección: pulsar antes solo devolvía un error.
+  const reenviar = document.getElementById('reenviar');
+  let espera;
+  const contarAtras = (segundos = 60) => {
+    clearInterval(espera);
+    reenviar.disabled = true;
+    const pintar = () => {
+      reenviar.textContent = segundos > 0
+        ? `Reenviar el código (${segundos} s)` : 'Reenviar el código';
+      reenviar.disabled = segundos > 0;
+    };
+    pintar();
+    espera = setInterval(() => {
+      segundos -= 1;
+      pintar();
+      if (segundos <= 0) clearInterval(espera);
+    }, 1000);
+  };
+  contarAtras();
+  alPulsar('reenviar', async () => {
+    reenviar.disabled = true;
+    reenviar.textContent = 'Reenviando...';
+    const { error } = await sb.auth.signInWithOtp({
+      email, options: { shouldCreateUser: true },
+    });
+    document.getElementById('resultado').innerHTML = error
+      ? `<div class="aviso mal">No se ha podido reenviar: ${esc(error.message)}</div>`
+      : `<div class="aviso">Te hemos enviado un código nuevo. El anterior
+         ya no sirve.</div>`;
+    contarAtras();
+    campo.value = '';
+    campo.focus();
+  });
+
   boton.onclick = async () => {
     const token = campo.value.trim();
     if (token.length < 4) {
@@ -2925,7 +3042,7 @@ function pantallaCodigoCorreo(email) {
     if (error) {
       document.getElementById('resultado').innerHTML =
         `<div class="aviso mal">Ese código no es válido o ha caducado.
-         Pide otro con «usar otro correo».</div>`;
+         Pide otro con «Reenviar el código».</div>`;
       boton.disabled = false;
       boton.textContent = 'Entrar';
       campo.select();
@@ -3087,7 +3204,7 @@ function pantallaPorNombre(perfil, session) {
                     style="display:block;width:100%;text-align:left;margin-bottom:8px">
               <strong>${esc(e.nombre)}</strong><br>
               <span style="color:var(--tenue);font-size:.88rem">${esc(e.cif)} ·
-              ${e.contratos} contratos</span>
+              ${plural(e.contratos, 'contrato', 'contratos')}</span>
             </button>`).join('')}`;
         raiz.querySelectorAll('[data-i]').forEach(b => b.onclick = () =>
           pantallaConfirmar(perfil, r.empresas[+b.dataset.i], [], session));
@@ -3111,8 +3228,8 @@ function pantallaConfirmar(perfil, empresa, ultimos, session) {
       <p class="guia" style="margin:0 0 6px;font-size:.85rem;
          letter-spacing:.06em;text-transform:uppercase">Hemos encontrado</p>
       <h1 style="margin-bottom:10px">${esc(empresa.nombre)}</h1>
-      <p class="guia"><strong>${empresa.contratos}</strong> contratos públicos
-      adjudicados a tu empresa${
+      <p class="guia"><strong>${empresa.contratos}</strong> ${empresa.contratos === 1
+        ? 'contrato público adjudicado' : 'contratos públicos adjudicados'} a tu empresa${
         empresa.importe_total ? `, por un total de ${euro(empresa.importe_total)}` : ''}.</p>
 
       ${sectores.length ? `
@@ -3428,8 +3545,19 @@ async function pantallaCribando(perfil, session, lectura, volviendo = false) {
 
   // Se piden lotes seguidos hasta terminar. Cada llamada devuelve
   // cuánto queda, así que el progreso es real y no una animación.
-  let total = 0;
-  while (true) {
+  //
+  // Con salida si deja de avanzar. Cuando el modelo no consigue
+  // clasificar un contrato, `cribar` no guarda nada y responde lo mismo
+  // una y otra vez: el `while (true)` de antes se quedaba pidiendo para
+  // siempre con la pantalla congelada, y como el arranque pasa por aquí
+  // si queda algo pendiente, ocurría en cada visita. Mejor enseñar la
+  // lista con lo ya clasificado; lo que falte lo criba el scraper.
+  //
+  // Se mira `hechas` y no `quedan`: la cola llega con tope, y con muchas
+  // pendientes `quedan` sale igual aunque se esté avanzando.
+  const MAX_VUELTAS_SIN_AVANCE = 2;
+  let total = 0, sinAvance = 0;
+  for (let vuelta = 0; vuelta < 200; vuelta++) {
     let r;
     try {
       r = await llamar('cribar');
@@ -3440,9 +3568,11 @@ async function pantallaCribando(perfil, session, lectura, volviendo = false) {
     }
     total = total || r.total || 0;
     if (r.terminado) break;
+    sinAvance = r.hechas ? 0 : sinAvance + 1;
+    if (sinAvance >= MAX_VUELTAS_SIN_AVANCE) break;
     const hechas = total - r.quedan;
     document.getElementById('relleno').style.width = `${total ? hechas/total*100 : 0}%`;
-    document.getElementById('progreso').textContent = `${hechas} de ${total} contratos`;
+    document.getElementById('progreso').textContent = `${hechas} de ${plural(total, 'contrato', 'contratos')}`;
   }
 
   // Al volver desde la lista, se devuelve el control y la pinta ella:
@@ -3617,7 +3747,11 @@ function activarBarras(donde) {
       b.onmouseenter = () => mostrar(b.dataset.i);
       b.onclick = () => mostrar(b.dataset.i);
     });
-    caja.querySelector('.leyenda').onmouseleave = soltar;
+    // Hay gráficos sin leyenda (conLeyenda === false). Sin comprobarlo,
+    // el error cortaba aquí y lanzaba una excepción en cada ficha de
+    // organismo.
+    const leyenda = caja.querySelector('.leyenda');
+    if (leyenda) leyenda.onmouseleave = soltar;
   });
 }
 
@@ -3937,7 +4071,7 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
             ? ' este mismo contrato' : ' contratos parecidos'}</h3>
           <p class="guia" style="margin:0 0 14px;font-size:.89rem">
             ${inc.por_convocatoria
-              ? `${inc.ediciones} convocatorias en los últimos cuatro años.`
+              ? `${plural(inc.ediciones, 'convocatoria', 'convocatorias')} en los últimos cuatro años.`
               : `No hemos encontrado convocatorias anteriores de este contrato
                  concreto, así que miramos las de su misma familia en este
                  organismo: ${inc.ediciones} en cuatro años.`}</p>
@@ -4024,9 +4158,8 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
       <h4>Quién suele ganar</h4>
       <div class="cifra">${cuota} %</div>
       <span class="pie">${esc(lider.nombre ?? '—')}<br>
-        ${lider.veces} de ${inc.ediciones} adjudicaciones ·
-        ${inc.empresas} ${inc.empresas === 1 ? 'empresa' : 'empresas'}
-        distintas</span>
+        ${lider.veces} de ${plural(inc.ediciones, 'adjudicación', 'adjudicaciones')} ·
+        ${plural(inc.empresas, 'empresa distinta', 'empresas distintas')}</span>
     </div>`;
   }
 
@@ -4160,6 +4293,11 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
   // por organismo sobre decenas de miles de filas no es instantáneo, y
   // hacerlo cinco veces mientras se escribe una palabra menos.
   let TODOS = [];
+  // La lista que se carga al entrar se corta en 5.000 (la guarda así el
+  // servidor). Con un perfil amplio hay más: construcción tiene 8.583.
+  // Si viene cortada, al escribir se pregunta también al servidor, que
+  // busca por nombre entre todos.
+  let cortada = false;
   campo.disabled = true;
   campo.placeholder = 'Cargando organismos...';
 
@@ -4179,17 +4317,44 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
       // mientras acaban de llegar los demás.
       if (salto === 0) campo.disabled = false;
       if (trozo.length < TANDA) break;
+      if (salto + TANDA >= 5000) cortada = true;
     }
     campo.disabled = false;
-    campo.placeholder = TODOS.length
-      ? `Busca entre ${TODOS.length} organismos de tu sector`
-      : 'Ayuntamiento, diputación, consejería...';
+    const cuantos = new Intl.NumberFormat('es-ES', {useGrouping:'always'})
+      .format(TODOS.length);
+    campo.placeholder = !TODOS.length
+      ? 'Ayuntamiento, diputación, consejería...'
+      : cortada ? `Busca entre más de ${cuantos} organismos de tu sector`
+      : TODOS.length === 1 ? 'Busca el organismo de tu sector'
+      : `Busca entre ${cuantos} organismos de tu sector`;
   })();
 
   const sinAcentos = s => String(s ?? '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-  function buscar() {
+  // Lo que el servidor encuentra fuera de la lista cargada se añade a
+  // ella, así la siguiente búsqueda ya lo tiene a mano.
+  let esperaServidor;
+  function buscarEnServidor() {
+    clearTimeout(esperaServidor);
+    const texto = campo.value.trim();
+    if (!cortada || texto.length < 3) return;
+    esperaServidor = setTimeout(async () => {
+      const { data, error } = await sb.rpc('buscar_organismo',
+        { texto, salto: 0, cuantos: 40 });
+      if (!error && data?.length) {
+        const ya = new Set(TODOS.map(o => o.organo));
+        TODOS = TODOS.concat(data.filter(o => !ya.has(o.organo)));
+      }
+      // Se repinta aunque no haya nada nuevo, para quitar el "Buscando".
+      // Y solo si sigue escrito lo mismo: si no, pisaría una búsqueda
+      // más reciente.
+      if (campo.value.trim() === texto && !caja.hidden) buscar(false);
+    }, 300);
+  }
+
+  function buscar(preguntarAlServidor = true) {
+    if (preguntarAlServidor) buscarEnServidor();
     const q = sinAcentos(campo.value.trim());
     const filas = (q ? TODOS.filter(o => sinAcentos(o.organo).includes(q)) : TODOS)
       .slice(0, 40);
@@ -4205,6 +4370,8 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
             o.contratos} ${o.contratos === 1 ? 'contrato' : 'contratos'}${
             o.importe ? ` · ${euros(Number(o.importe))}` : ''}</span>
         </button>`).join('')
+      : preguntarAlServidor && cortada && campo.value.trim().length >= 3
+        ? `<p class="sinresultado">Buscando entre todos los organismos...</p>`
       : `<p class="sinresultado">Ningún organismo con ese nombre ha
          adjudicado contratos de tu sector.</p>`)
       + (total > filas.length
@@ -4213,8 +4380,8 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
     caja.hidden = false;
   }
 
-  campo.oninput = buscar;
-  campo.onfocus = buscar;
+  campo.oninput = () => buscar();
+  campo.onfocus = () => buscar();
   caja.addEventListener('click', ev => {
     const b = ev.target.closest('[data-organo]');
     if (!b) return;
@@ -4313,7 +4480,7 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
       trozos.push(`<div class="${solos ? 'alerta' : ''}">
         <dt>Se presentan</dt>
         <dd>${String(d.licitadores_medio).replace('.', ',')}
-          <span class="matiz">empresas de media${roza ? ` · ${roza}` : ''}
+          <span class="matiz">${Number(d.licitadores_medio) === 1 ? 'empresa' : 'empresas'} de media${roza ? ` · ${roza}` : ''}
           ${d.sin_competencia ? `<br><strong>${d.sin_competencia}</strong> de
             ${d.con_licitadores} con un solo licitador` : ''}</span>
         </dd></div>`);
@@ -4326,7 +4493,8 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
         <dd style="font-size:1.02rem">${esc(p.cual)}
           <span class="matiz">${p.cuantos} de sus ${d.contratos}${
             d.procedimientos.length > 1
-              ? ` · y ${d.procedimientos.length - 1} vía más` : ''}</span>
+              ? ` · ${d.procedimientos.length === 2 ? 'y otra vía'
+                  : `y otras ${d.procedimientos.length - 1} vías`}` : ''}</span>
         </dd></div>`);
     }
 
@@ -4476,8 +4644,10 @@ async function cribarMercado() {
   zona.innerHTML = `
     <div class="paso ancha" style="min-height:40vh">
       <h1 style="font-size:1.5rem">Revisando tu mercado</h1>
-      <p class="lema">Estamos comprobando cuáles de las
-      ${total} adjudicaciones de este mes son de verdad de tu sector.
+      <p class="lema">${total === 1
+        ? 'Estamos comprobando si la adjudicación de este mes es de verdad de tu sector.'
+        : `Estamos comprobando cuáles de las ${total} adjudicaciones de este mes
+           son de verdad de tu sector.`}
       Solo hace falta la primera vez.</p>
       <div class="avance" style="margin-top:24px">
         <div class="barra"><div class="relleno" id="relleno-mercado"></div></div>
@@ -4762,7 +4932,7 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
           <p class="que">${esc(primera.titulo ?? '')}</p>
           <span class="donde">${esc([primera.organo, primera.provincia]
             .filter(Boolean).join(' · '))}</span>
-          <span class="cuantas-veces">${g.length} compras
+          <span class="cuantas-veces">${plural(g.length, 'compra', 'compras')}
             <span class="flechita">▾</span></span>
         </div>
         <div class="cifra">
@@ -4865,7 +5035,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `
     <div class="cabecera-app">
-      <div><strong>Mercado</strong>
+      <div><strong>Empresas</strong>
         <div class="quien">${esc(perfil.empresa || '')}</div>
         ${navPrincipal('mercado')}</div>
       <div style="display:flex;gap:9px;align-items:center">
@@ -4964,8 +5134,8 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       </table>
       ${filas.length > ASOMAN ? `<button class="mas" data-tabla="${id}"
         aria-expanded="false"
-        data-mas="Ver las ${filas.length - ASOMAN} restantes"
-        data-menos="Ver menos">Ver las ${filas.length - ASOMAN} restantes
+        data-mas="${filas.length - ASOMAN === 1 ? 'Ver la restante' : `Ver las ${filas.length - ASOMAN} restantes`}"
+        data-menos="Ver menos">${filas.length - ASOMAN === 1 ? 'Ver la restante' : `Ver las ${filas.length - ASOMAN} restantes`}
         <span class="flechita">▾</span></button>` : ''}`;
 
     // La lista de seguimiento se enseña SIEMPRE, aunque esté vacía: si no
@@ -5079,7 +5249,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
           <div>
             <h3>${esc(e.nombre ?? e.cif)}</h3>
             <p class="cifras">
-              <span><strong>${e.contratos}</strong> contratos</span>
+              <span><strong>${e.contratos}</strong> ${e.contratos === 1 ? 'contrato' : 'contratos'}</span>
               ${e.importe ? `<span><strong>${euros(Number(e.importe))}</strong>
                 adjudicados</span>` : ''}
               ${e.ultimo ? `<span>último en ${esc(new Date(e.ultimo)
@@ -5236,13 +5406,17 @@ function activarCampana(yaSabido = null) {
     recado(quiero
       ? 'Recibirás el aviso diario por correo'
       : 'Ya no recibirás el aviso diario');
-    try {
-      const { data } = await sb.rpc('cambiar_avisos', { quiero });
-      pintar(data !== false);
-    } catch {
+    // Supabase no lanza: devuelve `{ error }`. Con solo un `catch`, un
+    // fallo dejaba la campana pintada como si se hubiera guardado.
+    let respuesta;
+    try { respuesta = await sb.rpc('cambiar_avisos', { quiero }); }
+    catch (error) { respuesta = { error }; }
+    if (respuesta.error) {
       pintar(!quiero);
       recado('No se ha podido guardar. Inténtalo de nuevo.');
+      return;
     }
+    pintar(respuesta.data !== false);
   };
 }
 
@@ -5389,20 +5563,20 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>${esc(SECCIONES[seccion] ?? 'Mi cuenta')}</strong>
-        <div class="quien">${esc(p.empresa || p.email || '')}</div></div>
+        <div class="quien">${esc(p.empresa || p.email || '')}</div>
+        ${navPrincipal('panel')}</div>
       <div style="display:flex;gap:9px;align-items:center">
         ${campanaAvisos()}
         ${menuCuenta(seccion)}
-        <button class="enlace" id="volver">Mis contratos</button>
       </div>
     </div>
     <div class="panel">${secciones[seccion] ?? secciones.cuenta}</div>`;
 
-  // A la lista, no a la pantalla anterior. Cada sección del panel deja
-  // su marca en el historial, así que retroceder devolvía a la sección
-  // de antes en vez de salir: para volver a los contratos había que
-  // pulsar varias veces.
-  alPulsar('volver', () => pantallaOportunidades(perfil, session));
+  // La misma barra que en las demás pantallas, sin ninguna marcada. Antes
+  // solo había un botón "Mis contratos" y para ir a Movimientos, Empresas
+  // u Organismos había que pasar por la lista o tirar del botón atrás del
+  // navegador, que además recorría una a una las secciones del panel.
+  activarNav(perfil, session, 'panel');
   activarMenu(perfil, session);
   activarCampana(p.avisos);
 
@@ -5461,7 +5635,7 @@ function pantallaBienvenida(perfil, session) {
     <div class="bienvenida">
       <div class="entra">
         <p class="saluda">${esc(perfil.empresa || '')}</p>
-        <h1>Bienvenido</h1>
+        <h1>Te damos la bienvenida</h1>
       </div>
       <div class="entra">
         <p class="lema">Hemos montado tu filtro leyendo los contratos que
@@ -5518,6 +5692,21 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
   const DATOS = (data ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
     .sort((a,b) => (a.dias ?? 9e9) - (b.dias ?? 9e9));
+
+  // Para el cribado de fondo del arranque: cuando termina, pide la lista
+  // de nuevo y la repinta aquí mismo, conservando pestaña y filtros.
+  refrescarListaAbierta = async () => {
+    olvidar('contratos');
+    const { data: nuevos, error: fallo } = await pedirContratos(perfil.id);
+    if (fallo || !document.getElementById('lista')) return;
+    DATOS.length = 0;
+    (nuevos ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
+      .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9))
+      .forEach(o => DATOS.push(o));
+    const cuenta = document.getElementById('c-todo');
+    if (cuenta) cuenta.textContent = DATOS.length;
+    pintar();
+  };
 
   raiz.innerHTML = `
     <div class="cabecera-app">
@@ -5604,6 +5793,11 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const p = partes(s);
     return `${fechaLarga(s)}, a las ${p.hour}:${p.minute} (hora peninsular)`;
   };
+  // Sin provincia se dice la comunidad, y que la provincia no se sabe:
+  // si no, un contrato catalán que aparece al filtrar por Girona parece
+  // un error del filtro.
+  const lugar = o => o.provincia
+    ?? (o.comunidad ? `${o.comunidad}, provincia sin precisar` : null);
 
   // Solo el titular. Los cuatro recuadros de antes —abiertos, encaje
   // claro, importe, vencimientos— duplicaban lo que ya dicen el titular
@@ -5657,7 +5851,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const txt = document.getElementById('f-texto').value.toLowerCase().trim();
     const vistos = DATOS.filter(o =>
       (pestana === 'todo' || o.es_novedad) &&
-      (elegidas.size === 0 || elegidas.has(o.provincia)) &&
+      enZona(o) &&
       (!ver || o.veredicto === ver) &&
       (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
 
@@ -5667,7 +5861,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       <button class="fila" data-i="${i}">
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
-          <p class="meta">${esc([o.organo, o.provincia].filter(Boolean).join(' · '))}</p>
+          <p class="meta">${esc([o.organo, lugar(o)].filter(Boolean).join(' · '))}</p>
           ${o.dias_sin_verificar > 90
             ? `<span class="sin-verificar">Sin movimiento desde hace
                ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
@@ -5691,7 +5885,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
              están los dos botones. -->
         <dl>
           <dt>Órgano</dt><dd>${esc(o.organo ?? '—')}</dd>
-          <dt>Provincia</dt><dd>${esc(o.provincia ?? 'no informada')}</dd>
+          <dt>Provincia</dt><dd>${esc(o.provincia
+            ?? (o.comunidad ? `sin precisar (${o.comunidad})` : 'no informada'))}</dd>
           <dt>Presupuesto</dt><dd>${euros(o.presupuesto) ?? 'sin importe publicado'}</dd>
           <dt>Plazo</dt><dd>${plazoLargo(o.fecha_limite)}</dd>
           <dt>Códigos CPV</dt><dd>${esc((o.cpvs || []).join(', ')) || '—'}</dd>
@@ -5753,11 +5948,12 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     // describir la realidad.
     olvidar('analizables', 'contratos');
     const i = DATOS.findIndex(o => o.id_licitacion === id);
+    const antes = i >= 0 ? DATOS[i] : null;
     if (i >= 0) {
       if (interesa) {
         // Confirmado: la fila se queda, pero ya no hay nada que
         // preguntar sobre ella.
-        DATOS[i].correccion = true;
+        DATOS[i] = { ...DATOS[i], correccion: true };
       } else {
         // Descartado: desaparece al instante. El cliente no debe esperar
         // al servidor para dejar de ver lo que no le sirve.
@@ -5766,12 +5962,33 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     }
     repintar();
 
+    // Si no se guarda, se deshace y se dice.
+    //
+    // Antes el error se tragaba: la librería de Supabase no lanza, devuelve
+    // `{ error }`, así que el `catch` no saltaba nunca. La fila desaparecía
+    // como si todo hubiera ido bien, la corrección no llegaba a la base y
+    // al recargar el contrato volvía a salir, sin que nada lo reintentara.
+    // Y el cliente que se toma la molestia de corregir es justo el que más
+    // se fija en si le hacemos caso.
+    let respuesta;
     try {
-      const { data } = await sb.rpc('corregir', {
+      respuesta = await sb.rpc('corregir', {
         licitacion: id, le_interesa: interesa, por_que: motivo ?? null,
       });
-      if (data?.pendientes >= CORRECCIONES_PARA_AJUSTAR) ajustarFiltro();
-    } catch { /* la corrección se reintentará al recargar */ }
+    } catch (error) {
+      respuesta = { error };
+    }
+    if (respuesta.error) {
+      if (antes) {
+        const j = DATOS.findIndex(o => o.id_licitacion === id);
+        if (j >= 0) DATOS[j] = antes;
+        else DATOS.splice(Math.min(i, DATOS.length), 0, antes);
+        repintar();
+      }
+      recado('No se ha podido guardar tu respuesta. Inténtalo de nuevo.');
+      return;
+    }
+    if (respuesta.data?.pendientes >= CORRECCIONES_PARA_AJUSTAR) ajustarFiltro();
   }
 
   function pedirMotivo(id) {
@@ -5817,10 +6034,14 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       const r = await llamar('ajustar');
       // Recribar con el criterio nuevo: si no, la corrección se quedaría
       // en el contrato que la provocó en lugar de propagarse.
-      let vueltas = 0;
+      // Con la misma salida que el cribado inicial: si una vuelta no
+      // clasifica nada, las siguientes tampoco lo harán.
+      let vueltas = 0, sinAvance = 0;
       while (vueltas++ < 200) {
         const c = await llamar('cribar');
         if (c.terminado) break;
+        sinAvance = c.hechas ? 0 : sinAvance + 1;
+        if (sinAvance >= 2) break;
       }
       // Se dice QUÉ ha cambiado, no que algo ha cambiado. Es el momento
       // en que el cliente ve que sus respuestas han servido para algo, y
@@ -5839,7 +6060,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         <div class="botonera"><button class="principal" id="ver">Ver la lista</button></div>`;
       aviso.querySelector('#ver').onclick = () => location.reload();
     } catch {
+      // Las correcciones ya están guardadas: lo que ha fallado es rehacer
+      // el filtro con ellas, y se vuelve a intentar en la siguiente.
       aviso.remove();
+      recado('No hemos podido ajustar tu filtro ahora. Tus respuestas están guardadas y lo intentaremos de nuevo.');
     }
   }
 
@@ -5869,6 +6093,32 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const cuantasPor = {};
   DATOS.forEach(o => { if (o.provincia) cuantasPor[o.provincia] = (cuantasPor[o.provincia] ?? 0) + 1; });
 
+  // Contratos sin provincia precisa. No se esconden al filtrar.
+  //
+  // Las plataformas autonómicas no publican lugar de ejecución, y hay
+  // órganos que contratan para toda su comunidad —un departamento de la
+  // Generalitat, una consejería de la Junta—. Antes el filtro los tiraba:
+  // con Barcelona elegida salían 4 contratos de unos 200 catalanes. Un
+  // contrato de ámbito catalán sí le interesa a quien trabaja en
+  // Barcelona, así que aparece con cualquiera de las provincias de su
+  // comunidad, marcado como "provincia sin precisar".
+  //
+  // Y si no se sabe ni la comunidad, aparece siempre: es preferible uno
+  // de más que perder uno.
+  const comunidadDe = {};
+  DATOS.forEach(o => { if (o.provincia && o.comunidad) comunidadDe[o.provincia] = o.comunidad; });
+  const sinPrecisarPor = {};
+  DATOS.forEach(o => {
+    if (!o.provincia && o.comunidad)
+      sinPrecisarPor[o.comunidad] = (sinPrecisarPor[o.comunidad] ?? 0) + 1;
+  });
+
+  function enZona(o) {
+    if (elegidas.size === 0 || elegidas.has(o.provincia)) return true;
+    if (o.provincia) return false;
+    return !o.comunidad || [...elegidas].some(p => comunidadDe[p] === o.comunidad);
+  }
+
   const comunidades = Object.entries(porComunidad)
     .map(([nombre, provs]) => ({ nombre, provs: [...provs].sort((a,b) => a.localeCompare(b,'es')) }))
     .sort((a,b) => a.nombre.localeCompare(b.nombre,'es'));
@@ -5891,8 +6141,11 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       const hijas = c.provs.filter(p => coincide || plano(p).includes(q));
       if (!hijas.length) return;
       // Uniprovincial: comunidad y provincia son lo mismo, y repetirlo
-      // solo confunde.
-      if (c.provs.length === 1 && plano(c.provs[0]) === plano(c.nombre)) {
+      // solo confunde. Se compara por inclusión y no por igualdad: la
+      // comunidad se llama "Comunidad de Madrid" o "Región de Murcia" y
+      // la provincia "Madrid" o "Murcia", y con la igualdad salía
+      // "Comunidad de Madrid · 1 provincias" con Madrid colgando debajo.
+      if (c.provs.length === 1 && plano(c.nombre).includes(plano(c.provs[0]))) {
         lista.push({ tipo:'provincia', nivel:'raiz', clave:c.provs[0] });
         return;
       }
@@ -5938,11 +6191,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     desplegable.innerHTML = lista.map((item, i) => {
       const esCom = item.tipo === 'comunidad';
       const marcada = esCom ? completa(item.dato) : elegidas.has(item.clave);
+      // Las cifras cuentan también lo que el filtro enseñará sin
+      // provincia precisa, para que cuadren con la lista.
       const n = esCom
         ? item.dato.provs.reduce((s,p) => s + (cuantasPor[p] ?? 0), 0)
-        : (cuantasPor[item.clave] ?? 0);
+          + (sinPrecisarPor[item.dato.nombre] ?? 0)
+        : (cuantasPor[item.clave] ?? 0) + (sinPrecisarPor[comunidadDe[item.clave]] ?? 0);
+      const cuantas = esCom ? item.dato.provs.length : 0;
       const extra = esCom
-        ? `<span class="abarca">${item.dato.provs.length} provincias</span>` : '';
+        ? `<span class="abarca">${cuantas} ${cuantas === 1 ? 'provincia' : 'provincias'}</span>` : '';
       return `<button type="button" role="option" data-i="${i}"
                 class="opcion ${item.nivel === 'raiz' ? 'raiz' : 'hija'} ${i === destacada ? 'destacada' : ''}"
                 aria-selected="${marcada}">

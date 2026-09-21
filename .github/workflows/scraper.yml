@@ -130,10 +130,15 @@ jobs:
       # Clasificaciones simultáneas. De una en una, mil licitaciones son
       # veinte minutos.
       CRIBADO_SIMULTANEAS: '20'
-      URL_INTERFAZ: 'https://statescraperv2.pages.dev'
-      # Filtro geográfico del canal agregado. Ponlo a 'false' si algún
-      # día quieres cubrir todas las comunidades autónomas.
-      SOLO_CATALUNYA_AGREGADO: 'true'
+      # El dominio propio. El de Cloudflare Pages se cae a ratos y la web
+      # redirige desde él, así que un enlace ahí daba un salto de más.
+      URL_INTERFAZ: 'https://statescraper.com'
+      # Filtro geográfico del canal agregado. En 'false' desde el
+      # 21/09/2026: con 'true' se tiraba todo lo que publicaban Euskadi,
+      # Andalucía, Galicia, Madrid, Navarra y La Rioja, y solo existía lo
+      # que trajo la importación del histórico. Los clientes eligen
+      # provincias de toda España, así que tiene que entrar todo.
+      SOLO_CATALUNYA_AGREGADO: 'false'
       # LOS PREFIJOS SALEN DE LOS PERFILES DADOS DE ALTA. El scraper lee
       # los CPV de todos los clientes activos y captura la unión: un
       # cliente nuevo empieza a recibir novedades al día siguiente sin

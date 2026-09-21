@@ -35,7 +35,7 @@ Variables de entorno opcionales (afinado sin editar el código):
     DIAS_ANTIGUEDAD_MAX       -> tope de retroceso en días (por defecto 14)
     DIAS_MARGEN_SOLAPE        -> solape sobre lo ya guardado (por defecto 2)
     MAX_PAGINAS_POR_FEED      -> freno de emergencia (por defecto 25)
-    SOLO_CATALUNYA_AGREGADO   -> 'true'/'false' (por defecto true)
+    SOLO_CATALUNYA_AGREGADO   -> 'true'/'false' (por defecto false: todas las comunidades)
     FEEDS_EXTRA_CATALUNYA     -> URLs extra tratadas con el extractor catalán
 """
 
@@ -51,6 +51,7 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterator, Sequence
+from urllib.parse import urlparse
 
 import requests
 from dateutil import parser as parser_fechas
@@ -219,7 +220,7 @@ DIAS_MARGEN_SOLAPE = int(os.environ.get("DIAS_MARGEN_SOLAPE", "2"))
 # se ha alcanzado, es señal de que algo va mal (feed desbocado o memoria
 # vacía), no de que haya que subir el número sin más.
 MAX_PAGINAS_POR_FEED = int(os.environ.get("MAX_PAGINAS_POR_FEED", "25"))
-SOLO_CATALUNYA_AGREGADO = os.environ.get("SOLO_CATALUNYA_AGREGADO", "true").lower() != "false"
+SOLO_CATALUNYA_AGREGADO = os.environ.get("SOLO_CATALUNYA_AGREGADO", "false").lower() == "true"
 
 TABLA_SUPABASE = "licitaciones"
 
@@ -476,6 +477,19 @@ def extraer_presupuesto_detallado(entrada: etree._Element) -> tuple[float | None
     return base, estimado
 
 
+def limpiar_nombre_adjudicatario(nombre: str) -> str:
+    """
+    Quita el "UTE" repetido al principio que ponen algunos órganos.
+
+    Hay quien escribe la forma jurídica en el nombre y otra vez delante:
+    "UTE UTE AMSASJA25" llegó así en 29 licitaciones y salía tal cual en
+    el ranking de competidores. Solo se toca ese caso: otras repeticiones
+    al principio son legítimas ("GARCIA GARCIA ALICIA", "FRIO FRIO
+    INSTALACIONES").
+    """
+    return re.sub(r"^\s*(UTE\s+)+(?=UTE\b)", "", nombre or "", flags=re.IGNORECASE).strip()
+
+
 def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
     """
     Todas las adjudicaciones del expediente, con lo que las explica.
@@ -530,7 +544,7 @@ def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
 
         adjudicaciones.append({
             "lote": numero,
-            "adjudicatario": nombre,
+            "adjudicatario": limpiar_nombre_adjudicatario(nombre),
             "cif": cif,
             "importe": sin_iva,
             "importe_con_iva": con_iva,
@@ -698,6 +712,21 @@ def extraer_sistema(entrada: etree._Element) -> str:
     """
     codigo = primer_texto(entrada, "ContractingSystemCode")
     return SISTEMAS.get(codigo, "")
+
+
+def es_enlace_de_pruebas(enlace: str) -> bool:
+    """
+    El anuncio viene de un entorno de pruebas, no de una licitación real.
+
+    El canal agregado del Estado replica lo que publica el entorno de
+    pruebas de contractaciopublica.cat: enlaces a http://localhost:4204,
+    títulos como "test" o "dd" e importes de 1 €. Llegaron a entrar 54, y
+    una —"test", abierta y con 100.000.000 €— salía en la lista de un
+    cliente como "para mí". Se reconocen por el enlace, que no deja dudas;
+    el título no sirve, porque "Pruebas" puede ser un contrato real.
+    """
+    servidor = urlparse(enlace).hostname or ""
+    return servidor in ("localhost", "127.0.0.1", "0.0.0.0") or servidor.endswith(".localhost")
 
 
 def extraer_enlace(entrada: etree._Element) -> str:
@@ -1178,7 +1207,7 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
     identificador = primer_texto(entrada, "id", solo_hijos=True)
     enlace = extraer_enlace(entrada)
     id_licitacion = identificador or enlace
-    if not id_licitacion:
+    if not id_licitacion or es_enlace_de_pruebas(enlace):
         return None
 
     resumen = campos_del_resumen(entrada)
@@ -1242,6 +1271,38 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
     }
 
 
+# Comunidad de cada plataforma autonómica que replica el canal agregado.
+# Es la misma tabla que usa la base para dar la comunidad a lo que llega
+# sin código postal ni NUTS (public.comunidad_de_plataforma): si se añade
+# una plataforma aquí, conviene añadirla también allí.
+ORIGEN_POR_DOMINIO: dict[str, str] = {
+    "contractaciopublica.cat": "Catalunya",
+    "www.contratacion.euskadi.eus": "País Vasco",
+    "www.juntadeandalucia.es": "Andalucía",
+    "www.contratosdegalicia.gal": "Galicia",
+    "contratos-publicos.comunidad.madrid": "Comunidad de Madrid",
+    "hacienda.navarra.es": "Navarra",
+    "www.larioja.org": "La Rioja",
+    "www.carm.es": "Región de Murcia",
+}
+
+
+def origen_autonomico(enlace: str, organo: str, texto_entrada: str) -> str:
+    """
+    Qué plataforma autonómica publicó la entrada del canal agregado.
+
+    Hasta el 21/09/2026 todo lo de este canal se etiquetaba "Catalunya",
+    porque solo se guardaba lo catalán. Desde que entra todo, la etiqueta
+    tiene que decir de dónde viene de verdad.
+    """
+    servidor = urlparse(enlace).hostname or ""
+    if servidor in ORIGEN_POR_DOMINIO:
+        return ORIGEN_POR_DOMINIO[servidor]
+    if es_de_catalunya(enlace, organo, texto_entrada):
+        return "Catalunya"
+    return "Autonómica"
+
+
 def es_de_catalunya(enlace: str, organo: str, texto_entrada: str) -> bool:
     """
     Decide si una entrada del canal agregado procede de Cataluña.
@@ -1293,7 +1354,7 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
         or primer_texto(entrada, "guid", solo_hijos=True)
     enlace = extraer_enlace(entrada)
     id_licitacion = identificador or enlace
-    if not id_licitacion:
+    if not id_licitacion or es_enlace_de_pruebas(enlace):
         return None
 
     resumen = campos_del_resumen(entrada)
@@ -1319,7 +1380,7 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
     return {
         "id_licitacion": id_licitacion,
         "fuente": fuente,
-        "origen": "Catalunya",
+        "origen": origen_autonomico(enlace, organo, texto_entrada),
         "expediente": primer_texto(entrada, "ContractFolderID")
                       or resumen.get("id licitación", "")
                       or resumen.get("expedient", ""),
@@ -1903,11 +1964,14 @@ def refrescar_conocidas(cliente, conocidas: list[dict[str, Any]]) -> int:
             ),
         }
         try:
-            respuesta = (
-                cliente.table(TABLA_SUPABASE)
-                .update(cambios)
-                .eq("id_licitacion", item["id_licitacion"])
-                .execute()
+            respuesta = con_reintentos(
+                lambda: (
+                    cliente.table(TABLA_SUPABASE)
+                    .update(cambios)
+                    .eq("id_licitacion", item["id_licitacion"])
+                    .execute()
+                ),
+                f"Refresco de {item['id_licitacion'][-12:]}",
             )
             if respuesta.data:
                 refrescadas += 1
@@ -1921,6 +1985,34 @@ def refrescar_conocidas(cliente, conocidas: list[dict[str, Any]]) -> int:
         logging.error("%d licitaciones no se pudieron refrescar.", fallos)
     logging.info("Refrescado el estado de %d licitaciones ya conocidas.", refrescadas)
     return refrescadas
+
+
+# Pausas entre intentos de una escritura en Supabase, en segundos.
+#
+# Las escrituras del scraper fallan en ráfagas: el 20/09/2026, durante la
+# pasada, la base canceló por tiempo de espera 3 inserciones de 100 filas
+# y 16 actualizaciones, agrupadas cada seis u ocho minutos. Fuera de esas
+# ráfagas la mediana es de 200 ms. Un reintento con pausa las salva; sin
+# él, cada lote fallido eran cien licitaciones nuevas que no entraban.
+PAUSAS_REINTENTO: tuple[int, ...] = (15, 45)
+
+
+def con_reintentos(escribir: Callable[[], Any], que: str) -> Any:
+    """
+    Ejecuta una escritura en Supabase y la repite si falla.
+
+    Devuelve lo que devuelva la escritura. Si fallan todos los intentos,
+    relanza el último error para que el llamante decida qué hacer.
+    """
+    for intento, pausa in enumerate((*PAUSAS_REINTENTO, None), start=1):
+        try:
+            return escribir()
+        except Exception as error:
+            if pausa is None:
+                raise
+            logging.warning("%s: intento %d fallido (%s). Reintento en %d s.",
+                            que, intento, error, pausa)
+            time.sleep(pausa)
 
 
 def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
@@ -1999,11 +2091,14 @@ def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
     guardadas = 0
     for lote in dividir_en_lotes(filas, TAMANO_LOTE_SUPABASE):
         try:
-            cliente.table(TABLA_SUPABASE).upsert(
-                list(lote),
-                on_conflict="id_licitacion",
-                ignore_duplicates=True,
-            ).execute()
+            con_reintentos(
+                lambda: cliente.table(TABLA_SUPABASE).upsert(
+                    list(lote),
+                    on_conflict="id_licitacion",
+                    ignore_duplicates=True,
+                ).execute(),
+                f"Inserción de un lote de {len(lote)} filas",
+            )
             guardadas += len(lote)
         except Exception as error:
             logging.error("Inserción fallida en un lote de %d filas: %s", len(lote), error)
