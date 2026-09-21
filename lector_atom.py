@@ -42,6 +42,7 @@ Variables de entorno opcionales (afinado sin editar el código):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -1450,18 +1451,152 @@ def crear_sesion_http() -> requests.Session:
     return sesion
 
 
+# ---------- Copia local de las páginas, revalidada con el servidor ----------
+#
+# Cada página del feed pesa 8-15 MB y el servidor de Hacienda la sirve
+# despacio: desde GitHub, 45-70 s por página. Y la ventana adaptativa
+# (Decisión 8) relee cada día casi todas las páginas del día anterior.
+#
+# Aquí NO se da por hecho que una página no cambia. Se guarda la última
+# copia con su ETag y su Last-Modified, y en cada pasada se le PREGUNTA al
+# servidor si ha cambiado (petición condicional). Si contesta 304, se usa
+# la copia; si contesta 200, se usa lo nuevo y se guarda. El contenido que
+# procesa el scraper es siempre el que el servidor da por vigente, igual
+# que sin caché. Medido el 21/09/2026: 304 en 0,2 s frente a 24-50 s.
+#
+# No contradice las Decisiones 5 y 16: no es un archivo ni un dato del
+# producto, sino una copia desechable que vive fuera del repositorio (en
+# la caché de GitHub Actions). Si se borra, la siguiente pasada descarga.
+#
+# Apagada salvo que exista la variable CACHE_PAGINAS (el directorio).
+# Cualquier fallo de la caché se ignora y se descarga como siempre.
+CACHE_PAGINAS = os.environ.get("CACHE_PAGINAS", "").strip()
+# Una página que no se ha pedido en tres días ya no la pedirá ninguna
+# pasada normal (la ventana va hacia delante). Con 21 días la caché crecía
+# a ~2 GB, y GitHub la sube y la baja entera en cada pasada.
+DIAS_VIDA_CACHE = 3
+
+# ---------- Alarma de feed parado ----------
+#
+# El 17/09/2026 a las 18:22 GMT Hacienda dejó de actualizar el feed
+# estatal (643). Las pasadas siguientes salieron en verde: releían las
+# mismas páginas, no encontraban nada nuevo y lo daban por un día
+# tranquilo. Cuatro días sin contratos del Estado sin que nada avisara
+# (Decisión 10: un scraper que devuelve cero en silencio es
+# indistinguible de uno que funciona).
+#
+# Si la primera página de un feed no se ha actualizado en este tiempo, se
+# avisa y el workflow acaba en rojo. 72 h porque es más que el mayor hueco
+# real visto en 2026 (643: 35 h; 1044: 2 días y 17 h, en Reyes): no debe
+# saltar un fin de semana ni un puente, que es lo que enseñaría a
+# ignorarla.
+HORAS_FEED_PARADO = 72
+FEEDS_PARADOS: list[tuple[str, datetime]] = []
+
+
+def _rutas_cache(url: str) -> tuple[str, str] | None:
+    """Ficheros de contenido y metadatos de una URL, o None si no se cachea."""
+    if not CACHE_PAGINAS or not urlparse(url).path.endswith(".atom"):
+        return None
+    clave = hashlib.sha256(url.encode("utf-8")).hexdigest()[:40]
+    base = os.path.join(CACHE_PAGINAS, clave)
+    return base + ".xml", base + ".json"
+
+
+def _leer_cache(url: str) -> tuple[bytes, dict[str, str]] | None:
+    rutas = _rutas_cache(url)
+    if not rutas:
+        return None
+    try:
+        with open(rutas[1], encoding="utf-8") as f:
+            meta = json.load(f)
+        if meta.get("url") != url:
+            return None
+        with open(rutas[0], "rb") as f:
+            contenido = f.read()
+        if not contenido:
+            return None
+        return contenido, meta
+    except (OSError, ValueError):
+        return None
+
+
+def _guardar_cache(url: str, respuesta: requests.Response) -> None:
+    """Guarda la página y sus validadores. Escritura atómica: nunca a medias."""
+    rutas = _rutas_cache(url)
+    if not rutas:
+        return
+    meta = {"url": url,
+            "etag": respuesta.headers.get("ETag") or "",
+            "last_modified": respuesta.headers.get("Last-Modified") or ""}
+    if not meta["etag"] and not meta["last_modified"]:
+        return   # sin validadores no se podría preguntar si ha cambiado
+    try:
+        os.makedirs(CACHE_PAGINAS, exist_ok=True)
+        for ruta, datos, modo in ((rutas[0], respuesta.content, "wb"),
+                                  (rutas[1], json.dumps(meta), "w")):
+            temporal = ruta + ".tmp"
+            with open(temporal, modo) as f:
+                f.write(datos)
+            os.replace(temporal, ruta)
+    except OSError as error:
+        logging.warning("No se pudo guardar la copia de %s: %s", url, error)
+
+
+def limpiar_cache_paginas() -> None:
+    """Borra las copias que llevan DIAS_VIDA_CACHE días sin usarse."""
+    if not CACHE_PAGINAS or not os.path.isdir(CACHE_PAGINAS):
+        return
+    limite = time.time() - DIAS_VIDA_CACHE * 86400
+    borradas = 0
+    try:
+        for nombre in os.listdir(CACHE_PAGINAS):
+            ruta = os.path.join(CACHE_PAGINAS, nombre)
+            if os.path.isfile(ruta) and os.path.getmtime(ruta) < limite:
+                os.remove(ruta)
+                borradas += 1
+    except OSError as error:
+        logging.warning("No se pudo limpiar la caché de páginas: %s", error)
+    if borradas:
+        logging.info("Caché de páginas: %d ficheros viejos borrados.", borradas)
+
+
 def descargar_con_reintentos(sesion: requests.Session, url: str) -> bytes | None:
     """
     Descarga una URL tolerando cortes de red y caídas puntuales del servidor.
 
     Devuelve None si tras todos los intentos falla. Nunca lanza excepción:
     un feed caído no debe tumbar la ejecución completa.
+
+    Con CACHE_PAGINAS, pregunta antes si la copia guardada sigue vigente
+    (ver arriba). El resultado es el mismo; solo se ahorra la descarga.
     """
+    guardada = _leer_cache(url)
+    cabeceras: dict[str, str] = {}
+    if guardada:
+        if guardada[1].get("etag"):
+            cabeceras["If-None-Match"] = guardada[1]["etag"]
+        if guardada[1].get("last_modified"):
+            cabeceras["If-Modified-Since"] = guardada[1]["last_modified"]
+
     espera = ESPERA_ENTRE_REINTENTOS
     for intento in range(1, REINTENTOS_MAXIMOS + 1):
         try:
-            respuesta = sesion.get(url, timeout=TIMEOUT_SEGUNDOS)
+            respuesta = sesion.get(url, timeout=TIMEOUT_SEGUNDOS,
+                                   headers=cabeceras or None)
+            if respuesta.status_code == 304 and guardada:
+                # Sin cambios: la copia es lo que hay publicado ahora mismo.
+                try:
+                    os.utime(_rutas_cache(url)[0])   # sigue en uso
+                except OSError:
+                    pass
+                return guardada[0]
             respuesta.raise_for_status()
+            if respuesta.status_code == 304:
+                # 304 sin copia que usar no debería pasar; se pide entera.
+                cabeceras = {}
+                raise requests.exceptions.RequestException("304 sin copia local")
+            _guardar_cache(url, respuesta)
             return respuesta.content
         except requests.exceptions.RequestException as error:
             logging.warning("Intento %d/%d fallido al descargar %s -> %s",
@@ -1489,6 +1624,58 @@ def es_reciente(fecha_texto: str, limite: datetime) -> bool:
     if fecha is None:
         return True
     return fecha >= limite
+
+
+def comprobar_feed_vivo(nombre: str, raiz: etree._Element) -> None:
+    """
+    Avisa si la primera página del feed lleva HORAS_FEED_PARADO sin cambiar.
+
+    Mira el <updated> del propio documento, que el publicador renueva cada
+    vez que regenera la página. Si no lo trae (RSS), no se puede saber y
+    no se avisa: mejor callar que dar una alarma falsa.
+    """
+    actualizado = a_fecha(primer_texto(raiz, "updated", solo_hijos=True))
+    if actualizado is None:
+        return
+    horas = (datetime.now(timezone.utc) - actualizado).total_seconds() / 3600
+    if horas >= HORAS_FEED_PARADO:
+        FEEDS_PARADOS.append((nombre, actualizado.astimezone(timezone.utc)))
+        logging.error("[%s] FEED PARADO: la primera página no cambia desde %s "
+                      "(hace %.0f horas). No está entrando nada nuevo de esta "
+                      "fuente.", nombre, actualizado.isoformat(), horas)
+
+
+def avisar_feeds_parados() -> None:
+    """
+    Deja constancia en Actions de los feeds parados: anotación de error,
+    línea en el resumen y la salida `feeds_parados`, que un paso posterior
+    del workflow usa para acabar en rojo. No corta la pasada: lo que sí
+    llega de las demás fuentes se guarda y se criba igual.
+    """
+    if not FEEDS_PARADOS:
+        return
+    for nombre, desde in FEEDS_PARADOS:
+        print(f"::error title=Feed parado::{nombre}: sin cambios desde "
+              f"{desde.isoformat()}", flush=True)
+    ruta_salida = os.environ.get("GITHUB_OUTPUT")
+    if ruta_salida:
+        try:
+            with open(ruta_salida, "a", encoding="utf-8") as fichero:
+                fichero.write("feeds_parados=" + "; ".join(
+                    f"{n} (desde {d:%d/%m %H:%M} UTC)" for n, d in FEEDS_PARADOS) + "\n")
+        except OSError as error:
+            logging.warning("No se pudo escribir la salida de Actions: %s", error)
+    ruta_resumen = os.environ.get("GITHUB_STEP_SUMMARY")
+    if ruta_resumen:
+        try:
+            with open(ruta_resumen, "a", encoding="utf-8") as fichero:
+                fichero.write("## Feeds parados\n\n")
+                for nombre, desde in FEEDS_PARADOS:
+                    fichero.write(f"- **{nombre}**: la primera página no cambia "
+                                  f"desde {desde:%d/%m/%Y %H:%M} UTC.\n")
+                fichero.write("\n")
+        except OSError as error:
+            logging.warning("No se pudo escribir el informe de Actions: %s", error)
 
 
 def localizar_entradas(raiz: etree._Element) -> list[etree._Element]:
@@ -1553,6 +1740,8 @@ def recorrer_feed(
         raiz = parsear_xml(contenido)
         if raiz is None:
             break
+        if numero_pagina == 1:
+            comprobar_feed_vivo(nombre, raiz)
 
         entradas = localizar_entradas(raiz)
         total_entradas += len(entradas)
@@ -1728,6 +1917,7 @@ def procesar_fuentes(cliente, diagnostico: bool) -> tuple[list[dict[str, Any]], 
     salvo en Supabase cuando empieza el segundo.
     """
     sesion = crear_sesion_http()
+    limpiar_cache_paginas()
     ya_vistas: set[str] = set()
     acumuladas: list[dict[str, Any]] = []
     fuentes_fallidas = 0
@@ -2487,6 +2677,8 @@ def main() -> int:
     if fuentes_fallidas and fuentes_fallidas >= len(FEEDS):
         logging.error("Todas las fuentes han fallado. Revisa las URLs de los feeds.")
         return 1
+
+    avisar_feeds_parados()
 
     if opciones.diagnostico:
         logging.info("MODO DIAGNÓSTICO: %d licitaciones coincidirían con el filtro.",

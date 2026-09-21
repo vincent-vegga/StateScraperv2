@@ -161,6 +161,10 @@ jobs:
       #   de paginar. PARÁMETRO A CALIBRAR: si un feed sigue agotando páginas,
       #   bájalo a 0.8. Cuanto más bajo, antes corta y más rezagados se pierde.
       UMBRAL_CORTE_PAGINA: '0.9'
+      # Copia de las páginas del feed entre pasadas, revalidada con el
+      # servidor en cada descarga (ver descargar_con_reintentos). Fuera del
+      # repositorio, para no ensuciarlo (Decisión 5).
+      CACHE_PAGINAS: /home/runner/.cache/statescraper-paginas
 
     steps:
       - name: Descargar el código del repositorio
@@ -186,10 +190,30 @@ jobs:
           fi
           echo "Credenciales presentes."
 
+      # La caché se restaura y se guarda en pasos separados, no con
+      # `actions/cache` a secas: esa solo guarda si el trabajo acaba bien,
+      # y con un feed parado el trabajo acaba en rojo a propósito.
+      - name: Recuperar las páginas de la pasada anterior
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/statescraper-paginas
+          key: paginas-feed-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            paginas-feed-
+
       - name: Ejecutar el scraper
         id: scraper
         if: env.MODO != 'solo_cribado' && env.MODO != 'cribado_prueba' && env.MODO != 'importar_historico'
         run: python lector_atom.py ${{ inputs.modo == 'diagnostico' && '--diagnostico' || '' }}
+
+      - name: Guardar las páginas para la próxima pasada
+        if: always() && steps.scraper.outcome != 'skipped'
+        # Un fallo aquí no debe tumbar la pasada: la caché es un atajo.
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/.cache/statescraper-paginas
+          key: paginas-feed-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Cribado semántico (paso 4a)
         id: cribado
@@ -246,6 +270,16 @@ jobs:
           else
             echo "Repositorio inmaculado. Todos los datos están en Supabase."
           fi
+
+      - name: Avisar de feeds parados
+        # Va al final para que la pasada haga todo lo demás igual: lo que
+        # llega de las otras fuentes se guarda y se criba. Aquí solo se
+        # pone en rojo, para que un feed caído no pase inadvertido.
+        if: always() && steps.scraper.outputs.feeds_parados != ''
+        run: |
+          echo "::error title=Feed parado::${{ steps.scraper.outputs.feeds_parados }}"
+          echo "Algún feed lleva más de 72 horas sin actualizarse en origen."
+          exit 1
 
   # ------------------------------------------------------------
   # Procesado de histórico a catálogo.
