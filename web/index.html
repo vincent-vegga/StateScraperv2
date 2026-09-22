@@ -1634,6 +1634,23 @@ select:focus{
 }
 .menu[hidden]{display:none !important}
 .filtros select[hidden]{display:none}
+
+/* ---------- Mis avisos ---------- */
+.casillas{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:4px 18px}
+/* `label` va en mayúsculas pequeñas para los campos de formulario; aquí
+   son opciones que se leen, no rótulos. */
+.casilla-linea{display:flex;align-items:center;gap:9px;min-height:34px;margin:0;
+  cursor:pointer;color:var(--texto);font-size:.93rem;font-weight:400;
+  letter-spacing:normal;text-transform:none}
+.casilla-linea input{width:17px;height:17px;flex:none;margin:0;accent-color:var(--texto);cursor:pointer}
+.casilla-linea.toda{margin-bottom:10px;font-weight:600}
+.zonas{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:2px 18px;
+  padding-top:10px;border-top:1px solid var(--linea)}
+.fila-comunidad{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ver-provs{padding:0;font-size:.82rem;color:var(--tenue);white-space:nowrap}
+.provs{padding:0 0 8px 26px}
+.provs[hidden]{display:none}
+.resumen-avisos p{margin:0 0 16px;font-size:.95rem}
 .menu button{
   display:block;width:100%;min-height:38px;padding:0 12px;border:0;
   border-radius:6px;background:none;color:var(--texto);font:inherit;
@@ -2943,6 +2960,10 @@ async function cargarSectores(perfil) {
   if (!sectores.length) {
     try { sectores = (await llamar('sectores', { perfil_id: perfil.id })).sectores ?? []; }
     catch { return []; }   // sin sectores, la lista funciona igual
+    // Se releen de la base para tener su id: los avisos apuntan a él.
+    const { data: otraVez } = await sb.from('sectores_perfil')
+      .select('id,nombre,prefijos,base').eq('perfil_id', perfil.id).order('orden');
+    if (otraVez?.length) sectores = otraVez;
   }
   CACHE.set(clave, { data: sectores, cuando: Date.now() });
   return sectores;
@@ -5564,6 +5585,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 const SECCIONES = {
   cuenta: 'Mi cuenta',
   filtro: 'Mi filtro',
+  avisos: 'Mis avisos',
 };
 
 // Confirmación efímera. Se usa donde la acción no deja rastro visible
@@ -5791,6 +5813,9 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
 
   };
 
+  secciones.avisos = `<div id="avisos-panel">
+    <p class="guia">Cargando tus avisos...</p></div>`;
+
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>${esc(SECCIONES[seccion] ?? 'Mi cuenta')}</strong>
@@ -5810,6 +5835,7 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   activarNav(perfil, session, 'panel');
   activarMenu(perfil, session);
   activarCampana(p.avisos);
+  if (seccion === 'avisos') montarAvisos(perfil, p.avisos !== false);
 
   // Si ocultó la explicación de la lista, aquí puede recuperarla.
   const hueco = document.getElementById('recuperar');
@@ -5870,6 +5896,183 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
       }
     });
   });
+}
+
+// ---------- Mis avisos: qué llega en el correo diario ----------
+//
+// Por sector y por zona. Lo que se elige aquí filtra el correo, no la
+// lista: en la web siempre se ve todo, y el correo es lo que merece
+// interrumpir.
+//
+// Las reglas son las mismas que usa la base al preparar el correo
+// (novedades_de_perfil) y la lista al filtrar: el recuento de abajo dice
+// la verdad sobre lo que llegará.
+async function montarAvisos(perfil, encendido) {
+  const [cfg, zonas, sectores, contratos] = await Promise.all([
+    sb.rpc('mis_avisos'), pedir('zonas_espana'),
+    cargarSectores(perfil), pedirContratos(perfil.id)]);
+  const zona = document.getElementById('avisos-panel');
+  // Se ha ido a otra pantalla o a otra empresa mientras cargaba.
+  if (!zona || perfil.id !== perfilActivoId) return;
+  if (cfg.error || zonas.error || !cfg.data) {
+    zona.innerHTML = `<div class="aviso mal">No hemos podido cargar tus avisos.</div>`;
+    return;
+  }
+
+  const provs = new Set(cfg.data.provincias ?? []);
+  const elegidos = new Set(cfg.data.sectores ?? []);
+  const todosSectores = !elegidos.size;
+  const lista = contratos.data ?? [];
+
+  const porComunidad = {}, comunidadDe = {};
+  (zonas.data ?? []).forEach(z => {
+    (porComunidad[z.comunidad] ??= []).push(z.provincia);
+    comunidadDe[z.provincia] = z.comunidad;
+  });
+  const comunidades = Object.keys(porComunidad).sort((a, b) => a.localeCompare(b, 'es'));
+  // "Comunidad de Madrid" con Madrid dentro: se enseña solo la provincia.
+  const plano = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const uniprovincial = c => porComunidad[c].length === 1
+    && plano(c).includes(plano(porComunidad[c][0]));
+
+  zona.innerHTML = `
+    ${encendido ? '' : `<div class="aviso">El aviso diario está desactivado.
+      Actívalo con la campana de arriba para recibirlo.</div>`}
+    ${sectores.length > 1 ? `
+    <div class="bloque">
+      <h3>Sectores</h3>
+      <p class="guia" style="margin:0 0 14px">De qué quieres que te avisemos.</p>
+      <div class="casillas">
+        ${sectores.map(x => `<label class="casilla-linea">
+          <input type="checkbox" autocomplete="off" data-sector="${esc(x.id)}"
+                 ${todosSectores || elegidos.has(x.id) ? 'checked' : ''}>
+          <span>${esc(x.nombre)}</span></label>`).join('')}
+      </div>
+    </div>` : ''}
+    <div class="bloque">
+      <h3>Zona</h3>
+      <p class="guia" style="margin:0 0 14px">Los contratos de ámbito
+      autonómico, sin provincia concreta, te llegan si eliges alguna
+      provincia de esa comunidad.</p>
+      <label class="casilla-linea toda">
+        <input type="checkbox" autocomplete="off" id="toda-espana" ${provs.size ? '' : 'checked'}>
+        <span>Toda España</span></label>
+      <div class="zonas">
+        ${comunidades.map(c => uniprovincial(c) ? `
+          <div class="comunidad">
+            <label class="casilla-linea"><input type="checkbox" autocomplete="off"
+              data-prov="${esc(porComunidad[c][0])}"><span>${esc(porComunidad[c][0])}</span></label>
+          </div>` : `
+          <div class="comunidad">
+            <div class="fila-comunidad">
+              <label class="casilla-linea"><input type="checkbox" autocomplete="off" data-com="${esc(c)}">
+                <span>${esc(c)}</span></label>
+              <button type="button" class="enlace ver-provs" data-ver="${esc(c)}"
+                aria-expanded="false">${porComunidad[c].length} provincias</button>
+            </div>
+            <div class="provs" data-de="${esc(c)}" hidden>
+              ${porComunidad[c].sort((a, b) => a.localeCompare(b, 'es')).map(pv => `
+                <label class="casilla-linea"><input type="checkbox" autocomplete="off" data-prov="${esc(pv)}">
+                  <span>${esc(pv)}</span></label>`).join('')}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="bloque resumen-avisos">
+      <p id="avisos-cuenta"></p>
+      <button class="principal" id="guardar-avisos">Guardar mis avisos</button>
+      <div id="avisos-resultado"></div>
+    </div>`;
+
+  const casillasSector = [...zona.querySelectorAll('[data-sector]')];
+  const casillasProv = [...zona.querySelectorAll('[data-prov]')];
+  const sectoresElegidos = () => sectores.filter(x =>
+    casillasSector.find(c => c.dataset.sector === x.id)?.checked);
+
+  // Lo que se ve marcado sale siempre de `provs`: una sola fuente. Las
+  // casillas llevan autocomplete="off" para que el navegador no les
+  // devuelva, al volver atrás, un estado anterior distinto del guardado.
+  function pintarZona() {
+    document.getElementById('toda-espana').checked = provs.size === 0;
+    casillasProv.forEach(c => c.checked = provs.has(c.dataset.prov));
+    zona.querySelectorAll('[data-com]').forEach(c => {
+      const suyas = porComunidad[c.dataset.com];
+      const n = suyas.filter(pv => provs.has(pv)).length;
+      c.checked = n === suyas.length;
+      c.indeterminate = n > 0 && n < suyas.length;
+      // Con algunas elegidas, se enseñan: si no, no se ve cuáles.
+      if (c.indeterminate) desplegar(c.dataset.com, true);
+    });
+    contar();
+  }
+
+  function desplegar(c, abierto) {
+    const caja = zona.querySelector(`.provs[data-de="${CSS.escape(c)}"]`);
+    const boton = zona.querySelector(`[data-ver="${CSS.escape(c)}"]`);
+    if (!caja) return;
+    caja.hidden = !abierto;
+    boton.setAttribute('aria-expanded', String(abierto));
+  }
+
+  function contar() {
+    const secs = sectoresElegidos();
+    const entra = o =>
+      (!casillasSector.length || secs.length === sectores.length
+        || secs.some(x => enSector(o, x))) &&
+      (provs.size === 0 || provs.has(o.provincia) ||
+        (!o.provincia && (!o.comunidad ||
+          [...provs].some(pv => comunidadDe[pv] === o.comunidad))));
+    const n = lista.filter(entra).length;
+    document.getElementById('avisos-cuenta').innerHTML =
+      `De los <strong>${plural(lista.length, 'contrato abierto', 'contratos abiertos')}</strong>
+       que tienes ahora, <strong>${n}</strong> ${n === 1 ? 'entraría' : 'entrarían'}
+       en tus avisos. Cada día te llegan solo los nuevos.`;
+  }
+
+  document.getElementById('toda-espana').onchange = ev => {
+    if (ev.target.checked) provs.clear();
+    else ev.target.checked = true;   // se desmarca eligiendo una provincia
+    pintarZona();
+  };
+  casillasProv.forEach(c => c.onchange = () => {
+    c.checked ? provs.add(c.dataset.prov) : provs.delete(c.dataset.prov);
+    pintarZona();
+  });
+  zona.querySelectorAll('[data-com]').forEach(c => c.onchange = () => {
+    const suyas = porComunidad[c.dataset.com];
+    const todas = suyas.every(pv => provs.has(pv));
+    suyas.forEach(pv => todas ? provs.delete(pv) : provs.add(pv));
+    pintarZona();
+  });
+  zona.querySelectorAll('[data-ver]').forEach(b => b.onclick = () =>
+    desplegar(b.dataset.ver, b.getAttribute('aria-expanded') !== 'true'));
+  casillasSector.forEach(c => c.onchange = contar);
+
+  alPulsar('guardar-avisos', async () => {
+    const resultado = document.getElementById('avisos-resultado');
+    const secs = sectoresElegidos();
+    if (casillasSector.length && !secs.length) {
+      resultado.innerHTML = `<div class="aviso mal">Elige al menos un sector.</div>`;
+      return;
+    }
+    const boton = document.getElementById('guardar-avisos');
+    boton.disabled = true;
+    // Todos marcados se guarda como "ninguno elegido" (= todos): así, si
+    // mañana aparece un sector nuevo, también entra.
+    const { data, error } = await sb.rpc('guardar_avisos', {
+      provincias: [...provs],
+      sectores: secs.length === sectores.length ? [] : secs.map(x => x.id),
+    });
+    boton.disabled = false;
+    if (error || !data?.ok) {
+      resultado.innerHTML = `<div class="aviso mal">No se ha podido guardar. Inténtalo de nuevo.</div>`;
+      return;
+    }
+    resultado.innerHTML = '';
+    recado('Avisos guardados');
+  });
+
+  pintarZona();
 }
 
 // ============================================================

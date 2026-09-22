@@ -282,7 +282,10 @@ se hizo con lo mínimo para la prueba con betatesters. Queda:
 - **Un correo por empresa.** `alertador.py` recorre perfiles, así que quien
   lleve 3 empresas recibiría 3 correos al mismo buzón. Hoy no importa: el
   correo está apagado en la beta. Antes de encenderlo, agrupar por
-  `usuario_id` en un solo correo con una sección por empresa.
+  `usuario_id` en un solo correo con una sección por empresa. Las
+  preferencias de "Mis avisos" (sector y zona, desde el 22/09/2026) son por
+  empresa y ya las aplica `novedades_de_perfil`, así que al agrupar basta
+  con seguir pidiendo las novedades empresa a empresa.
 - **Sin vuelta atrás a mitad del alta.** Al añadir una empresa, la pantalla
   del NIF tiene "Cancelar", pero las siguientes (confirmar, describir,
   entrenar, cribando) no enseñan el selector. Quien se arrepienta ahí tiene
