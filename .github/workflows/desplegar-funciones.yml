@@ -40,6 +40,17 @@ jobs:
       - name: Descargar el código
         uses: actions/checkout@v4
 
+      # Antes de desplegar, que compile. Sin esto, un error de tipos o un
+      # import roto se desplegaba igual y el alta dejaba de funcionar para
+      # todo el mundo; así, si falla, sigue sirviéndose la versión anterior.
+      - name: Instalar Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Comprobar tipos
+        run: deno check supabase/functions/alta/index.ts
+
       - name: Instalar las herramientas de Supabase
         uses: supabase/setup-cli@v1
         with:

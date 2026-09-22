@@ -1,0 +1,73 @@
+# ============================================================
+# REGENERAR LA LECTURA DE LAS EMPRESAS DADAS DE ALTA
+# ============================================================
+# Solo a mano. Vuelve a leer el historial de cada empresa con las
+# instrucciones actuales (scripts/regenerar_perfiles.ts) y, perfil a
+# perfil, la recriba con cribador.py para que su lista no se quede vacía.
+#
+# Por defecto es un ENSAYO: enseña qué cambiaría y no escribe nada.
+# Cuesta dinero (una lectura con el modelo por empresa, y el recribado).
+# ============================================================
+
+name: Regenerar perfiles
+
+on:
+  workflow_dispatch:
+    inputs:
+      ensayo:
+        description: 'Ensayo: enseñar los cambios sin escribir nada'
+        type: boolean
+        default: true
+      perfiles:
+        description: 'UUID de perfiles, separados por comas (vacío = todos los que tienen NIF)'
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regenerar-perfiles
+  cancel-in-progress: false
+
+jobs:
+  regenerar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # Las mismas del workflow del scraper: el cribado de un perfil va
+      # por el mismo camino que el de cada noche.
+      CRIBADO_SIMULTANEAS: '8'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+
+      # La función de alta y el script comparten modelo.ts: si algo no
+      # encaja, que falle aquí y no a mitad de los perfiles.
+      - name: Comprobar tipos
+        run: deno check scripts/regenerar_perfiles.ts supabase/functions/alta/index.ts
+
+      - name: Regenerar
+        run: |
+          if [ -n "${{ inputs.perfiles }}" ]; then
+            ids=$(echo "${{ inputs.perfiles }}" | tr ',' '\n')
+          else
+            ids=$(deno run -A scripts/regenerar_perfiles.ts --listar)
+          fi
+          for id in $ids; do
+            if [ "${{ inputs.ensayo }}" = "true" ]; then
+              deno run -A scripts/regenerar_perfiles.ts --perfil="$id" --ensayo
+            else
+              deno run -A scripts/regenerar_perfiles.ts --perfil="$id"
+              python cribador.py --perfil "$id"
+            fi
+          done
