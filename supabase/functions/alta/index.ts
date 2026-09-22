@@ -137,26 +137,52 @@ async function llamarModelo(mensajes: unknown[], maxTokens = 900,
   const clave = Deno.env.get("OPENAI_API_KEY");
   if (!clave) throw new Error("Falta OPENAI_API_KEY en la función.");
 
-  const respuesta = await fetch(OPENAI, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${clave}`,
-      "Content-Type": "application/json",
-      "User-Agent": "StateScraper/1.0",
-    },
-    body: JSON.stringify({
-      model: modelo,
-      messages: mensajes,
-      response_format: { type: "json_object" },
-      temperature: 0,
-      max_tokens: maxTokens,
-    }),
+  const cuerpo = JSON.stringify({
+    model: modelo,
+    messages: mensajes,
+    response_format: { type: "json_object" },
+    temperature: 0,
+    max_tokens: maxTokens,
   });
 
-  if (!respuesta.ok) {
-    throw new Error(`El modelo respondió ${respuesta.status}: ${(await respuesta.text()).slice(0, 300)}`);
+  // Seguro contra el límite de uso de OpenAI (429) y sus caídas (5xx).
+  //
+  // El 21/09/2026 dos altas simultáneas chocaron con el límite: 1.178
+  // clasificaciones rechazadas en una hora, el cribado dio dos vueltas sin
+  // avanzar y la web se rindió dejando el alta en "cribando". Esos
+  // rechazos suelen pedir esperar menos de un segundo: se espera lo que
+  // diga OpenAI (o 1 s, 2 s, 4 s) y se reintenta. Si pide más de 8 s, no
+  // se espera: la petición de la web no puede quedarse colgada, y lo que
+  // no se clasifique ahora lo recoge la vuelta siguiente o el cribador.
+  let respuesta: Response | null = null;
+  for (let intento = 0; intento <= 3; intento++) {
+    respuesta = await fetch(OPENAI, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${clave}`,
+        "Content-Type": "application/json",
+        "User-Agent": "StateScraper/1.0",
+      },
+      body: cuerpo,
+    });
+    const reintentable = respuesta.status === 429 || respuesta.status >= 500;
+    if (respuesta.ok || !reintentable || intento === 3) break;
+
+    const pedidoMs = Number(respuesta.headers.get("retry-after-ms"))
+      || Number(respuesta.headers.get("retry-after")) * 1000 || 0;
+    const esperaMs = pedidoMs || 1000 * 2 ** intento;
+    if (esperaMs > 8000) break;
+    await respuesta.body?.cancel();
+    // Con algo de azar: veinte clasificaciones rechazadas a la vez no
+    // deben volver a llamar todas en el mismo milisegundo.
+    await new Promise((r) => setTimeout(r, esperaMs + Math.random() * 500));
   }
-  const datos = await respuesta.json();
+
+  if (!respuesta!.ok) {
+    throw new Error(`El modelo respondió ${respuesta!.status}: ${(await respuesta!.text()).slice(0, 300)}`);
+  }
+  const respuestaOk = respuesta!;
+  const datos = await respuestaOk.json();
   return JSON.parse(datos.choices[0].message.content);
 }
 
