@@ -168,7 +168,6 @@ El flujo completo:
 5. Al entrar por primera vez, el arranque detecta pendientes y criba.
 6. Si hay muchos pendientes (>5s de espera), se muestra la lista vacía y el workflow los criba en la siguiente pasada.
 
-**Código de acceso activo:** `alpha` (100 usos, caduca dic 2026)
 
 Para crear uno nuevo:
 ```sql
