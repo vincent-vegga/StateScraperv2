@@ -209,25 +209,12 @@ tandas más pequeñas en `completar_explicacion` (`procesar_historico.py`).
 
 ---
 
-## 7. El cribado de la web al darse de alta usa 20 llamadas simultáneas
+## 7. ~~El cribado de la web al darse de alta usa 20 llamadas simultáneas~~ (resuelto 22/09/2026)
 
-**Qué pasa.** La cuenta de OpenAI admite unas 500 clasificaciones por minuto
-(500 peticiones y 200.000 tokens por minuto, a ~400 tokens cada una). En el
-scraper se bajó de 20 a 8 hilos (commit `7d3f643`): con 20 se pedían ~800
-por minuto y hubo 5.812 errores 429 en una pasada. La función de alta
-(`supabase/functions/alta/index.ts`, `const SIMULTANEAS = 20`, línea ~51)
-sigue con 20, y usa la misma cuenta de OpenAI. Si un cliente se da de alta
-mientras corre el cribado del scraper, compiten y los dos van peor.
-
-**Además.** El 21/09/2026 se agotó el límite **diario** (10.000 peticiones,
-nivel 1 de OpenAI) a las 13:33 UTC. Se subió de nivel ese mismo día; con el
-nivel 2 ese límite diario desaparece para `gpt-4o-mini`. Comprobar el nivel
-en platform.openai.com/settings/organization/limits.
-
-**Cómo cerrarlo.** Bajar `SIMULTANEAS` de la función de alta a 8 (o menos)
-y desplegar (el workflow `desplegar-funciones.yml` lo hace solo al cambiar
-`supabase/functions/`). El alta de un cliente nuevo tardará algo más, pero
-fallará menos.
+Medido: con el cupo de OpenAI subido el 21/09, cinco altas grandes a la vez
+(4.754 clasificaciones en 165 s) dieron cero rechazos 429. Se queda en 20.
+Además, `llamarModelo` reintenta ante 429 y 5xx (1/2/4 s, o lo que pida
+OpenAI si es menos de 8 s).
 
 ---
 
@@ -338,3 +325,55 @@ cribador descarta lo que no encaja.
 **Cómo cerrarlo.** Si se repite, pedir al modelo solo los prefijos que
 aparezcan en al menos dos títulos, o validar los propuestos contra los
 CPV que de verdad usan los organismos para contratos parecidos.
+
+---
+
+## 12. Los contratos menores de Cataluña no llegan
+
+**Qué pasa.** De Cataluña hay 2 contratos menores en toda la base (frente a
+~790.000 contratos de 2025 en total). Los ayuntamientos catalanes publican
+los menores en la plataforma de la Generalitat, y ni el fichero de menores
+del Estado ni el canal agregado ("sin menores") los traen. Mataró, por
+ejemplo, tiene unos 100-140 contratos al año, ninguno menor.
+
+**Cómo cerrarlo.** Leer los datos abiertos de contratación de la
+Generalitat (contractes menors). Antes, comprobar el volumen para una ciudad
+conocida y compararlo con lo que tenemos.
+
+---
+
+## 13. Organismos: ventana de 2 años y solo el código principal
+
+**Qué pasa.** La lista de Organismos sale de `organismos_por_prefijo`, que
+solo cuenta contratos de los últimos 2 años y cuyo CPV **principal** sea
+uno de los prefijos de la empresa. La lista de Contratos, en cambio, mira
+cualquier CPV del contrato. Por eso Mataró no aparecía para Soltec (sus
+uniformes son de principios de 2024) y Badalona salía con 1 de 3.
+
+**Cómo cerrarlo.** Ampliar la ventana (medir antes el refresco nocturno) y
+contar cualquier CPV del contrato, como Contratos. Cuidado: el agente que
+revisó los acuerdos marco tocó funciones de esta zona el mismo día.
+
+---
+
+## 14. Muchos contratos recientes llegan sin fecha de publicación
+
+**Qué pasa.** Al investigar Mataró, varias filas recientes tenían
+`fecha_publicacion` nula. Impide medir el flujo diario por fecha de
+publicación (se estimó con la proporción de abiertos: ~1.170
+clasificaciones al día para 15 empresas, unos 3 $ al mes).
+
+**Cómo cerrarlo.** Ver en qué extractor se pierde y si se puede rellenar
+con la fecha del documento o de detección.
+
+---
+
+## 15. Dos altas de la misma empresa aún pueden diferir en unos pocos contratos
+
+**Qué pasa.** Con la lectura reutilizada por NIF, el criterio es idéntico,
+pero el cribado de contratos de frontera ("quizás" o "no") puede variar:
+42 y 44 en la prueba del 22/09.
+
+**Cómo cerrarlo, si molesta.** Copiar los veredictos de otro perfil con el
+mismo NIF y el mismo criterio en vez de volver a cribar. Además sería más
+barato.

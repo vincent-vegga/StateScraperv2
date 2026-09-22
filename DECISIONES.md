@@ -813,6 +813,93 @@ prestació dels serveis"* y se comía una letra.
 
 ---
 
+## 32. Varias empresas por cuenta: la empresa activa la decide el dispositivo
+
+**Contexto.** Un betatester con varias empresas pidió llevarlas desde una
+sola cuenta. El modelo ya colgaba casi todo de `perfil_id`, pero veinte
+funciones buscaban "mi perfil" con `usuario_id = auth.uid()`.
+
+**Decisión.** Hasta 3 perfiles por usuario (tope en la base, con
+disparador). La empresa activa viaja en cada petición como cabecera
+`x-perfil`, y `mi_perfil_id()` elige con ella entre los perfiles del
+usuario.
+
+**Motivo.** Guardar "la empresa activa" en la base hacía que cambiar de
+empresa en el móvil le cambiara la pantalla al ordenador. La cabecera no
+abre nada: un id ajeno cae en el perfil más antiguo del propio usuario.
+
+---
+
+## 33. La lectura de una empresa: sin ejemplos del sector, con semilla y por NIF
+
+**Contexto.** Dos altas de Soltec (uniformidad policial) dieron 38 y 17
+contratos. Cinco más, entre 23 y 35. Los ejemplos de las instrucciones del
+modelo eran de uniformidad policial —el sector de uno de los primeros
+clientes—, y con una empresa de ese sector el modelo copiaba "no incluimos
+bomberos, Guardia Civil ni Policía Nacional" como si fuera un dato suyo.
+
+**Decisión.** Tres cambios: ejemplos de un sector neutro (comedores
+escolares) con el aviso de que son de forma; el "no" solo puede nombrar lo
+que contradiga sus contratos ganados (lo vecino sin datos va a "quizás");
+semilla fija en las llamadas. Y la lectura se guarda por NIF
+(`lecturas_empresa`, 30 días): un perfil nuevo con un NIF ya leído la
+reutiliza; quien rehace su filtro obtiene otra.
+
+**Verificación.** Cinco altas de Soltec pasaron de 23-35 contratos a 39-51
+sin exclusiones inventadas; dos altas seguidas, con la lectura reutilizada,
+42 y 44 (la diferencia son dos contratos de frontera en el cribado).
+
+**Consecuencia.** Las empresas ya dadas de alta se regeneraron con
+`scripts/regenerar_perfiles.ts` (workflow "Regenerar perfiles"), que
+comparte `supabase/functions/alta/modelo.ts` con la función de alta,
+reaplica las correcciones de cada cliente y nunca deja una empresa con
+menos cobertura de sus contratos ganados que antes.
+
+---
+
+## 34. Los prefijos no se amplían con lo que la empresa ganó una vez
+
+**Contexto.** Con sus prefijos, varias empresas no encontraban entre el
+13 % y el 23 % de lo que ya habían ganado. Se simuló añadir códigos de sus
+contratos ganados hasta cubrir el 90 %, de forma codiciosa, pesando lo que
+recupera cada código contra los contratos abiertos que añade al cribado.
+
+**Decisión.** Solo se añaden los códigos que recuperan dos o más contratos
+ganados (se añadieron tres: Alteisa 3731, Capgemini 7261, Herso 3782). No
+se construyó la regla para los que recuperan uno.
+
+**Motivo.** La validación temporal —elegir los códigos con lo ganado antes
+de julio de 2025 y medir con lo ganado después— no recuperó ni un contrato
+futuro en ninguna empresa. Las subidas con todos los datos eran memorizar
+encargos puntuales. Además, la lectura regenerada (decisión 33) ya había
+recogido sola los códigos que faltaban de verdad (Soltec: 1800, 1881,
+3500).
+
+**Descartado también.** Quitar los ceros finales de los prefijos ("1810"
+como grupo "181"): medido, subía la cobertura 3 puntos en pocas empresas.
+
+---
+
+## 35. Sectores y avisos: por empresa, escritos por el modelo
+
+**Contexto.** Un filtro por sector en la lista y, sobre él, qué llega en el
+correo diario (sector y zona).
+
+**Decisión.** Cada empresa tiene 2-6 sectores con nombre ("Alumbrado
+público") que por debajo son grupos de sus prefijos CPV
+(`sectores_perfil`). Los escribe el modelo leyendo sus contratos, la
+primera vez que abre la lista. Las preferencias del correo
+(`avisos_perfil`, `avisos_sectores`) las aplica `novedades_de_perfil`, con
+las mismas reglas que la lista.
+
+**Motivo.** El catálogo común de 45 familias CPV era demasiado grueso: a
+Capgemini todo le caía en "Servicios informáticos" y a Alumbrados Viarios
+la señalización le salía como "Vehículos". Si los sectores se regeneran,
+las elecciones del correo caen en cascada y el aviso vuelve a "todos": una
+preferencia caducada nunca hace perder contratos.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
