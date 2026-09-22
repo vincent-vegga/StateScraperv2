@@ -2039,6 +2039,26 @@ select:focus{
   font-weight:650;
 }
 
+/* Solo aparece con algún filtro puesto. Es texto y no un botón con
+   borde: al lado de tres campos, un cuarto recuadro parecería otro
+   filtro. */
+.quitar-filtros{
+  flex:0 0 auto;
+  align-self:center;
+  padding:6px 4px;
+  border:0;
+  background:none;
+  color:var(--tenue);
+  font:inherit;
+  font-size:.88rem;
+  text-decoration:underline;
+  text-underline-offset:3px;
+  cursor:pointer;
+}
+.quitar-filtros:hover{color:var(--texto)}
+.quitar-filtros[hidden]{display:none}
+.vacio .quitar-filtros{margin-left:4px;font-size:inherit}
+
 .explica{position:relative;padding-right:44px}
 /* Aparece al acercarse: presente cuando se busca, invisible mientras se
    lee. */
@@ -6311,6 +6331,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         <div class="desplegable" id="desplegable" role="listbox"
              aria-multiselectable="true" hidden></div>
       </div>
+      <button type="button" class="quitar-filtros" id="quitar-filtros" hidden>
+        Quitar filtros</button>
     </div>
     <p class="explica" id="explica">Cada vez que marcas un contrato como
     <strong>no me interesa</strong> o <strong>sí me interesa</strong>, tu
@@ -6394,6 +6416,57 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const elegidas = new Set();
   let pestana = pestanaInicial;
 
+  // ---------- Los filtros se recuerdan ----------
+  //
+  // Quien trabaja en Asturias no debería volver a marcar Asturias cada
+  // vez que entra. Encaje, sector y provincias se guardan en este
+  // navegador y por empresa: con dos NIF en la cuenta, cada una tiene los
+  // suyos. La búsqueda por texto solo dura la sesión: un "limpieza"
+  // escrito ayer y todavía puesto hoy parece una lista rota.
+  //
+  // En el navegador y no en la base: es cómo prefiere mirar la lista,
+  // no un dato de la empresa, y así no cuesta una llamada por clic.
+  const CLAVE_FILTROS = 'filtros-contratos:' + perfil.id;
+  const CLAVE_TEXTO = 'texto-contratos:' + perfil.id;
+  let recordados = {};
+  try { recordados = JSON.parse(localStorage.getItem(CLAVE_FILTROS)) ?? {}; }
+  catch { /* modo privado o dato roto: se empieza sin filtros */ }
+  (Array.isArray(recordados.provincias) ? recordados.provincias : [])
+    .forEach(p => elegidas.add(String(p)));
+
+  function guardarFiltros() {
+    const campoSector = document.getElementById('f-sector');
+    // Mientras los sectores no han llegado, el selector está vacío: no se
+    // pisa el que había guardado.
+    const sector = SECTORES.length
+      ? (SECTORES[campoSector.value]?.id ?? null)
+      : (recordados.sector ?? null);
+    recordados = {
+      veredicto: document.getElementById('f-veredicto').value || null,
+      sector,
+      provincias: [...elegidas],
+    };
+    try {
+      localStorage.setItem(CLAVE_FILTROS, JSON.stringify(recordados));
+      sessionStorage.setItem(CLAVE_TEXTO, document.getElementById('f-texto').value);
+    } catch { /* modo privado: se filtra igual, solo que no se recuerda */ }
+  }
+
+  const hayFiltros = () =>
+    !!(document.getElementById('f-veredicto').value
+       || document.getElementById('f-sector').value
+       || document.getElementById('f-texto').value.trim()
+       || elegidas.size);
+
+  function quitarFiltros() {
+    document.getElementById('f-veredicto').value = '';
+    document.getElementById('f-sector').value = '';
+    document.getElementById('f-texto').value = '';
+    elegidas.clear();
+    pintarEtiquetas();
+    repintar();
+  }
+
   // La visita se marca por HABER ENTRADO, no solo por abrir la pestaña de
   // novedades.
   //
@@ -6421,6 +6494,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   let SECTORES = [];
 
   function pintar() {
+    guardarFiltros();
+    document.getElementById('quitar-filtros').hidden = !hayFiltros();
     const ver = document.getElementById('f-veredicto').value;
     const txt = document.getElementById('f-texto').value.toLowerCase().trim();
     const campoSector = document.getElementById('f-sector');
@@ -6491,7 +6566,13 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       : pestana === 'hoy'
         ? `<p class="vacio">Estás al día. Aquí aparecerá lo que entre
            a partir de ahora.</p>`
-        : `<p class="vacio">Ningún contrato encaja con estos filtros.</p>`;
+        : `<p class="vacio">Ningún contrato encaja con estos filtros.${
+            hayFiltros() ? `<button type="button" class="quitar-filtros"
+              data-quitar-filtros>Quitar filtros</button>` : ''}</p>`;
+    // Con los filtros recordados, una lista vacía puede venir de algo
+    // que se eligió hace días: la salida tiene que estar justo ahí.
+    document.querySelector('[data-quitar-filtros]')
+      ?.addEventListener('click', quitarFiltros);
 
     // El botón de analizar vive en el DETALLE, que es hermano de la
     // fila y no hijo suyo. Enganchado a `.fila` como los demás, el clic
@@ -6896,6 +6977,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // Y al cerrar, por si se va antes de esos segundos.
   window.addEventListener('beforeunload', marcarLaVisita);
 
+  // Lo recordado, antes del primer pintado. Un valor que ya no existe en
+  // el selector se descarta en vez de dejar una lista vacía sin motivo.
+  const campoVeredicto = document.getElementById('f-veredicto');
+  if ([...campoVeredicto.options].some(op => op.value === recordados.veredicto))
+    campoVeredicto.value = recordados.veredicto;
+  try { document.getElementById('f-texto').value = sessionStorage.getItem(CLAVE_TEXTO) ?? ''; }
+  catch { /* modo privado */ }
+  alPulsar('quitar-filtros', quitarFiltros);
+
   pintarEtiquetas();
   ['f-veredicto','f-sector','f-texto'].forEach(id =>
     document.getElementById(id).addEventListener('input', repintar));
@@ -6910,6 +7000,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     SECTORES = sectores;
     campo.insertAdjacentHTML('beforeend', sectores.map((x, i) =>
       `<option value="${i}">${esc(x.nombre)}</option>`).join(''));
+    // Por su id y no por su posición: si los sectores se rehacen, el
+    // tercero puede ser otro. Si ya no existe, se queda en "todos".
+    const suyo = sectores.findIndex(x => x.id && x.id === recordados.sector);
+    if (suyo >= 0) campo.value = String(suyo);
     campo.hidden = false;
     pintar();
   });
