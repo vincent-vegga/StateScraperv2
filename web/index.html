@@ -3435,7 +3435,20 @@ function pantallaConfirmar(perfil, empresa, ultimos, session) {
       const r = await llamar('confirmar_empresa', { cif: empresa.cif });
       const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
       pantallaCribando(data?.[0] ?? perfil, session, r);
-    } catch {
+    } catch (e) {
+      // Sus contratos existen pero no dicen de qué son (organismos que no
+      // publican el código del contrato). Reintentar no arregla nada: se
+      // le dice la verdad y se le lleva a describir su negocio.
+      if (e.message === 'sin_historial') {
+        document.getElementById('resultado').innerHTML = `
+          <div class="aviso">Hemos encontrado tus contratos, pero los
+          organismos que los publicaron no indican de qué tipo son, así que
+          no podemos deducir a qué te dedicas. Cuéntanoslo tú: es un minuto.</div>
+          <button class="principal" id="a-describir" style="margin-top:14px">Describir mi negocio</button>`;
+        alPulsar('a-describir', () => pantallaDescribir(perfil, session));
+        boton.remove();
+        return;
+      }
       document.getElementById('resultado').innerHTML =
         `<div class="aviso mal">Algo ha fallado. Inténtalo de nuevo.</div>`;
       boton.disabled = false;

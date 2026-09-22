@@ -25,6 +25,7 @@ pensada para correr en GitHub Actions: .github/workflows/prueba-carga.yml
     SUPABASE_URL, SUPABASE_KEY   -> obligatorias (clave secreta)
 
     python prueba_carga.py --usuarios 3 --empresas 3 --etapas 5,15,30
+    python prueba_carga.py --usuarios 1 --empresas 2 --etapas "" --nifs B06392302,B53994695
     python prueba_carga.py --solo-limpiar
 """
 
@@ -271,6 +272,8 @@ async def alta_usuario(api: Api, u: dict, codigo: str, reserva: list[dict],
             c = await api.alta("alta", "confirmar_empresa", u["token"], perfil,
                                cif=empresa["cif"])
             if c and c.get("ok"):
+                logging.info("%s: %s → prefijos %s · %s", u["email"], empresa["cif"],
+                             ",".join(c.get("prefijos", [])), c.get("actividad", ""))
                 break
         else:
             logging.error("%s: se acabaron los NIF de reserva", u["email"])
@@ -433,7 +436,10 @@ async def principal(op):
             logging.info("Preparados %d usuarios de prueba", len(usuarios))
 
             # --- 2. Alta, todos a la vez ---
-            reserva = await empresas_reales(api, op.usuarios * op.empresas)
+            # Con --nifs se prueban empresas concretas (un caso raro que
+            # se quiere ver de punta a punta) en vez de una muestra al azar.
+            reserva = ([{"cif": c} for c in reversed(op.nifs)] if op.nifs
+                       else await empresas_reales(api, op.usuarios * op.empresas))
             logging.info("ALTA: %d usuarios × %d empresas, a la vez",
                          op.usuarios, op.empresas)
             t0 = time.perf_counter()
@@ -486,9 +492,12 @@ def main():
     p.add_argument("--duracion", type=int, default=90, help="Segundos por etapa")
     p.add_argument("--max-vueltas", type=int, default=40,
                    help="Tope de lotes de cribado por empresa (60 contratos cada uno)")
+    p.add_argument("--nifs", default="",
+                   help="NIF concretos para el alta, separados por comas")
     p.add_argument("--solo-limpiar", action="store_true")
     op = p.parse_args()
     op.etapas = [int(x) for x in op.etapas.split(",") if x.strip()]
+    op.nifs = [x.strip().upper() for x in op.nifs.split(",") if x.strip()]
     asyncio.run(principal(op))
 
 

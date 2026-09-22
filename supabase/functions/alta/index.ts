@@ -267,6 +267,12 @@ Policía Local" con el código de software lleva un error evidente.
 empresa, según los títulos que has leído. Descarta los que solo pueden \
 explicarse como un error de etiquetado.
 
+   Si NO se te da ningún prefijo (hay organismos que publican sus \
+contratos menores sin CPV), dedúcelos tú de los títulos: devuelve en \
+"prefijos_validos" los prefijos de 4 cifras del vocabulario CPV que \
+corresponden a lo que hace la empresa, del más al menos frecuente. Solo \
+los que estés seguro de que existen.
+
 3. RESUMIR EL FILTRO PARA EL CLIENTE. Dos o tres frases cortas, en \
 lenguaje corriente, que expliquen QUÉ se busca y qué se descarta. No es el \
 criterio: es lo que se le enseña a él para que entienda con qué se le \
@@ -303,7 +309,10 @@ async function leerHistorial(
     {
       role: "user",
       content: `CONTRATOS GANADOS (${contratos.length}):\n${lista}\n\n` +
-               `PREFIJOS CPV QUE APARECEN:\n${codigos}`,
+               (codigos
+                 ? `PREFIJOS CPV QUE APARECEN:\n${codigos}`
+                 : `PREFIJOS CPV QUE APARECEN: ninguno, los organismos no ` +
+                   `los publicaron. Dedúcelos de los títulos.`),
     },
   ], 1600, MODELO_HISTORIAL);
 }
@@ -671,8 +680,19 @@ Deno.serve(async (peticion) => {
       }));
       const prefijos = (prefijosCrudos ?? []) as { prefijo: string; contratos: number }[];
 
-      if (!contratos.length || !prefijos.length) {
+      // Sin CPV no es sin historial. Hay organismos (universidades,
+      // ayuntamientos) que publican sus contratos menores sin código, y a
+      // una empresa que solo trabaja con ellos se la echaba del alta con
+      // "algo ha fallado" teniendo decenas de contratos. Medido el
+      // 22/09/2026: el 2,75 % de las sociedades limitadas con entre 15 y
+      // 150 contratos, y el 7 % de los autónomos. Los títulos bastan: el
+      // modelo deduce los códigos de ellos (ver INSTRUCCIONES_HISTORIAL).
+      if (!contratos.length) {
         return responder({ error: "sin_historial" }, 404);
+      }
+      if (!prefijos.length) {
+        console.log(`Empresa ${cif}: ${contratos.length} contratos sin CPV, ` +
+                    `se deducen de los títulos`);
       }
 
       const lectura = await leerHistorial(contratos, prefijos);
@@ -687,6 +707,8 @@ Deno.serve(async (peticion) => {
       const finales = validos.length
         ? validos
         : prefijos.filter((p) => p.contratos >= 2).map((p) => p.prefijo);
+      // Sin códigos no hay nada que cribar: mejor que describa su negocio.
+      if (!finales.length) return responder({ error: "sin_historial" }, 404);
 
       const descartados = Array.isArray(lectura.descartados) ? lectura.descartados : [];
       if (descartados.length) {

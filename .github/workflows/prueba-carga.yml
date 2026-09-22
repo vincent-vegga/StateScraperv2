@@ -29,6 +29,9 @@ on:
       duracion:
         description: 'Segundos por etapa'
         default: '90'
+      nifs:
+        description: 'NIF concretos para el alta, separados por comas (vacío = al azar)'
+        default: ''
       solo_limpiar:
         description: 'Solo borrar restos de una prueba anterior'
         type: boolean
@@ -65,6 +68,7 @@ jobs:
           --empresas "${{ inputs.empresas }}"
           --etapas "${{ inputs.etapas }}"
           --duracion "${{ inputs.duracion }}"
+          --nifs "${{ inputs.nifs }}"
 
       # Red de seguridad: si el paso anterior murió de golpe (tiempo
       # agotado, runner cancelado), su `finally` no llegó a ejecutarse.
