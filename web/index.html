@@ -3831,7 +3831,13 @@ async function pantallaCribando(perfil, session, lectura, volviendo = false) {
   // Se mira `hechas` y no `quedan`: la cola llega con tope, y con muchas
   // pendientes `quedan` sale igual aunque se esté avanzando.
   const MAX_VUELTAS_SIN_AVANCE = 2;
-  let total = 0, sinAvance = 0;
+  // Lo hecho se cuenta vuelta a vuelta. `total` y `quedan` vienen de una
+  // cola que la API recorta a 1.000 filas: con más pendientes, "quedan"
+  // se quedaba en ~940 y el contador se clavaba en "60 de 1.000" durante
+  // minutos. Mientras la cola llegue recortada se dice "más de 1.000";
+  // cuando baja de ahí, el total ya es exacto.
+  const RECORTE = 1000;
+  let hechas = 0, sinAvance = 0;
   for (let vuelta = 0; vuelta < 200; vuelta++) {
     let r;
     try {
@@ -3841,13 +3847,19 @@ async function pantallaCribando(perfil, session, lectura, volviendo = false) {
         Se ha interrumpido. Recarga la página y continuará donde iba.</div></div>`;
       return;
     }
-    total = total || r.total || 0;
     if (r.terminado) break;
+    hechas += r.hechas || 0;
     sinAvance = r.hechas ? 0 : sinAvance + 1;
     if (sinAvance >= MAX_VUELTAS_SIN_AVANCE) break;
-    const hechas = total - r.quedan;
+    // Al empezar esta vuelta quedaban r.total; si venía recortada, al menos
+    // RECORTE, así que el total es como mínimo lo de antes más RECORTE.
+    const recortada = (r.total ?? 0) >= RECORTE;
+    const total = recortada ? hechas - (r.hechas || 0) + RECORTE : hechas + r.quedan;
     document.getElementById('relleno').style.width = `${total ? hechas/total*100 : 0}%`;
-    document.getElementById('progreso').textContent = `${hechas} de ${plural(total, 'contrato', 'contratos')}`;
+    document.getElementById('progreso').textContent = recortada
+      ? `${hechas} de más de ${new Intl.NumberFormat('es-ES',
+          { useGrouping: 'always' }).format(total)} contratos`
+      : `${hechas} de ${plural(total, 'contrato', 'contratos')}`;
   }
 
   // Al volver desde la lista, se devuelve el control y la pinta ella:
