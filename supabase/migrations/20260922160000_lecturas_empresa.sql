@@ -3,7 +3,7 @@
 -- ============================================================
 --
 -- El criterio de una empresa lo escribe el modelo leyendo sus contratos
--- ganados, y no es determinista: dos altas de Soltec (22/09/2026) dieron
+-- ganados, y no es determinista: dos altas de la empresa de uniformidad policial (22/09/2026) dieron
 -- 38 y 17 contratos en la lista, y cinco más, entre 23 y 35.
 --
 -- Aquí se guarda la lectura del modelo por NIF (criterio, prefijos

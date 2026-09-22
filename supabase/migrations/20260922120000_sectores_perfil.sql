@@ -12,8 +12,8 @@
 -- prefijos a partir de sus contratos.
 --
 -- Por qué no el catálogo `sectores_cpv`: son 45 familias de 2 cifras,
--- demasiado gruesas. A Capgemini sus 12 prefijos le caían todos en
--- "Servicios informáticos" (una sola opción), y a Alumbrados Viarios la
+-- demasiado gruesas. A la consultora TIC sus 12 prefijos le caían todos en
+-- "Servicios informáticos" (una sola opción), y a una empresa de alumbrado público la
 -- señalización (3492) le salía como "Vehículos y transporte".
 --
 -- Tabla y no jsonb en `perfiles`: los avisos por sector necesitarán

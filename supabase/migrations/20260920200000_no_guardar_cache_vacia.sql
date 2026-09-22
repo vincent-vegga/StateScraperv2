@@ -33,7 +33,7 @@
 --
 -- No es específico de PIMEC: le pasa a cualquier usuario nuevo que
 -- toque las pestañas de mercado mientras se completa su alta. El
--- perfil de adolfopangulo@gmail.com, parado en `describiendo`, tiene
+-- perfil de un betatester, parado en `describiendo`, tiene
 -- la misma caché de competencia a cero por la misma razón.
 --
 -- EL ARREGLO
@@ -260,7 +260,7 @@ commit;
 --
 -- El recálculo de `buscar_organismo` NO CABE en el statement_timeout
 -- de 8 s para los sectores grandes. Medido sobre el perfil de
--- Capgemini (12 prefijos, 21.179 filas en la ventana de dos años):
+-- la consultora TIC (12 prefijos, 21.179 filas en la ventana de dos años):
 --
 --     1ª pasada, buffers fríos    30,5 s   (read=18206)
 --     2ª pasada                   11,9 s   (read=8091)
@@ -275,12 +275,12 @@ commit;
 -- La consecuencia se ve en la tabla: los perfiles más grandes NO
 -- TIENEN NINGUNA FILA en `organismos_guardados`.
 --
---     SALAN PRODUCCIONES   24.829 filas   sin caché
---     SIENA EDUCACIÓN      22.436 filas   sin caché
---     Capgemini            21.179 filas   sin caché
---     HERREROS Y SOCIOS    14.980 filas   sin caché
---     MARE NOSTRUM         16.134 filas   con caché (1.000)
---     ALTEISA              12.836 filas   con caché (1.000)
+--     PRODUCTORA MUSICAL    24.829 filas   sin caché
+--     SERVICIOS EDUCATIVOS      22.436 filas   sin caché
+--     la consultora TIC            21.179 filas   sin caché
+--     MATERIAL DE OFICINA    14.980 filas   sin caché
+--     COORD. SEGURIDAD OBRAS         16.134 filas   con caché (1.000)
+--     SONIDO EVENTOS              12.836 filas   con caché (1.000)
 --
 -- El corte no es limpio porque depende del calor de los buffers en
 -- ese instante. Es la misma frontera, vista dos veces.

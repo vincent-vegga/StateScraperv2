@@ -4,9 +4,9 @@
 -- ============================================================
 --
 -- Aplicada el 22/09/2026, en dos tramos (datos y funciones), con los
--- tres agregados recalculados después. Soltec: 83,9 M€ -> 2,77 M€.
+-- tres agregados recalculados después. la empresa de uniformidad policial: 83,9 M€ -> 2,77 M€.
 --
--- Soltec Pro Uniformidad (B72798408) salía con 83,9 M€ adjudicados. Su
+-- Una empresa de uniformidad policial salía con 83,9 M€ adjudicados. Su
 -- cifra real ronda los 2,8 M€. Dos fallos que se suman:
 --
 -- 1. IMPORTES DE LICITACIÓN IMPOSIBLES. Un acuerdo marco de uniformidad

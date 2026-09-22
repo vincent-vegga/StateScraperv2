@@ -190,7 +190,7 @@ function barajar<T>(lista: T[]) {
 // El cliente no ve códigos: ve 2-6 sectores con el nombre que usaría él.
 // Se escriben agrupando SUS prefijos a partir de SUS contratos, porque el
 // mismo código significa cosas distintas según la empresa: el 3499 de
-// Alumbrados Viarios son iluminaciones navideñas, no "vehículos".
+// una empresa de alumbrado público son iluminaciones navideñas, no "vehículos".
 
 const INSTRUCCIONES_SECTORES = `\
 Te dan los prefijos CPV con los que se buscan contratos públicos para una \

@@ -314,7 +314,7 @@ el arreglo barato basta.
 CPV (contratos menores de universidades y ayuntamientos, sobre todo) el
 modelo le deduce los códigos a partir de los títulos
 (`confirmar_empresa` en `supabase/functions/alta/index.ts`). Funciona,
-pero tiende a añadir alguno de más: a IMPERCAVI (impermeabilización y
+pero tiende a añadir alguno de más: a una empresa de impermeabilización (impermeabilizaciones y
 reparaciones) le puso 4523, obras de carreteras y canalizaciones, y le
 salieron 673 contratos por clasificar en el alta.
 
@@ -347,7 +347,7 @@ conocida y compararlo con lo que tenemos.
 **Qué pasa.** La lista de Organismos sale de `organismos_por_prefijo`, que
 solo cuenta contratos de los últimos 2 años y cuyo CPV **principal** sea
 uno de los prefijos de la empresa. La lista de Contratos, en cambio, mira
-cualquier CPV del contrato. Por eso Mataró no aparecía para Soltec (sus
+cualquier CPV del contrato. Por eso Mataró no aparecía para la empresa de uniformidad policial (sus
 uniformes son de principios de 2024) y Badalona salía con 1 de 3.
 
 **Cómo cerrarlo.** Ampliar la ventana (medir antes el refresco nocturno) y

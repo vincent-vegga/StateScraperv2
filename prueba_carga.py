@@ -25,7 +25,7 @@ pensada para correr en GitHub Actions: .github/workflows/prueba-carga.yml
     SUPABASE_URL, SUPABASE_KEY   -> obligatorias (clave secreta)
 
     python prueba_carga.py --usuarios 3 --empresas 3 --etapas 5,15,30
-    python prueba_carga.py --usuarios 1 --empresas 2 --etapas 0 --nifs B06392302,B53994695
+    python prueba_carga.py --usuarios 1 --empresas 2 --etapas 0 --nifs <NIF>,<NIF>
     python prueba_carga.py --solo-limpiar
 """
 

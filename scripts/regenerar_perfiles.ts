@@ -77,7 +77,7 @@ if (!contratos.length) {
 }
 
 // Misma empresa, misma lectura, también aquí: dos cuentas con el mismo NIF
-// (Mare Nostrum) salieron con 114 y 245 contratos porque se leyeron por
+// (una empresa de coordinación de seguridad en obras) salieron con 114 y 245 contratos porque se leyeron por
 // separado. Si ese NIF se ha leído en esta misma tanda, se reutiliza.
 const { data: reciente } = await db.from("lecturas_empresa").select("datos, creado")
   .eq("cif", cif).maybeSingle();
@@ -90,7 +90,7 @@ const finales = prefijosDeLectura(lectura, prefijos);
 
 // Salvaguarda: regenerar nunca puede encontrar MENOS de lo que la
 // empresa ha ganado. En el ensayo del 22/09/2026 el modelo podaba de más
-// en dos empresas (GMG del 83 al 67 %, Red2Red del 79 al 74 %). Si pasa,
+// en dos empresas (una distribuidora industrial del 83 al 67 %, una consultora de fondos europeos del 79 al 74 %). Si pasa,
 // se recuperan los prefijos antiguos que tapan el hueco, el que más
 // recupera primero, hasta igualar la cobertura de antes.
 const antiguos = String(perfil.cpv_prefijos ?? "").split(",").map((x) => x.trim()).filter(Boolean);

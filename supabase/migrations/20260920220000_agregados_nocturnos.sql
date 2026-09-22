@@ -204,9 +204,9 @@ commit;
 -- ============================================================
 -- LO QUE SE MIDIÓ EN LA AUDITORÍA, Y QUEDÓ BIEN
 --
---   movimientos_mercado(30), Capgemini     493 ms
+--   movimientos_mercado(30), la consultora TIC     493 ms
 --     La ventana de 30 días lo acota sola.
---   buscar_organismo, Capgemini            344 ms   (antes 11.900)
+--   buscar_organismo, la consultora TIC            344 ms   (antes 11.900)
 --   mi_seguimiento, 5 empresas grandes       1 ms   (antes 4.600)
 --
 -- PENDIENTE, y no lo resuelve esta migración:

@@ -832,7 +832,7 @@ abre nada: un id ajeno cae en el perfil más antiguo del propio usuario.
 
 ## 33. La lectura de una empresa: sin ejemplos del sector, con semilla y por NIF
 
-**Contexto.** Dos altas de Soltec (uniformidad policial) dieron 38 y 17
+**Contexto.** Dos altas de una empresa de uniformidad policial dieron 38 y 17
 contratos. Cinco más, entre 23 y 35. Los ejemplos de las instrucciones del
 modelo eran de uniformidad policial —el sector de uno de los primeros
 clientes—, y con una empresa de ese sector el modelo copiaba "no incluimos
@@ -845,7 +845,7 @@ semilla fija en las llamadas. Y la lectura se guarda por NIF
 (`lecturas_empresa`, 30 días): un perfil nuevo con un NIF ya leído la
 reutiliza; quien rehace su filtro obtiene otra.
 
-**Verificación.** Cinco altas de Soltec pasaron de 23-35 contratos a 39-51
+**Verificación.** Cinco altas de esa empresa pasaron de 23-35 contratos a 39-51
 sin exclusiones inventadas; dos altas seguidas, con la lectura reutilizada,
 42 y 44 (la diferencia son dos contratos de frontera en el cribado).
 
@@ -865,14 +865,14 @@ contratos ganados hasta cubrir el 90 %, de forma codiciosa, pesando lo que
 recupera cada código contra los contratos abiertos que añade al cribado.
 
 **Decisión.** Solo se añaden los códigos que recuperan dos o más contratos
-ganados (se añadieron tres: Alteisa 3731, Capgemini 7261, Herso 3782). No
+ganados (se añadieron tres, a una empresa de sonido para eventos, a una consultora TIC y a una distribuidora de material de oficina). No
 se construyó la regla para los que recuperan uno.
 
 **Motivo.** La validación temporal —elegir los códigos con lo ganado antes
 de julio de 2025 y medir con lo ganado después— no recuperó ni un contrato
 futuro en ninguna empresa. Las subidas con todos los datos eran memorizar
 encargos puntuales. Además, la lectura regenerada (decisión 33) ya había
-recogido sola los códigos que faltaban de verdad (Soltec: 1800, 1881,
+recogido sola los códigos que faltaban de verdad (la de uniformidad policial: 1800, 1881,
 3500).
 
 **Descartado también.** Quitar los ceros finales de los prefijos ("1810"
@@ -893,7 +893,7 @@ primera vez que abre la lista. Las preferencias del correo
 las mismas reglas que la lista.
 
 **Motivo.** El catálogo común de 45 familias CPV era demasiado grueso: a
-Capgemini todo le caía en "Servicios informáticos" y a Alumbrados Viarios
+una consultora TIC todo le caía en "Servicios informáticos" y a una empresa de alumbrado público
 la señalización le salía como "Vehículos". Si los sectores se regeneran,
 las elecciones del correo caen en cascada y el aviso vuelve a "todos": una
 preferencia caducada nunca hace perder contratos.

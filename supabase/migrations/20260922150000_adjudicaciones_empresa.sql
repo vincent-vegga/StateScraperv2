@@ -4,7 +4,7 @@
 --
 -- Aplicada el 22/09/2026, tramo a tramo. Relleno: 1.231.866 filas,
 -- 220.197 empresas (16.453 más que antes, las que solo ganaban lotes
--- secundarios). Soltec: 66 contratos, 70 lotes, 2.763.797 €.
+-- secundarios). la empresa de uniformidad policial: 66 contratos, 70 lotes, 2.763.797 €.
 --
 -- Hasta ahora todas las cifras por empresa salían de
 -- `licitaciones.adjudicatario_cif`, que guarda UN ganador por
@@ -12,7 +12,7 @@
 -- principal no existía para ese contrato. Medido el 22/09/2026:
 -- 190.488 lotes de 47.933 licitaciones, de 42.013 empresas, con
 -- 52.614 M€ fuera de acuerdos marco que no se apuntaba nadie (frente a
--- 282.416 M€ atribuidos). Soltec ganó lotes en 2 licitaciones que no
+-- 282.416 M€ atribuidos). la empresa de uniformidad policial ganó lotes en 2 licitaciones que no
 -- le contaban. Una empresa que SOLO gana lotes secundarios ni siquiera
 -- aparecía en el catálogo, así que no podía darse de alta.
 --

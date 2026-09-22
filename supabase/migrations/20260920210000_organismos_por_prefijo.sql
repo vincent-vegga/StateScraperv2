@@ -8,7 +8,7 @@
 --
 -- EL PROBLEMA
 -- El recálculo de `buscar_organismo` no cabía en el statement_timeout
--- de 8 s del rol `authenticated`. Medido sobre el perfil de Capgemini
+-- de 8 s del rol `authenticated`. Medido sobre el perfil de la consultora TIC
 -- (12 prefijos, 21.179 filas en la ventana de dos años):
 --
 --     1ª pasada, buffers fríos    30,5 s   (read=18206)
@@ -26,12 +26,12 @@
 -- a agotar el tiempo — 8 s de conexión y miles de lecturas que además
 -- desalojaban páginas de shared_buffers y perjudicaban al resto.
 --
---     SALAN PRODUCCIONES   24.829 filas   sin caché
---     SIENA EDUCACIÓN      22.436 filas   sin caché
---     Capgemini            21.179 filas   sin caché
---     HERREROS Y SOCIOS    14.980 filas   sin caché
---     MARE NOSTRUM         16.134 filas   con caché (1.000)
---     ALTEISA              12.836 filas   con caché (1.000)
+--     PRODUCTORA MUSICAL    24.829 filas   sin caché
+--     SERVICIOS EDUCATIVOS      22.436 filas   sin caché
+--     la consultora TIC            21.179 filas   sin caché
+--     MATERIAL DE OFICINA    14.980 filas   sin caché
+--     COORD. SEGURIDAD OBRAS         16.134 filas   con caché (1.000)
+--     SONIDO EVENTOS              12.836 filas   con caché (1.000)
 --
 -- El corte no es limpio porque dependía del calor de los buffers en
 -- ese instante. Es la misma frontera, vista dos veces.
@@ -56,7 +56,7 @@
 --      mismo sector hacían dos veces el mismo trabajo y uno nuevo lo
 --      hacía desde cero; ahora se calcula una vez y sirve a todos,
 --      incluido el que se dio de alta hace un minuto. 227.655 filas,
---      45 MB, y la lectura de Capgemini baja de 11.900 ms a 344 ms
+--      45 MB, y la lectura de la consultora TIC baja de 11.900 ms a 344 ms
 --      sin una sola lectura de disco.
 -- ============================================================
 
@@ -197,7 +197,7 @@ grant execute on function public.refrescar_organismos_por_prefijo(text[])
 -- ------------------------------------------------------------
 -- 4 · buscar_organismo lee del agregado.
 --
---     El tope sube de 1.000 a 5.000 organismos. Con 1.000, a Capgemini
+--     El tope sube de 1.000 a 5.000 organismos. Con 1.000, a la consultora TIC
 --     se le tiraban 2.767 de sus 3.767: justo los ayuntamientos
 --     pequeños que el comentario de la versión de un argumento avisaba
 --     de no perder. Con el agregado ya no cuesta nada traerlos, y la
@@ -285,7 +285,7 @@ grant execute on function public.buscar_organismo(text, integer, integer) to aut
 --     empresas que el usuario ya descartó a mano.
 --
 --     El problema es el de siempre: 1.000 filas por prefijo son 543 ms
---     en uno grande, y Capgemini tiene doce. Seis segundos y medio en
+--     en uno grande, y la consultora TIC tiene doce. Seis segundos y medio en
 --     caliente, contra 8 s de límite; por eso su caché de competencia
 --     también estaba sin calcular.
 --
