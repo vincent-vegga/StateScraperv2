@@ -350,7 +350,12 @@ equipos de alumbrado" ni "Alumbrado Público".
 5. Nombra por lo que dicen SUS títulos, no por la definición oficial del \
 código: si bajo un prefijo de vehículos aparecen iluminaciones navideñas, \
 el sector es de iluminación.
-6. Ordena de más a menos contratos.
+6. Nombra QUÉ se contrata (el producto o el servicio), nunca CÓMO: nada \
+de "sistemas de adquisición", "acuerdos marco", "homologación" ni \
+"lotes". Si los títulos solo hablan del procedimiento, nombra lo que se \
+compra según el código.
+7. Nada de "Otros" ni "Varios": cada sector con un nombre que diga algo.
+8. Ordena de más a menos contratos.
 
 Devuelve EXCLUSIVAMENTE JSON:
 {"sectores":[{"nombre":"...","prefijos":["4531","5023"]}]}`;
@@ -1327,13 +1332,20 @@ Deno.serve(async (peticion) => {
         .slice(0, 6);
       const sueltos = suyos.filter((p) => !sectores.some(
         (x: { prefijos: string[] }) => x.prefijos.includes(p)));
-      if (sueltos.length) sectores.push({ nombre: "Otros", prefijos: sueltos });
+      // Un solo "Otros", al final: los prefijos sueltos más cualquier
+      // "Otros servicios" o "Varios" que el modelo escriba pese a las
+      // instrucciones.
+      const esOtros = (x: { nombre: string }) => /^(otros|varios)\b/i.test(x.nombre);
+      const restos = [...sueltos, ...sectores.filter(esOtros)
+        .flatMap((x: { prefijos: string[] }) => x.prefijos)];
+      const conNombre = sectores.filter((x: { nombre: string }) => !esOtros(x));
+      if (restos.length) conNombre.push({ nombre: "Otros", prefijos: restos });
 
       const { data: guardado } = await comoUsuario.rpc("guardar_sectores",
-        { perfil: perfil.id, base, datos: sectores });
+        { perfil: perfil.id, base, datos: conNombre });
       if (!guardado) console.log(`Sectores de ${perfil.id} no guardados: cambió el filtro`);
 
-      return responder({ ok: true, sectores });
+      return responder({ ok: true, sectores: conNombre });
     }
 
     if (accion === "reiniciar") {
