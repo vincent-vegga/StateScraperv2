@@ -790,7 +790,22 @@ Deno.serve(async (peticion) => {
                     `se deducen de los títulos`);
       }
 
-      const lectura = await leerHistorial(contratos, prefijos);
+      // Misma empresa, misma lectura. El modelo no es determinista y dos
+      // altas del mismo NIF daban listas de 17 y de 38 contratos. Un
+      // perfil nuevo reutiliza la lectura guardada de ese NIF (30 días);
+      // quien rehace su filtro (criterio_version > 0) pide una nueva.
+      const CADUCA_LECTURA = 30 * 24 * 3600 * 1000;
+      let lectura: Record<string, unknown> | null = null;
+      if (!((perfil.criterio_version ?? 0) > 0)) {
+        const { data: guardada } = await admin.from("lecturas_empresa")
+          .select("datos, creado").eq("cif", String(suya.cif)).maybeSingle();
+        if (guardada && Date.now() - Date.parse(guardada.creado) < CADUCA_LECTURA) {
+          lectura = guardada.datos;
+          console.log(`Empresa ${suya.cif}: lectura reutilizada del ${guardada.creado}`);
+        }
+      }
+      const reutilizada = lectura !== null;
+      if (!lectura) lectura = await leerHistorial(contratos, prefijos);
 
       // Los prefijos que valida el modelo. Si no valida ninguno —cosa que
       // no debería pasar— se usan los que tengan al menos dos contratos,
@@ -829,6 +844,12 @@ Deno.serve(async (peticion) => {
         // Directo a cribar: no hay tarjetas que deslizar.
         paso_alta: "cribando",
       }).eq("id", perfil.id);
+
+      if (!reutilizada) {
+        await admin.from("lecturas_empresa").upsert({
+          cif: String(suya.cif), datos: lectura, creado: new Date().toISOString(),
+        });
+      }
 
       console.log(`Empresa ${suya.cif}: ${suya.contratos} contratos, ` +
                   `prefijos ${finales.join(",")}`);
