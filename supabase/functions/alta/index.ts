@@ -103,12 +103,12 @@ contratos en un título:
 
 - "producto": qué vende, en las palabras que aparecerían escritas en el \
 título de un contrato público. Usa RAÍCES sin terminación, para que valgan \
-en singular y plural: "uniform" cubre uniforme y uniformidad; "chalec" \
-cubre chaleco y chalecos. Entre 5 y 12 palabras. Sin tildes.
+en singular y plural: "comed" cubre comedor y comedores; "menu" cubre menú \
+y menús. Entre 5 y 12 palabras. Sin tildes.
 
-- "destinatario": a quién se lo vende. Es lo que separa "uniformidad para \
-policía" de "uniformidad para jardineros municipales", que es la \
-distinción que de verdad importa. Entre 3 y 8 palabras, también en raíz y \
+- "destinatario": a quién se lo vende. Es lo que separa "comedor para \
+colegios" de "comedor para residencias de mayores", que es la distinción \
+que de verdad importa. Entre 3 y 8 palabras, también en raíz y \
 sin tildes. Si el negocio no tiene un destinatario característico, \
 devuelve la lista vacía.
 
@@ -122,14 +122,14 @@ resultado más que ayudarlo.
 "administr" ni parecidas: están en casi todos los contratos públicos, así \
 que no separan nada.
   · El destinatario debe ser el COLECTIVO CONCRETO que usa lo que vende \
-—"polic", "bomber", "sanitari", "escolar"—, no el organismo que firma el \
-contrato.
+—"escolar", "alumn", "residen", "hospital"—, no el organismo que firma \
+el contrato.
   · Prefiere palabras específicas del oficio aunque cubran menos casos: \
 más vale reconocer la mitad con precisión que todo sin criterio.
 
 Devuelve EXCLUSIVAMENTE JSON:
 {"prefijos":[{"prefijo":"18","que_trae":"...","aviso":"..."}],\
-"producto":["uniform","chalec"],"destinatario":["polic","agente"],\
+"producto":["comed","menu"],"destinatario":["escolar","alumn"],\
 "resumen":"..."}`;
 
 async function llamarModelo(mensajes: unknown[], maxTokens = 900,
@@ -142,6 +142,10 @@ async function llamarModelo(mensajes: unknown[], maxTokens = 900,
     messages: mensajes,
     response_format: { type: "json_object" },
     temperature: 0,
+    // Con temperatura 0 el modelo no es determinista: dos altas de la
+    // misma empresa dieron criterios distintos (38 y 17 contratos en la
+    // lista). La semilla fija hace las respuestas mucho más repetibles.
+    seed: 20260922,
     max_tokens: maxTokens,
   });
 
@@ -256,11 +260,11 @@ para decidir, sobre contratos futuros, si le interesan a esta empresa.
    · En español y en segunda persona: "responde sí cuando...".
    · Estructura: qué es "sí", qué es "quizás", qué es "no".
    · Deduce el PRINCIPIO que une sus contratos, no los enumeres. Si ha \
-ganado vestuario para policía local, el principio es equipar a cuerpos de \
-seguridad, no "vestuario de Valdemorillo".
+ganado comedores de colegios, el principio es la restauración colectiva \
+para centros educativos, no "el comedor del CEIP de Valdemorillo".
    · Identifica primero QUÉ EJES distinguen sus contratos de los demás. \
 Según el negocio pueden ser el producto, el destinatario o el tamaño del \
-contrato. En uniformidad policial el eje es el destinatario; en material \
+contrato. En comedores escolares el eje es el destinatario; en material \
 de oficina, donde el destinatario da igual, serán otros. Escribe el \
 criterio en función de los ejes que de verdad separan, no de los que \
 suenan bien.
@@ -276,8 +280,14 @@ describen su pasado, no su capacidad.
    · DEFINE EL "NO" CON EL VECINO MÁS PARECIDO, no con lo lejano. Decir \
 "no cuando sea software o maquinaria" no sirve de nada: nadie confunde eso. \
 Lo que hay que nombrar es el caso que SÍ se parece y aun así no encaja \
-—"vestuario para personal municipal que no pertenece a cuerpos de \
-seguridad"—, porque es el único que un clasificador puede equivocar.
+—"catering para un acto puntual, que es comida pero no un comedor \
+diario"—, porque es el único que un clasificador puede equivocar.
+   · Pero el "no" solo puede nombrar lo que CONTRADIGA sus contratos \
+ganados. Un colectivo o un producto vecino del que no hay contratos ni a \
+favor ni en contra —otro tipo de centro, otro cuerpo, otro servicio \
+parecido— va a "quizás", NUNCA a "no": que no lo haya ganado todavía no \
+dice que no pueda hacerlo. No inventes exclusiones que no salgan de los \
+títulos que has leído.
    · Incluye la prueba decisiva: ¿podría esta empresa ser el proveedor \
 principal de este contrato?
    · Ante duda razonable entre "quizás" y "no", elige "quizás". Perder una \
@@ -286,8 +296,8 @@ oportunidad es mucho más grave que mostrar una de más.
 
 2. VALIDAR SUS CÓDIGOS CPV. Se te dan los prefijos que aparecen en sus \
 contratos, con su frecuencia. Algunos están MAL PUESTOS por el organismo \
-que publicó el anuncio: es habitual. Un contrato titulado "Vestuario \
-Policía Local" con el código de software lleva un error evidente.
+que publicó el anuncio: es habitual. Un contrato titulado "Servicio de \
+comedor escolar" con el código de software lleva un error evidente.
 
    Devuelve solo los prefijos que encajan de verdad con lo que hace la \
 empresa, según los títulos que has leído. Descarta los que solo pueden \
@@ -304,10 +314,12 @@ lenguaje corriente, que expliquen QUÉ se busca y qué se descarta. No es el \
 criterio: es lo que se le enseña a él para que entienda con qué se le \
 filtra y pueda corregirlo si no encaja.
 
-   Ejemplo: ["Buscamos vestuario y equipación para policía local y \
-protección civil", "No incluimos bomberos, Guardia Civil ni Policía \
-Nacional", "Descartamos uniformidad de personal municipal sin relación con \
-la seguridad"].
+   Ejemplo: ["Buscamos servicios de comedor y cocina para colegios y \
+escuelas infantiles", "También te enseñamos residencias y otros centros \
+con comedor diario, por si te encajan", "Descartamos catering para actos \
+puntuales y máquinas expendedoras"].
+
+   Es un EJEMPLO DE FORMA, de otro sector: no copies nada de su contenido.
 
    Que sea concreto y en primera persona del plural. Nada de tecnicismos, \
 códigos CPV ni referencias a cómo funciona el sistema.
@@ -424,12 +436,12 @@ justifique explícitamente o que el patrón se repita en varias \
 correcciones. Un rechazo suelto no cierra una categoría entera.
 
 3. LOS MOTIVOS ESCRITOS MANDAN sobre los rechazos sin explicar. Si dice \
-"no trabajo con vestuario que no sea de seguridad", eso es una regla; diez \
+"no hacemos comedores de más de 500 menús", eso es una regla; diez \
 rechazos sin motivo son solo una pista de que algo falla.
 
-4. BUSCA EL PATRÓN, no los casos. Si ha rechazado tres contratos de \
-uniformidad municipal, el criterio debe decir que la uniformidad sin \
-destinatario de seguridad no encaja, no enumerar esos tres ayuntamientos.
+4. BUSCA EL PATRÓN, no los casos. Si ha rechazado tres comedores de \
+residencias de mayores, el criterio debe decir que los comedores fuera de \
+centros educativos no encajan, no enumerar esas tres residencias.
 
 5. Mantén la estructura: qué es "sí", qué es "quizás", qué es "no". Define \
 el "no" con el caso MÁS PARECIDO que aun así no encaja, no con lo lejano.
@@ -444,8 +456,7 @@ busca y qué se descarta. Es lo que él verá; el criterio no se le enseña.
 criterio anterior, escritas para que el cliente vea el efecto, no el \
 mecanismo. En segunda persona y concretas:
 
-   BIEN: "Ya no te mostraremos vestuario de personal municipal que no sea \
-de cuerpos de seguridad"
+   BIEN: "Ya no te mostraremos comedores de residencias de mayores"
    MAL: "Se ha restringido la cláusula de inclusión del criterio"
 
    Una o dos frases. Si no ha cambiado nada, lista vacía.
@@ -495,8 +506,8 @@ REGLAS:
 1. Escribe en español, en segunda persona ("responde sí cuando...").
 2. Estructura: qué es "sí", qué es "quizás", qué es "no".
 3. Deduce el PRINCIPIO que separa los casos, no enumeres los ejemplos. Si \
-marcó "no" a ropa de bomberos y "sí" a uniformidad policial, el principio \
-es el destinatario, no la prenda.
+marcó "no" a comedores de residencias y "sí" a comedores escolares, el \
+principio es el destinatario, no la comida.
 4. NUNCA uses el territorio como criterio —ni provincia, ni comunidad, \
 ni ciudad, ni "especialmente en X"—. Dónde ha trabajado no dice dónde \
 puede trabajar, y el cliente ya filtra por zona con un selector propio.
@@ -597,9 +608,9 @@ del contrato. En el motivo, cita la palabra o frase concreta que satisface \
 cada una. Si alguna condición la estás infiriendo en lugar de leerla, el \
 veredicto es "quizás", no "sí".
 
-Es el fallo habitual: ante un criterio como "vestuario para cuerpos de \
-seguridad", un contrato de "vestuario para el personal del Ayuntamiento" \
-cumple lo de vestuario pero NO lo de cuerpos de seguridad. Eso es "quizás".
+Es el fallo habitual: ante un criterio como "comedor para centros \
+educativos", un contrato de "comedor para el personal del Ayuntamiento" \
+cumple lo de comedor pero NO lo de centros educativos. Eso es "quizás".
 
 Devuelve EXCLUSIVAMENTE un objeto JSON, sin texto alrededor:
 {"veredicto":"si|quizas|no","motivo":"una frase breve en español que cite \
