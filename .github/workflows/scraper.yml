@@ -1,10 +1,9 @@
 # ============================================================
 # ROBOT DIARIO
 # ============================================================
-# El envío de correo está DESACTIVADO en este repositorio: sin
-# clave de Resend, ese paso terminaría en rojo cada mañana y se
-# acabaría ignorando el aviso. Se reactiva cuando haga falta,
-# volviendo a añadir el job `alertar`.
+# El envío de correo está ACTIVO desde el 22/09/2026, en la pasada
+# automática (modo `normal`). Solo escribe a quien haya encendido la
+# campana: `perfiles.avisos` nace apagado y se enciende desde la web.
 # ============================================================
 # Cada mañana GitHub enciende un ordenador en la nube, lee los
 # feeds de los sectores que necesitan los clientes dados de alta,
@@ -250,13 +249,12 @@ jobs:
         # El aviso diario sale del cron, en modo `normal`, una vez al
         # día. Que es lo que el cliente espera.
         #
-        # APAGADO A PROPÓSITO durante las pruebas.
-        #
-        # El cron corre cada mañana en modo `normal`, así que con esto en
-        # marcha saldrían avisos de verdad a gente que se dio de alta
-        # ayer y no espera un correo. Para reactivarlo, cambiar esta
-        # línea por:  if: env.MODO == 'normal'
-        if: env.MODO == 'nunca'
+        # ACTIVO desde el 22/09/2026. Nadie recibe nada sin pedirlo: la
+        # campana (`perfiles.avisos`) nace apagada y solo el cliente la
+        # enciende, y `perfiles_con_novedades` filtra por ella. Para
+        # apagar el envío entero, cambiar esta línea por:
+        #   if: env.MODO == 'nunca'
+        if: env.MODO == 'normal'
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           # Desde el dominio propio. Sin esto sale el remitente de

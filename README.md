@@ -21,7 +21,7 @@ En producción con primeros usuarios reales. El core funciona; hay deuda técnic
 | Pantalla de Contratos abiertos | ✅ |
 | Inteligencia de mercado: Empresas, Movimientos, Organismos | ✅ |
 | Viabilidad: puntuación por contrato | ✅ |
-| Alerta diaria por correo | ⚙️ Activa, apagada durante pruebas |
+| Alerta diaria por correo | ✅ Activa, solo para quien enciende la campana |
 | Histórico completo | ⚙️ Parcial (~25% del disponible) |
 | Sistemas dinámicos de adquisición marcados como tales | ⬜ Pendiente |
 | Alta sin historial: camino estable | ⬜ Frágil |
@@ -127,7 +127,7 @@ La caché existe porque calcular competencia o fichas sobre 25.000 contratos cad
 
 ### Cron diario
 
-Cada mañana a las 06:00 UTC (08:00 peninsular en verano). Ejecuta el scraper y el cribado. La alerta de correo está apagada durante las pruebas.
+Cada mañana a las 06:00 UTC (08:00 peninsular en verano). Ejecuta el scraper, el cribado y la alerta por correo. Solo recibe correo quien haya encendido la campana: `perfiles.avisos` nace apagado.
 
 ### Modos manuales
 

@@ -17,8 +17,9 @@ Contexto útil para cualquier sesión nueva:
 - El scraper corre en GitHub Actions (`.github/workflows/scraper.yml`). GitHub
   retrasa el cron: las pasadas "de las 06:00 UTC" arrancan hacia las
   10:30-11:15. Los agregados de `pg_cron` van a las 14:00-14:30 UTC por eso.
-- El correo diario está apagado a propósito durante la beta
-  (`if: env.MODO == 'nunca'` en el workflow). No es una avería.
+- El correo diario está ACTIVO desde el 22/09/2026, pero solo para quien
+  encienda la campana: `perfiles.avisos` nace apagado y se apagó en todos
+  los perfiles al activarlo. Si nadie lo enciende, no sale ningún correo.
 
 ---
 
