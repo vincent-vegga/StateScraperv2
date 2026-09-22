@@ -319,14 +319,20 @@ def comprobar(dueno_esperado, filas, campo, fase, pantalla):
 
 
 async def pantalla_contratos(api, fase, d):
-    filas, _, _ = await asyncio.gather(
+    filas, _, _, sectores = await asyncio.gather(
         api.tabla(fase, "mis_oportunidades",
                   f"mis_oportunidades?select=*&perfil_id=eq.{d['perfil']}",
                   d["token"], d["perfil"]),
         api.rpc(fase, "marcar_visita", {}, d["token"], d["perfil"]),
         api.rpc(fase, "pendientes_de_perfil", {"perfil": d["perfil"], "tope": 1},
-                d["token"], d["perfil"]))
+                d["token"], d["perfil"]),
+        # La web los lee al abrir la lista (y los guarda en memoria).
+        api.tabla(fase, "sectores_perfil",
+                  f"sectores_perfil?select=id,nombre,prefijos,base,perfil_id"
+                  f"&perfil_id=eq.{d['perfil']}&order=orden",
+                  d["token"], d["perfil"]))
     comprobar(d["perfil"], filas, "perfil_id", fase, "contratos")
+    comprobar(d["perfil"], sectores, "perfil_id", fase, "sectores")
 
 
 async def pantalla_movimientos(api, fase, d):
