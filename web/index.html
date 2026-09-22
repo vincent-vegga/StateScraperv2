@@ -66,7 +66,7 @@
   --sombra-corta:0 1px 1px rgba(24,42,61,.03);
   --sombra-baja:0 1px 2px rgba(24,42,61,.025);
   --sombra-pegajosa:0 8px 18px rgba(24,42,61,.035);
-  --sombra-flotante:0 16px 35px rgba(24,42,61,.16);
+  --sombra-flotante:0 2px 4px rgba(24,42,61,.04),0 10px 22px rgba(24,42,61,.11);
   --sombra-boton:0 4px 10px rgba(23,42,61,.14);
   --sombra-boton-alta:0 6px 15px rgba(23,42,61,.2);
   --foco:0 0 0 3px rgba(23,42,61,.09);
@@ -101,7 +101,7 @@ html[data-tema="oscuro"]{
   --sombra-corta:0 1px 1px rgba(0,0,0,.25);
   --sombra-baja:0 1px 2px rgba(0,0,0,.3);
   --sombra-pegajosa:0 8px 18px rgba(0,0,0,.35);
-  --sombra-flotante:0 16px 35px rgba(0,0,0,.55);
+  --sombra-flotante:0 2px 4px rgba(0,0,0,.3),0 10px 22px rgba(0,0,0,.45);
   --sombra-boton:0 4px 10px rgba(0,0,0,.3);
   --sombra-boton-alta:0 6px 15px rgba(0,0,0,.4);
   --foco:0 0 0 3px rgba(232,234,237,.12);
@@ -128,7 +128,11 @@ body{
   font-size:16px;
   line-height:1.55;
   -webkit-font-smoothing:antialiased;
+  /* `clip` y no `hidden`: `hidden` convierte al body en contenedor de
+     desplazamiento y la barra de filtros, que es `sticky`, dejaba de
+     quedarse fija. `clip` corta igual sin ese efecto. */
   overflow-x:hidden;
+  overflow-x:clip;
 }
 
 ::selection{
@@ -1381,6 +1385,7 @@ select:focus{
 }
 .movimiento:last-child{border-bottom:0}
 .movimiento .gano{font-size:.86rem;font-weight:650;margin:0 0 4px}
+.movimiento .gano .cuanto{font-weight:400;color:var(--tenue)}
 .movimiento .que{margin:0 0 4px;font-size:.95rem;line-height:1.42}
 .movimiento .donde{color:var(--tenue);font-size:.85rem}
 .movimiento .cifra{text-align:right;white-space:nowrap}
@@ -1405,7 +1410,7 @@ select:focus{
    caja; si empuja al body, hay que deslizar todo de lado y la cabecera
    se va con ello. */
 @media(max-width:640px){
-  html, body{overflow-x:hidden}
+  html, body{overflow-x:hidden;overflow-x:clip}
 
   /* El panel de usuario, en una columna.
      Con `180px 1fr`, en 390 px quedaban menos de 130 para el valor y
@@ -1425,8 +1430,10 @@ select:focus{
   .dictamen{padding:20px}
   .como-adjudica{grid-template-columns:1fr;gap:14px}
 
-  .envoltorio{max-width:100%;overflow-x:hidden}
-  table{display:block;overflow-x:auto;max-width:100%}
+  .envoltorio{max-width:100%;overflow-x:hidden;overflow-x:clip}
+  /* Las tablas de datos (`.tabla`) no: ya caben por diseño, y como
+     bloque perdían el ancho fijo de sus columnas. */
+  table:not(.tabla){display:block;overflow-x:auto;max-width:100%}
   .reparto, .apilada, .quesito, .pesos{max-width:100%}
   pre, code{overflow-x:auto;max-width:100%}
   /* Los títulos largos de contrato no ensanchan la pantalla. */
@@ -1573,8 +1580,8 @@ select:focus{
   /* Cabe menos: se deja el nombre, el importe y el botón. El número de
      contratos se ve al abrir la ficha. */
   .tabla th:nth-child(2), .tabla td:nth-child(2){display:none}
-  .tabla th.num, .tabla td.num{width:96px;padding:9px 6px}
-  .tabla th.fin, .tabla td.fin{width:100px}
+  .tabla th.num, .tabla td.num{width:92px;padding:9px 8px 9px 4px;text-align:right}
+  .tabla th.fin, .tabla td.fin{width:78px}
   .seguir.chico{padding:0 9px;font-size:.76rem}
 }
 
@@ -2082,97 +2089,109 @@ select:focus{
   align-self:stretch;
 }
 
+/* El campo es un botón con la misma forma que los otros selectores de
+   la barra, y de alto fijo: con las provincias dentro como etiquetas,
+   tres o cuatro partían el campo en dos líneas y la barra entera daba
+   un salto. Lo elegido se resume en una línea ("Sevilla y 2 más") y el
+   detalle está en el panel. */
 .campo-geo{
   display:flex;
-  min-height:var(--alto);
-  flex-wrap:wrap;
-  gap:6px;
+  width:100%;
+  height:var(--alto);
   align-items:center;
-  padding:6px 10px;
+  padding:0 39px 0 13px;
   border:1px solid var(--linea);
   border-radius:8px;
-  background:var(--superficie);
-  cursor:text;
+  background-color:var(--superficie);
+  background-image:
+    linear-gradient(45deg,transparent 50%,var(--tenue) 50%),
+    linear-gradient(135deg,var(--tenue) 50%,transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size:5px 5px,5px 5px;
+  background-repeat:no-repeat;
+  color:var(--texto);
+  font:inherit;
+  font-size:.92rem;
+  text-align:left;
+  cursor:pointer;
   box-shadow:var(--sombra-corta);
   transition:border-color .16s,box-shadow .16s;
 }
 
-.campo-geo:focus-within{
+.campo-geo span{
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+
+.campo-geo:focus-visible,
+.campo-geo[aria-expanded="true"]{
+  outline:0;
   border-color:var(--fuerte);
   box-shadow:var(--foco);
 }
 
-.campo-geo input{
-  min-width:130px;
-  min-height:28px;
-  flex:1 1 130px;
-  padding:4px 0;
-  border:0;
-  border-radius:0;
-  background:none;
-  box-shadow:none;
-  color:var(--texto);
-  font:inherit;
-  font-size:.92rem;
-  outline:0;
-}
-
-.campo-geo input:focus{
-  border:0;
-  box-shadow:none;
-}
-
-.campo-geo input::placeholder{
-  color:var(--tenue);
-}
-
-.etiqueta{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:4px 5px 4px 11px;
-  border:1px solid var(--fuerte);
-  border-radius:99px;
-  background:var(--hover);
-  color:var(--texto);
-  font-size:.81rem;
+/* Con algo elegido se nota sin abrirlo: no es lo mismo que "Toda
+   España", y con los filtros recordados puede llevar días puesto. */
+.campo-geo.con-eleccion{
+  border-color:var(--fuerte);
   font-weight:600;
-  line-height:1.2;
 }
 
-.etiqueta button{
-  padding:0 3px;
-  border:0;
-  background:none;
-  color:var(--tenue);
-  cursor:pointer;
-  font-size:1rem;
-  line-height:1;
-  transition:color .15s;
-}
-
-.etiqueta button:hover{
-  color:var(--texto);
-}
-
-.desplegable{
+.panel-geo{
   position:absolute;
   z-index:30;
   top:calc(100% + 6px);
   right:0;
   left:0;
-  max-height:290px;
-  overflow-y:auto;
-  padding:5px;
+  min-width:280px;
   border:1px solid var(--fuerte);
   border-radius:9px;
   background:var(--superficie);
   box-shadow:var(--sombra-flotante);
 }
 
-.desplegable[hidden]{
+.panel-geo[hidden]{
   display:none !important;
 }
+
+.panel-geo input[type=search]{
+  display:block;
+  width:calc(100% - 12px);
+  height:38px;
+  margin:6px;
+  padding:0 11px;
+  box-shadow:none;
+}
+
+.desplegable{
+  max-height:290px;
+  overflow-y:auto;
+  padding:0 5px 5px;
+}
+
+.pie-geo{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:6px 8px 6px 14px;
+  border-top:1px solid var(--linea);
+  color:var(--tenue);
+  font-size:.84rem;
+}
+
+.pie-geo .enlace{
+  font-size:.84rem;
+  text-decoration:underline;
+  text-underline-offset:3px;
+  cursor:pointer;
+}
+
+.pie-geo .enlace:hover{color:var(--texto)}
+.pie-geo .enlace:disabled{visibility:hidden}
 
 .opcion{
   display:flex;
@@ -2544,18 +2563,60 @@ select:focus{
 
   .cabecera-app .quien{
     max-width:45%;
-    text-align:right;
   }
 
+  /* En el móvil, en rejilla y sin quedarse fija. Uno debajo de otro
+     eran cuatro campos y casi 300 px, y fija arriba tapaba media
+     pantalla al bajar por la lista. Ahora: la búsqueda arriba, encaje y
+     sector a la par, y la zona debajo. */
   .filtros{
+    position:static;
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
     gap:9px;
+    padding:14px 0 12px;
+    box-shadow:none;
+    backdrop-filter:none;
   }
 
-  .filtros > select,
-  .filtros > input[type=search],
-  .filtros > .selector{
-    flex-basis:100%;
+  .filtros > input[type=search]{
+    grid-column:1 / -1;
+    order:-1;
   }
+
+  .filtros > .selector,
+  .filtros > .quitar-filtros{
+    grid-column:1 / -1;
+  }
+
+  .filtros > .quitar-filtros{
+    justify-self:start;
+    padding:2px 0;
+  }
+
+  /* Con un solo sector no hay selector de sector: el de encaje ocupa
+     la fila entera. */
+  .filtros:has(#f-sector[hidden]) #f-veredicto{
+    grid-column:1 / -1;
+  }
+
+  .filtros > select{
+    padding-left:11px;
+    padding-right:30px;
+  }
+
+  .filtros > select{
+    background-position:
+      calc(100% - 15px) 20px,
+      calc(100% - 10px) 20px;
+  }
+
+  .pulso dl{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:14px 18px;
+  }
+
+  .pulso dd{font-size:1.15rem}
 
   .fila{
     grid-template-columns:78px minmax(0,1fr);
@@ -3826,7 +3887,7 @@ async function pantallaCribando(perfil, session, lectura, volviendo = false) {
     <div class="paso ancha">
       <h1>Estamos revisando los contratos abiertos</h1>
       ${lectura?.actividad ? `<p class="guia">Hemos entendido que te dedicas a
-      <strong>${esc(lectura.actividad.toLowerCase())}</strong>. Ahora buscamos
+      <strong>${esc(lectura.actividad.toLowerCase().replace(/[.\s]+$/, ''))}</strong>. Ahora buscamos
       contratos abiertos que encajen.</p>` : `
       <p class="guia">Aplicamos tu filtro a todas las licitaciones que siguen
       abiertas ahora mismo.</p>`}
@@ -5202,8 +5263,8 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
         }).join('')}</ol>
         <div class="detalle-tramo" data-hueco-ranking>
           <span class="titulo-tramo" style="font-weight:400;color:var(--tenue)">
-            Cada barra es el reparto de ese dinero entre sus contratos.
-            Pasa por encima de un tramo para ver cuál es.</span>
+            Cada barra reparte ese dinero entre sus contratos. Toca o
+            pasa por encima de un tramo para ver cuál es.</span>
         </div>
       </div>`;
   }
@@ -5319,9 +5380,10 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
           <dd>${euros(cifras.medio)}</dd></div>` : ''}
         ${cifras.mias ? `<div><dt>Las has ganado tú</dt>
           <dd>${cifras.mias}</dd></div>` : ''}
-        <p class="destacado">Cada lote de un contrato cuenta como una
-        adjudicación, así que el importe medio es por adjudicación y no por
-        expediente.</p>
+        <p class="destacado">Cada contrato cuenta una vez aunque tenga
+        varios lotes o varias empresas ganadoras, y el importe medio es por
+        contrato. En «Quién más ha facturado», cada empresa suma solo su
+        parte.</p>
       </dl>
     </div>
 
@@ -6323,13 +6385,21 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       </select>
       <input type="search" id="f-texto" placeholder="Buscar por título u órgano">
       <div class="selector">
-        <div class="campo-geo" id="campo-geo">
-          <input type="text" id="buscador-geo" autocomplete="off"
-                 role="combobox" aria-expanded="false" aria-controls="desplegable"
-                 aria-label="Filtrar por provincia" placeholder="Toda España">
+        <button type="button" class="campo-geo" id="campo-geo"
+                aria-haspopup="listbox" aria-expanded="false" aria-controls="panel-geo"
+                aria-label="Filtrar por provincia"><span id="resumen-geo">Toda España</span></button>
+        <div class="panel-geo" id="panel-geo" hidden>
+          <input type="search" id="buscador-geo" autocomplete="off"
+                 role="combobox" aria-expanded="true" aria-controls="desplegable"
+                 aria-label="Buscar provincia o comunidad"
+                 placeholder="Buscar provincia o comunidad">
+          <div class="desplegable" id="desplegable" role="listbox"
+               aria-multiselectable="true"></div>
+          <div class="pie-geo">
+            <span id="cuenta-geo"></span>
+            <button type="button" class="enlace" id="toda-espana">Toda España</button>
+          </div>
         </div>
-        <div class="desplegable" id="desplegable" role="listbox"
-             aria-multiselectable="true" hidden></div>
       </div>
       <button type="button" class="quitar-filtros" id="quitar-filtros" hidden>
         Quitar filtros</button>
@@ -6832,22 +6902,26 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     }
   }
 
+  // Lo elegido, resumido en el propio campo. Las etiquetas de antes
+  // partían el campo en varias líneas; ahora el detalle vive en el panel.
   function pintarEtiquetas() {
-    // Van antes del campo de escritura, así el cursor queda a su derecha
-    // y se ve que se puede seguir escribiendo.
-    campo.querySelectorAll('.etiqueta').forEach(e => e.remove());
-    [...elegidas].forEach(p => {
-      const et = document.createElement('span');
-      et.className = 'etiqueta';
-      et.innerHTML = `${esc(p)}<button type="button" aria-label="Quitar ${esc(p)}">×</button>`;
-      et.querySelector('button').onclick = ev => {
-        ev.stopPropagation();
-        elegidas.delete(p);
-        pintarEtiquetas(); pintarOpciones(); repintar();
-      };
-      campo.insertBefore(et, buscador);
-    });
-    buscador.placeholder = elegidas.size ? '' : 'Toda España';
+    const nombres = [...elegidas];
+    // Una comunidad entera se nombra por la comunidad: "Cataluña" dice
+    // más que "Barcelona y 3 más".
+    const enteras = comunidades.filter(c => c.provs.length > 1 && completa(c));
+    const sueltas = nombres.filter(p => !enteras.some(c => c.provs.includes(p)));
+    const piezas = [...enteras.map(c => c.nombre), ...sueltas];
+    const texto = !piezas.length ? 'Toda España'
+      : piezas.length === 1 ? piezas[0]
+      : piezas.length === 2 ? `${piezas[0]} y ${piezas[1]}`
+      : `${piezas[0]} y ${piezas.length - 1} más`;
+    document.getElementById('resumen-geo').textContent = texto;
+    campo.title = piezas.length > 1 ? piezas.join(', ') : '';
+    campo.classList.toggle('con-eleccion', elegidas.size > 0);
+    document.getElementById('cuenta-geo').textContent = elegidas.size
+      ? plural(elegidas.size, 'provincia elegida', 'provincias elegidas')
+      : 'Toda España';
+    document.getElementById('toda-espana').disabled = !elegidas.size;
   }
 
   function pintarOpciones() {
@@ -6877,32 +6951,46 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
     desplegable.querySelectorAll('.opcion').forEach(b => b.onclick = () => {
       alternar(lista[+b.dataset.i]);
-      // No se cierra: elegir varias es el caso normal.
-      buscador.value = '';
+      // No se cierra ni se borra lo escrito: elegir varias es el caso
+      // normal, y quien busca "castilla" quiere marcar varias de ellas.
       pintarEtiquetas(); pintarOpciones(); repintar();
-      buscador.focus();
     });
   }
 
+  const panel = document.getElementById('panel-geo');
+  // En el móvil, abrir el panel no saca el teclado: casi siempre se
+  // elige tocando, y el teclado taparía media lista.
+  const tactil = matchMedia('(hover:none),(pointer:coarse)').matches;
+
   const abrir = () => {
-    desplegable.hidden = false;
-    buscador.setAttribute('aria-expanded','true');
+    if (!panel.hidden) return;
+    panel.hidden = false;
+    campo.setAttribute('aria-expanded', 'true');
     pintarOpciones();
+    if (!tactil) buscador.focus();
   };
-  const cerrar = () => {
-    desplegable.hidden = true;
-    buscador.setAttribute('aria-expanded','false');
+  const cerrar = (devolverFoco = false) => {
+    if (panel.hidden) return;
+    panel.hidden = true;
+    campo.setAttribute('aria-expanded', 'false');
+    buscador.value = '';
     destacada = -1;
+    if (devolverFoco) campo.focus();
   };
 
-  campo.onclick = () => { buscador.focus(); abrir(); };
-  buscador.onfocus = abrir;
-  buscador.oninput = () => { destacada = -1; abrir(); };
+  campo.onclick = () => panel.hidden ? abrir() : cerrar();
+  campo.onkeydown = ev => {
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); abrir(); }
+  };
+  alPulsar('toda-espana', () => {
+    elegidas.clear();
+    pintarEtiquetas(); pintarOpciones(); repintar();
+  });
+  buscador.oninput = () => { destacada = -1; pintarOpciones(); };
   buscador.onkeydown = ev => {
     const lista = visibles();
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       ev.preventDefault();
-      if (desplegable.hidden) abrir();
       destacada = ev.key === 'ArrowDown'
         ? Math.min(destacada + 1, lista.length - 1)
         : Math.max(destacada - 1, 0);
@@ -6913,18 +7001,21 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       const item = destacada >= 0 ? lista[destacada] : (lista.length === 1 ? lista[0] : null);
       if (item) {
         alternar(item);
-        buscador.value = ''; destacada = -1;
         pintarEtiquetas(); pintarOpciones(); repintar();
       }
-    } else if (ev.key === 'Backspace' && !buscador.value && elegidas.size) {
-      elegidas.delete([...elegidas].pop());
-      pintarEtiquetas(); pintarOpciones(); repintar();
     } else if (ev.key === 'Escape') {
-      cerrar(); buscador.blur();
+      ev.preventDefault();
+      cerrar(true);
     }
   };
+  // Por la ruta del clic y no por `closest`: al marcar una opción la
+  // lista se repinta, y cuando el clic llega aquí la opción ya no está en
+  // la página. `closest` no encontraba el selector y cerraba el panel.
   document.addEventListener('click', ev => {
-    if (!ev.target.closest('.selector')) cerrar();
+    if (!ev.composedPath().some(n => n.classList?.contains('selector'))) cerrar();
+  });
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && !panel.hidden) cerrar(true);
   });
 
   // ---------- Pestañas ----------
