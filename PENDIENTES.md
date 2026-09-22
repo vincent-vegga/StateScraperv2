@@ -295,3 +295,43 @@ se hizo con lo mínimo para la prueba con betatesters. Queda:
 - **Respaldo.** Las definiciones anteriores de las 21 funciones reescritas
   están en `public.respaldo_funciones_20260922`. Para volver atrás, ejecutar
   cada `definicion` de esa tabla.
+
+---
+
+## 10. Arranque en frío: las primeras consultas del día tardan hasta 3 s
+
+**Qué pasa.** En las pruebas de carga del 22/09/2026 (`prueba_carga.py`),
+la primera etapa dio picos de 3,4 s en `competencia` y 2,6 s en
+`mis_oportunidades`. Con la base ya caliente, las mismas llamadas bajan a
+~120-200 ms de mediana, incluso con 100 dispositivos a la vez. Es la caché
+de Postgres vacía: con 1 GB de RAM, `licitaciones` (~2,5 GB) no cabe
+entera, y lo que no se ha tocado en un rato se lee del disco.
+
+**A qué afecta.** Al primer cliente que entra después de un rato sin
+actividad. No hay errores: solo una pantalla lenta.
+
+**Cómo cerrarlo.** Lo barato: una tarea en `pg_cron` que, a primera hora y
+cada pocas horas, llame a las consultas de las pantallas principales para
+calentar la caché (`pg_prewarm` sobre los índices que usan es la versión
+fina). Lo caro: subir de instancia. Antes, medir con la prueba de carga si
+el arreglo barato basta.
+
+---
+
+## 11. CPV deducidos por el modelo: algo más amplios de la cuenta
+
+**Qué pasa.** Desde el 22/09/2026, a una empresa cuyos contratos no traen
+CPV (contratos menores de universidades y ayuntamientos, sobre todo) el
+modelo le deduce los códigos a partir de los títulos
+(`confirmar_empresa` en `supabase/functions/alta/index.ts`). Funciona,
+pero tiende a añadir alguno de más: a IMPERCAVI (impermeabilización y
+reparaciones) le puso 4523, obras de carreteras y canalizaciones, y le
+salieron 673 contratos por clasificar en el alta.
+
+**A qué afecta.** Al tiempo y al coste del alta de esas empresas (un 3 %
+de las SL, un 7 % de los autónomos). La lista final no empeora: el
+cribador descarta lo que no encaja.
+
+**Cómo cerrarlo.** Si se repite, pedir al modelo solo los prefijos que
+aparezcan en al menos dos títulos, o validar los propuestos contra los
+CPV que de verdad usan los organismos para contratos parecidos.
