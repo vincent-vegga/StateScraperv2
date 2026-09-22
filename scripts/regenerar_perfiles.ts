@@ -72,7 +72,7 @@ const contratos = ((ganados ?? []) as Record<string, unknown>[]).map((g) => ({
 }));
 const prefijos = (prefijosCrudos ?? []) as { prefijo: string; contratos: number }[];
 if (!contratos.length) {
-  console.log(`${perfil.empresa}: sin contratos ganados, no se toca`);
+  console.log(`perfil ${String(perfil.id).slice(0, 8)}: sin contratos ganados, no se toca`);
   Deno.exit(0);
 }
 
@@ -110,7 +110,7 @@ while (cubre(finales) < objetivo) {
   recuperados.push(candidatos[0].p);
 }
 if (!finales.length) {
-  console.log(`${perfil.empresa}: la lectura no da prefijos, no se toca`);
+  console.log(`perfil ${String(perfil.id).slice(0, 8)}: la lectura no da prefijos, no se toca`);
   Deno.exit(0);
 }
 
@@ -138,8 +138,10 @@ if (correcciones?.length) {
   }
 }
 
+// Sin el nombre ni el NIF de la empresa: los registros de Actions son
+// públicos en un repositorio público.
 console.log([
-  `== ${perfil.empresa} (${cif})${ensayo ? " · ENSAYO, no se escribe nada" : ""}`,
+  `== perfil ${String(perfil.id).slice(0, 8)}${ensayo ? " · ENSAYO, no se escribe nada" : ""}`,
   `   prefijos: ${perfil.cpv_prefijos}  ->  ${finales.join(",")}` +
     (recuperados.length ? `  (recuperados para no perder cobertura: ${recuperados.join(",")})` : ""),
   `   cobertura de lo ganado: ${objetivo}/${ganadosPref.length} antes, ${cubre(finales)}/${ganadosPref.length} ahora`,

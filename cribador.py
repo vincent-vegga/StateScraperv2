@@ -258,7 +258,14 @@ def leer_perfiles(cliente, solo: str | None) -> list[dict]:
                     .eq("activo", True).not_.is_("criterio", "null"))
         if solo:
             consulta = consulta.eq("id", solo)
-        return consulta.execute().data or []
+        filas = consulta.execute().data or []
+        # El nombre de la empresa NO se escribe en el registro: en un
+        # repositorio público, los registros de Actions los ve cualquiera,
+        # y ahí saldría quién usa el servicio. En su lugar, las primeras
+        # cifras de su id, que bastan para seguir una ejecución.
+        for fila in filas:
+            fila["nombre"] = "perfil " + str(fila["id"])[:8]
+        return filas
     except Exception as error:
         logging.error("No se pudieron leer los perfiles: %s", error)
         sys.exit(1)

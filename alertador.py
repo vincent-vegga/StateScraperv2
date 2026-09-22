@@ -571,6 +571,10 @@ def main() -> int:
 
     for perfil in perfiles:
         nombre = perfil.get("empresa") or perfil.get("nombre") or "?"
+        # Para el registro, nunca el nombre de la empresa: los registros de
+        # Actions son públicos en un repositorio público. El nombre sí va
+        # dentro del correo, que es suyo.
+        etiqueta = "perfil " + str(perfil["id"])[:8]
         items = novedades(cliente, perfil["id"])
         # Las adjudicaciones de la competencia NO van por correo: el correo
         # es para lo que caduca, y una adjudicación ya cerrada no exige
@@ -584,7 +588,7 @@ def main() -> int:
             sin_novedades += 1
             continue
 
-        logging.info("[%s] %d novedades.", nombre, len(items))
+        logging.info("[%s] %d novedades.", etiqueta, len(items))
         asunto, cuerpo_html, cuerpo_texto = componer(items, seguidas, nombre)
 
         if opciones.simulacro:
@@ -594,7 +598,7 @@ def main() -> int:
 
         destino = perfil.get("email", "").strip()
         if not destino:
-            logging.warning("[%s] Sin correo. Se salta.", nombre)
+            logging.warning("[%s] Sin correo. Se salta.", etiqueta)
             fallidos += 1
             continue
 
