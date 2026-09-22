@@ -24,7 +24,7 @@ on:
         description: 'Empresas por usuario (1-3)'
         default: '3'
       etapas:
-        description: 'Dispositivos simultáneos por etapa, separados por comas'
+        description: 'Dispositivos simultáneos por etapa, separados por comas (0 = solo alta)'
         default: '5,15,30'
       duracion:
         description: 'Segundos por etapa'

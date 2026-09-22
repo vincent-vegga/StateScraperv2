@@ -25,7 +25,7 @@ pensada para correr en GitHub Actions: .github/workflows/prueba-carga.yml
     SUPABASE_URL, SUPABASE_KEY   -> obligatorias (clave secreta)
 
     python prueba_carga.py --usuarios 3 --empresas 3 --etapas 5,15,30
-    python prueba_carga.py --usuarios 1 --empresas 2 --etapas "" --nifs B06392302,B53994695
+    python prueba_carga.py --usuarios 1 --empresas 2 --etapas 0 --nifs B06392302,B53994695
     python prueba_carga.py --solo-limpiar
 """
 
@@ -508,7 +508,9 @@ def main():
                    help="NIF concretos para el alta, separados por comas")
     p.add_argument("--solo-limpiar", action="store_true")
     op = p.parse_args()
-    op.etapas = [int(x) for x in op.etapas.split(",") if x.strip()]
+    # "0" = solo alta, sin navegar: GitHub no deja pasar el campo vacío
+    # (lo cambia por el valor por defecto).
+    op.etapas = [int(x) for x in op.etapas.split(",") if x.strip() and int(x) > 0]
     op.nifs = [x.strip().upper() for x in op.nifs.split(",") if x.strip()]
     asyncio.run(principal(op))
 
