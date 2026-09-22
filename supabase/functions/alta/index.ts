@@ -1314,7 +1314,10 @@ Deno.serve(async (peticion) => {
       const vistos = new Set<string>();
       const sectores = (Array.isArray(lectura.sectores) ? lectura.sectores : [])
         .map((x: Record<string, unknown>) => ({
-          nombre: String(x.nombre ?? "").trim().slice(0, 60),
+          // La mayúscula inicial no se le deja al modelo: unas veces
+          // Capitaliza Cada Palabra y otras lo escribe todo en minúscula.
+          nombre: String(x.nombre ?? "").trim().slice(0, 60)
+            .replace(/^./, (c) => c.toLocaleUpperCase("es")),
           prefijos: (Array.isArray(x.prefijos) ? x.prefijos : [])
             .map((p: unknown) => String(p).trim())
             .filter((p: string) => suyos.includes(p) && !vistos.has(p) && vistos.add(p)),
