@@ -76,7 +76,16 @@ if (!contratos.length) {
   Deno.exit(0);
 }
 
-const lectura = await leerHistorial(contratos, prefijos) as Record<string, unknown>;
+// Misma empresa, misma lectura, también aquí: dos cuentas con el mismo NIF
+// (Mare Nostrum) salieron con 114 y 245 contratos porque se leyeron por
+// separado. Si ese NIF se ha leído en esta misma tanda, se reutiliza.
+const { data: reciente } = await db.from("lecturas_empresa").select("datos, creado")
+  .eq("cif", cif).maybeSingle();
+const deEstaTanda = reciente && Date.now() - Date.parse(reciente.creado) < 2 * 3600 * 1000;
+const lectura = (deEstaTanda
+  ? reciente.datos
+  : await leerHistorial(contratos, prefijos)) as Record<string, unknown>;
+if (deEstaTanda) console.log(`   lectura reutilizada del ${reciente.creado}`);
 const finales = prefijosDeLectura(lectura, prefijos);
 
 // Salvaguarda: regenerar nunca puede encontrar MENOS de lo que la
@@ -142,9 +151,11 @@ console.log([
 
 if (ensayo) Deno.exit(0);
 
-await db.from("lecturas_empresa").upsert({
-  cif, datos: lectura, creado: new Date().toISOString(),
-});
+if (!deEstaTanda) {
+  await db.from("lecturas_empresa").upsert({
+    cif, datos: lectura, creado: new Date().toISOString(),
+  });
+}
 
 const { error: alGuardar } = await db.from("perfiles").update({
   cpv_prefijos: finales.join(","),
