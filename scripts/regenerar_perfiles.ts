@@ -78,6 +78,28 @@ if (!contratos.length) {
 
 const lectura = await leerHistorial(contratos, prefijos) as Record<string, unknown>;
 const finales = prefijosDeLectura(lectura, prefijos);
+
+// Salvaguarda: regenerar nunca puede encontrar MENOS de lo que la
+// empresa ha ganado. En el ensayo del 22/09/2026 el modelo podaba de más
+// en dos empresas (GMG del 83 al 67 %, Red2Red del 79 al 74 %). Si pasa,
+// se recuperan los prefijos antiguos que tapan el hueco, el que más
+// recupera primero, hasta igualar la cobertura de antes.
+const antiguos = String(perfil.cpv_prefijos ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+const { data: suyos } = await db.from("licitaciones").select("prefijos")
+  .eq("adjudicatario_cif", cif).not("cpvs", "eq", "[]");
+const ganadosPref = (suyos ?? []).map((l) => (l.prefijos ?? []) as string[]);
+const cubre = (lista: string[]) =>
+  ganadosPref.filter((lp) => lp.some((p) => lista.includes(p))).length;
+const objetivo = cubre(antiguos);
+const recuperados: string[] = [];
+while (cubre(finales) < objetivo) {
+  const candidatos = antiguos.filter((p) => !finales.includes(p))
+    .map((p) => ({ p, gana: cubre([...finales, p]) - cubre(finales) }))
+    .filter((c) => c.gana > 0).sort((a, b) => b.gana - a.gana);
+  if (!candidatos.length) break;
+  finales.push(candidatos[0].p);
+  recuperados.push(candidatos[0].p);
+}
 if (!finales.length) {
   console.log(`${perfil.empresa}: la lectura no da prefijos, no se toca`);
   Deno.exit(0);
@@ -109,7 +131,9 @@ if (correcciones?.length) {
 
 console.log([
   `== ${perfil.empresa} (${cif})${ensayo ? " · ENSAYO, no se escribe nada" : ""}`,
-  `   prefijos: ${perfil.cpv_prefijos}  ->  ${finales.join(",")}`,
+  `   prefijos: ${perfil.cpv_prefijos}  ->  ${finales.join(",")}` +
+    (recuperados.length ? `  (recuperados para no perder cobertura: ${recuperados.join(",")})` : ""),
+  `   cobertura de lo ganado: ${objetivo}/${ganadosPref.length} antes, ${cubre(finales)}/${ganadosPref.length} ahora`,
   `   correcciones reaplicadas: ${correcciones?.length ?? 0}`,
   `   antes: ${String(perfil.criterio ?? "").slice(0, 400)}`,
   `   ahora: ${criterio.slice(0, 400)}`,
