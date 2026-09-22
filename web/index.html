@@ -1611,6 +1611,25 @@ select:focus{
 .campana[aria-pressed="false"] .tachado{display:block}
 .campana .tachado{display:none}
 
+/* Campana y flechita forman un solo botón partido: la campana a un lado,
+   el atajo al configurador al otro. */
+.campana-grupo{display:inline-flex}
+.campana-grupo .campana{border-top-right-radius:0;border-bottom-right-radius:0}
+.campana-flecha{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:36px;padding:0;margin-left:-1px;
+  border:1px solid var(--linea);border-radius:0 8px 8px 0;
+  background:var(--superficie);color:var(--tenue);cursor:pointer;
+  box-shadow:var(--sombra-corta);
+  transition:border-color .15s,background-color .15s,color .15s;
+}
+.campana-flecha:hover,.campana-flecha[aria-expanded="true"]{
+  border-color:var(--fuerte);background:var(--hover);color:var(--texto);
+}
+.campana-flecha svg{width:10px;height:10px;transition:transform .18s}
+.campana-flecha[aria-expanded="true"] svg{transform:rotate(180deg)}
+.menu-avisos{min-width:200px}
+
 /* Botón de cuenta con forma de botón. Como enlace subrayado pasaba
    desapercibido, y es la puerta a todo lo demás. */
 .boton-cuenta{
@@ -2876,6 +2895,12 @@ async function cambiarEmpresa(id) {
   arrancar();
 }
 
+async function irAAvisos() {
+  const { data: { session } } = await sb.auth.getSession();
+  const perfil = PERFILES.find(p => p.id === perfilActivoId);
+  if (session && perfil) pantallaPanel(perfil, session, false, 'avisos');
+}
+
 async function anadirEmpresa() {
   const { data, error } = await sb.rpc('nueva_empresa');
   if (error || !data?.ok) {
@@ -2929,6 +2954,19 @@ document.addEventListener('click', ev => {
     abrir.setAttribute('aria-expanded', String(!menu.hidden));
     return;
   }
+  const flecha = ev.target.closest('#abrir-avisos');
+  const menuAvisos = document.getElementById('menu-avisos');
+  if (flecha && menuAvisos) {
+    ev.stopPropagation();
+    menuAvisos.hidden = !menuAvisos.hidden;
+    flecha.setAttribute('aria-expanded', String(!menuAvisos.hidden));
+    return;
+  }
+  if (menuAvisos && !ev.target.closest('.campana-grupo')) {
+    menuAvisos.hidden = true;
+    document.getElementById('abrir-avisos')?.setAttribute('aria-expanded', 'false');
+  }
+  if (ev.target.closest('[data-ir-avisos]')) return irAAvisos();
   const elegida = ev.target.closest('[data-empresa]');
   if (elegida) return cambiarEmpresa(elegida.dataset.empresa);
   if (ev.target.closest('[data-anadir-empresa]')) return anadirEmpresa();
@@ -5610,17 +5648,31 @@ function recado(texto) {
 // La campana enciende y apaga el correo diario. Va suelta y no dentro
 // del menú porque su estado tiene que verse de un vistazo: si alguien
 // apagó los avisos hace un mes, debe notarlo sin abrir nada.
+// La campana enciende y apaga el aviso; la flechita pegada a ella abre el
+// atajo al configurador (qué sectores y qué zona llegan en el correo), que
+// si no queda enterrado en Mi cuenta.
 function campanaAvisos() {
   return `
-    <button class="campana" id="campana" aria-pressed="true"
-            aria-label="Avisos por correo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-        <path d="M13.7 21a2 2 0 0 1-3.4 0"/>
-        <line class="tachado" x1="3" y1="3" x2="21" y2="21"/>
-      </svg>
-    </button>`;
+    <div class="menu-envoltorio campana-grupo">
+      <button class="campana" id="campana" aria-pressed="true"
+              aria-label="Avisos por correo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.7 21a2 2 0 0 1-3.4 0"/>
+          <line class="tachado" x1="3" y1="3" x2="21" y2="21"/>
+        </svg>
+      </button>
+      <button class="campana-flecha" id="abrir-avisos" aria-haspopup="true"
+              aria-expanded="false" aria-label="Opciones del aviso por correo">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5 5 3.5 8 6.5"
+          fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="menu menu-avisos" id="menu-avisos" role="menu" hidden>
+        <button role="menuitem" data-ir-avisos>Configurar mis avisos</button>
+      </div>
+    </div>`;
 }
 
 function activarCampana(yaSabido = null) {
