@@ -555,16 +555,17 @@ Deno.serve(async (peticion) => {
         }
       }
       const reutilizada = lectura !== null;
-      if (!lectura) lectura = await leerHistorial(contratos, prefijos);
+      const leida: Record<string, unknown> =
+        lectura ?? await leerHistorial(contratos, prefijos);
 
       // Los prefijos que valida el modelo. Si no valida ninguno —cosa que
       // no debería pasar— se usan los que tengan al menos dos contratos,
       // que es el criterio anterior.
-      const finales = prefijosDeLectura(lectura, prefijos);
+      const finales = prefijosDeLectura(leida, prefijos);
       // Sin códigos no hay nada que cribar: mejor que describa su negocio.
       if (!finales.length) return responder({ error: "sin_historial" }, 404);
 
-      const descartados = Array.isArray(lectura.descartados) ? lectura.descartados : [];
+      const descartados = Array.isArray(leida.descartados) ? leida.descartados : [];
       if (descartados.length) {
         console.log("CPV descartados:", descartados
           .map((d: Record<string, unknown>) => `${d.prefijo} (${d.motivo})`).join(" · "));
@@ -576,13 +577,13 @@ Deno.serve(async (peticion) => {
         contratos_ganados: Number(suya.contratos ?? 0),
         cpv_prefijos: finales.join(","),
         nombre: String(suya.nombre ?? perfil.nombre),
-        descripcion: String(lectura.actividad ?? ""),
-        criterio: String(lectura.criterio ?? ""),
+        descripcion: String(leida.actividad ?? ""),
+        criterio: String(leida.criterio ?? ""),
         // Lo que se le enseña a él. El criterio completo no: es la
         // receta del filtro y además está escrito para un clasificador,
         // no para leerse.
-        que_buscamos: Array.isArray(lectura.que_buscamos)
-          ? lectura.que_buscamos.map((x: unknown) => String(x)).slice(0, 5) : [],
+        que_buscamos: Array.isArray(leida.que_buscamos)
+          ? leida.que_buscamos.map((x: unknown) => String(x)).slice(0, 5) : [],
         criterio_version: (perfil.criterio_version ?? 0) + 1,
         criterio_fecha: new Date().toISOString(),
         // Directo a cribar: no hay tarjetas que deslizar.
@@ -591,7 +592,7 @@ Deno.serve(async (peticion) => {
 
       if (!reutilizada) {
         await admin.from("lecturas_empresa").upsert({
-          cif: String(suya.cif), datos: lectura, creado: new Date().toISOString(),
+          cif: String(suya.cif), datos: leida, creado: new Date().toISOString(),
         });
       }
 
@@ -602,8 +603,8 @@ Deno.serve(async (peticion) => {
         ok: true,
         prefijos: finales,
         descartados,
-        actividad: String(lectura.actividad ?? ""),
-        resumen: String(lectura.resumen ?? ""),
+        actividad: String(leida.actividad ?? ""),
+        resumen: String(leida.resumen ?? ""),
         contratos: Number(suya.contratos ?? 0),
       });
     }
@@ -637,7 +638,7 @@ Deno.serve(async (peticion) => {
       // líneas de CSV— y eso agota el tiempo de cálculo de la función.
       const { data: resumen } = await admin.from("resumen_cpv_total")
         .select("prefijo, licitaciones, vivas")
-        .in("prefijo", propuesta.prefijos.map((p) => p.prefijo));
+        .in("prefijo", propuesta.prefijos.map((p: { prefijo: string }) => p.prefijo));
 
       const porPrefijo = Object.fromEntries(
         (resumen ?? []).map((r) => [r.prefijo, r]));
@@ -649,12 +650,12 @@ Deno.serve(async (peticion) => {
       console.log("Palabras:", propuesta.producto.join(","), "|",
                   propuesta.destinatario.join(","));
       console.log("Propuesta:", propuesta.prefijos
-        .map((p) => `${p.prefijo}=${p.volumen}`).join(" "));
+        .map((p: { prefijo: string; volumen?: number }) => `${p.prefijo}=${p.volumen}`).join(" "));
 
       // Los que no traen nada no se enseñan. Un cero sin explicación
       // desconcierta y no aporta: ofrecer una categoría que no va a dar
       // resultados es peor que no ofrecerla.
-      const conVolumen = propuesta.prefijos.filter((p) => (p.volumen ?? 0) > 0);
+      const conVolumen = propuesta.prefijos.filter((p: { volumen?: number }) => (p.volumen ?? 0) > 0);
       if (conVolumen.length) propuesta.prefijos = conVolumen;
 
       // Se descartan las palabras que no discriminan. El modelo no puede
