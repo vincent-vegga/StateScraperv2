@@ -339,13 +339,18 @@ REGLAS:
 dos prefijos que en sus contratos significan lo mismo van juntos.
 2. Cada prefijo en UN solo sector, y TODOS los prefijos repartidos. No \
 inventes prefijos.
-3. El nombre, como lo diría el propio cliente: corto (2-5 palabras), en \
-español, sin códigos ni jerga de contratación. "Alumbrado público", no \
-"Trabajos de instalación de equipos de alumbrado".
-4. Nombra por lo que dicen SUS títulos, no por la definición oficial del \
+3. El filtro sirve para SEPARAR. Si un sector se queda con casi todos \
+los contratos, divídelo según lo que dicen los títulos (desarrollo a \
+medida, mantenimiento de sistemas, licencias...). Una empresa con muchos \
+prefijos parecidos casi siempre hace varias cosas distintas.
+4. El nombre, como lo diría el propio cliente: corto (2-5 palabras), en \
+español, sin códigos ni jerga de contratación, y con mayúscula solo en la \
+primera palabra. "Alumbrado público", no "Trabajos de instalación de \
+equipos de alumbrado" ni "Alumbrado Público".
+5. Nombra por lo que dicen SUS títulos, no por la definición oficial del \
 código: si bajo un prefijo de vehículos aparecen iluminaciones navideñas, \
 el sector es de iluminación.
-5. Ordena de más a menos contratos.
+6. Ordena de más a menos contratos.
 
 Devuelve EXCLUSIVAMENTE JSON:
 {"sectores":[{"nombre":"...","prefijos":["4531","5023"]}]}`;
