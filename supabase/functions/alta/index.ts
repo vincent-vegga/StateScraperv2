@@ -318,6 +318,54 @@ async function leerHistorial(
 }
 
 // ------------------------------------------------------------
+// Sectores: sus CPV agrupados con nombre de persona
+// ------------------------------------------------------------
+//
+// El filtro por sector de la lista, y más adelante los avisos por sector.
+// El cliente no ve códigos: ve 2-6 sectores con el nombre que usaría él.
+// Se escriben agrupando SUS prefijos a partir de SUS contratos, porque el
+// mismo código significa cosas distintas según la empresa: el 3499 de
+// Alumbrados Viarios son iluminaciones navideñas, no "vehículos".
+
+const INSTRUCCIONES_SECTORES = `\
+Te dan los prefijos CPV con los que se buscan contratos públicos para una \
+empresa y, para cada uno, cuántos de sus contratos caen ahí y algunos \
+títulos de ejemplo.
+
+Agrúpalos en SECTORES para un filtro que verá el cliente.
+
+REGLAS:
+1. Entre 2 y 6 sectores. Menos si la empresa hace pocas cosas distintas: \
+dos prefijos que en sus contratos significan lo mismo van juntos.
+2. Cada prefijo en UN solo sector, y TODOS los prefijos repartidos. No \
+inventes prefijos.
+3. El nombre, como lo diría el propio cliente: corto (2-5 palabras), en \
+español, sin códigos ni jerga de contratación. "Alumbrado público", no \
+"Trabajos de instalación de equipos de alumbrado".
+4. Nombra por lo que dicen SUS títulos, no por la definición oficial del \
+código: si bajo un prefijo de vehículos aparecen iluminaciones navideñas, \
+el sector es de iluminación.
+5. Ordena de más a menos contratos.
+
+Devuelve EXCLUSIVAMENTE JSON:
+{"sectores":[{"nombre":"...","prefijos":["4531","5023"]}]}`;
+
+async function agruparSectores(
+  empresa: string,
+  muestras: { prefijo: string; contratos: number; titulos: string[] | null }[],
+) {
+  const lista = muestras.map((m) =>
+    `${m.prefijo} (${m.contratos} contratos)` +
+    ((m.titulos ?? []).length
+      ? `:\n${(m.titulos ?? []).map((t) => `  - ${t}`).join("\n")}` : "")
+  ).join("\n");
+  return await llamarModelo([
+    { role: "system", content: INSTRUCCIONES_SECTORES },
+    { role: "user", content: `EMPRESA: ${empresa}\n\nPREFIJOS:\n${lista}` },
+  ], 700, MODELO_HISTORIAL);
+}
+
+// ------------------------------------------------------------
 // Regeneración con las correcciones del cliente
 // ------------------------------------------------------------
 
@@ -1235,6 +1283,51 @@ Deno.serve(async (peticion) => {
     // Para un cambio de línea de negocio. Ampliar un criterio existente
     // funciona mal cuando el cambio es radical: se queda arrastrando lo
     // viejo. Rehacerlo cuesta un minuto y sale limpio.
+    // --- Sectores del filtro de la lista ---
+    //
+    // La web los pide cuando abre la lista y no los encuentra (empresa
+    // nueva, filtro rehecho, o empresas de antes de que existieran). Así
+    // no hace falta un relleno aparte ni tocar cada camino del alta.
+    if (accion === "sectores") {
+      const base = String(perfil.cpv_prefijos ?? "");
+      const suyos = base.split(",").map((x) => x.trim()).filter(Boolean);
+      // Con un solo prefijo no hay nada que elegir.
+      if (suyos.length < 2) return responder({ ok: true, sectores: [] });
+
+      const { data: muestras, error: fallo } = await comoUsuario.rpc(
+        "muestras_por_prefijo", { perfil: perfil.id });
+      if (fallo) {
+        console.error("Fallo al leer muestras:", fallo);
+        return responder({ error: "error_interno" }, 500);
+      }
+
+      const lectura = await agruparSectores(
+        String(perfil.empresa ?? perfil.descripcion ?? ""), muestras ?? []);
+
+      // El modelo propone; aquí se garantiza lo que el filtro necesita:
+      // prefijos reales, cada uno una vez, ninguno sin sector.
+      const vistos = new Set<string>();
+      const sectores = (Array.isArray(lectura.sectores) ? lectura.sectores : [])
+        .map((x: Record<string, unknown>) => ({
+          nombre: String(x.nombre ?? "").trim().slice(0, 60),
+          prefijos: (Array.isArray(x.prefijos) ? x.prefijos : [])
+            .map((p: unknown) => String(p).trim())
+            .filter((p: string) => suyos.includes(p) && !vistos.has(p) && vistos.add(p)),
+        }))
+        .filter((x: { nombre: string; prefijos: string[] }) =>
+          x.nombre.length >= 2 && x.prefijos.length)
+        .slice(0, 6);
+      const sueltos = suyos.filter((p) => !sectores.some(
+        (x: { prefijos: string[] }) => x.prefijos.includes(p)));
+      if (sueltos.length) sectores.push({ nombre: "Otros", prefijos: sueltos });
+
+      const { data: guardado } = await comoUsuario.rpc("guardar_sectores",
+        { perfil: perfil.id, base, datos: sectores });
+      if (!guardado) console.log(`Sectores de ${perfil.id} no guardados: cambió el filtro`);
+
+      return responder({ ok: true, sectores });
+    }
+
     if (accion === "reiniciar") {
       await admin.from("veredictos").delete().eq("perfil_id", perfil.id);
       await admin.from("correcciones").delete().eq("perfil_id", perfil.id);

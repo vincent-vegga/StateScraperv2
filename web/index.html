@@ -1633,6 +1633,7 @@ select:focus{
   padding:5px;box-shadow:var(--sombra-flotante);
 }
 .menu[hidden]{display:none !important}
+.filtros select[hidden]{display:none}
 .menu button{
   display:block;width:100%;min-height:38px;padding:0 12px;border:0;
   border-radius:6px;background:none;color:var(--texto);font:inherit;
@@ -2919,6 +2920,38 @@ document.addEventListener('click', ev => {
     document.getElementById('abrir-empresas')?.setAttribute('aria-expanded', 'false');
   }
 });
+
+// ---------- Sectores de la empresa ----------
+//
+// Sus prefijos CPV agrupados en 2-6 sectores con nombre ("Alumbrado
+// público"). Si no los tiene —empresa nueva, filtro rehecho, o de antes
+// de que existieran— se piden a `alta`, que los escribe con el modelo y
+// los deja guardados: la segunda vez ya salen de la base.
+//
+// `base` es el cpv_prefijos con el que se generaron: si no coincide con
+// el actual, son de un filtro anterior y no valen.
+async function cargarSectores(perfil) {
+  const base = perfil.cpv_prefijos ?? '';
+  if (base.split(',').filter(x => x.trim()).length < 2) return [];
+  const clave = 'sectores:' + perfil.id + ':' + base;
+  const guardado = CACHE.get(clave);
+  if (guardado) return guardado.data;
+
+  const { data } = await sb.from('sectores_perfil')
+    .select('id,nombre,prefijos,base').eq('perfil_id', perfil.id).order('orden');
+  let sectores = (data ?? []).filter(x => x.base === base);
+  if (!sectores.length) {
+    try { sectores = (await llamar('sectores', { perfil_id: perfil.id })).sectores ?? []; }
+    catch { return []; }   // sin sectores, la lista funciona igual
+  }
+  CACHE.set(clave, { data: sectores, cuando: Date.now() });
+  return sectores;
+}
+
+// Misma regla con la que el contrato entró en su lista: algún CPV que
+// empiece por alguno de los prefijos. Un contrato puede estar en varios.
+const enSector = (o, sector) => (o.cpvs ?? []).some(c =>
+  sector.prefijos.some(p => String(c).startsWith(p)));
 
 async function llamar(accion, cuerpo = {}) {
   const { data: { session } } = await sb.auth.getSession();
@@ -5952,6 +5985,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         <option value="si">Para mí</option>
         <option value="quizas">Puede ser para mí</option>
       </select>
+      <select id="f-sector" aria-label="Filtrar por sector" hidden>
+        <option value="">Todos los sectores</option>
+      </select>
       <input type="search" id="f-texto" placeholder="Buscar por título u órgano">
       <div class="selector">
         <div class="campo-geo" id="campo-geo">
@@ -6067,14 +6103,31 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     );
   };
 
+  // Sectores de la empresa; vacío hasta que llegan, y el selector oculto
+  // mientras tanto o si tiene menos de dos.
+  let SECTORES = [];
+
   function pintar() {
     const ver = document.getElementById('f-veredicto').value;
     const txt = document.getElementById('f-texto').value.toLowerCase().trim();
+    const campoSector = document.getElementById('f-sector');
+    const sector = SECTORES[campoSector.value];
     const vistos = DATOS.filter(o =>
       (pestana === 'todo' || o.es_novedad) &&
       enZona(o) &&
       (!ver || o.veredicto === ver) &&
+      (!sector || enSector(o, sector)) &&
       (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
+
+    // Cuántos hay en cada sector con la pestaña actual: elegir uno que
+    // resulta vacío es un clic perdido y parece un fallo.
+    [...campoSector.options].forEach(op => {
+      const s = SECTORES[op.value];
+      if (!s) return;
+      const n = DATOS.filter(o => (pestana === 'todo' || o.es_novedad)
+                                  && enSector(o, s)).length;
+      op.textContent = `${s.nombre} (${n})`;
+    });
 
     pintarTitular(vistos);
     document.getElementById('lista').innerHTML = vistos.length ? vistos.map((o,i) => `
@@ -6531,9 +6584,22 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   window.addEventListener('beforeunload', marcarLaVisita);
 
   pintarEtiquetas();
-  ['f-veredicto','f-texto'].forEach(id =>
+  ['f-veredicto','f-sector','f-texto'].forEach(id =>
     document.getElementById(id).addEventListener('input', repintar));
   pintar();
+
+  // Por detrás: la primera vez puede tardar unos segundos (los escribe el
+  // modelo), y la lista no tiene por qué esperarlos.
+  cargarSectores(perfil).then(sectores => {
+    const campo = document.getElementById('f-sector');
+    // Si ya se ha ido a otra pantalla o a otra empresa, no hay dónde pintar.
+    if (!campo || perfil.id !== perfilActivoId || sectores.length < 2) return;
+    SECTORES = sectores;
+    campo.insertAdjacentHTML('beforeend', sectores.map((x, i) =>
+      `<option value="${i}">${esc(x.nombre)}</option>`).join(''));
+    campo.hidden = false;
+    pintar();
+  });
 }
 
 arrancar();

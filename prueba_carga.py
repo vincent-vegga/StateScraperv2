@@ -293,6 +293,12 @@ async def alta_usuario(api: Api, u: dict, codigo: str, reserva: list[dict],
                 break
         segundos = time.perf_counter() - inicio
         M.anotar("alta", "empresa completa (cribado inicial)", segundos * 1000, True)
+
+        # Lo que hace la web al abrir la lista por primera vez.
+        r = await api.alta("alta", "sectores", u["token"], perfil)
+        if r and r.get("sectores"):
+            logging.info("%s · sectores: %s", empresa["cif"], " | ".join(
+                f"{x['nombre']} ({','.join(x['prefijos'])})" for x in r["sectores"]))
         u["empresas"].append({"perfil": perfil, "cif": empresa["cif"]})
         logging.info("%s · empresa %d/%d: %s, %d clasificadas en %.0f s",
                      u["email"], k + 1, n_empresas, empresa["cif"], hechas, segundos)
