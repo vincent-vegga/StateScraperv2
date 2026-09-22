@@ -888,53 +888,65 @@ select:focus{
   padding:8px 0 4px;color:var(--tenue);font-size:.92rem;line-height:1.6;
 }
 
-/* ---------- Selector de años ----------
-   Dos asas sobre la línea; lo que queda entre ellas se suma. Se recorta
-   por los dos extremos, no solo por el principio.
+/* ---------- Selector de periodo ----------
+   Los años en fila, como tramos de una misma barra; lo elegido se ve
+   como una banda continua. Sustituye al de dos asas sobre una línea,
+   que no respondía bien al arrastrar y no dejaba elegir un solo año
+   sin que las asas se pisaran. */
+.periodo{
+  display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap;
+}
+.pista-periodo{
+  display:flex;max-width:100%;overflow-x:auto;padding:3px;
+  border:1px solid var(--linea);border-radius:10px;
+  background:var(--superficie);box-shadow:var(--sombra-corta);
+  /* Deja desplazar la página en vertical, pero el gesto horizontal es
+     del selector: sin esto, en el móvil arrastrar movía la página. */
+  touch-action:pan-y;user-select:none;-webkit-user-select:none;
+}
+.pista-periodo .anio{
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  flex:0 0 auto;min-width:64px;padding:7px 12px 6px;
+  border:0;border-radius:0;background:none;color:var(--tenue);
+  font:inherit;font-size:.88rem;font-weight:600;
+  font-variant-numeric:tabular-nums;cursor:pointer;
+  transition:background-color .12s,color .12s;
+}
+.pista-periodo .anio:first-child{border-radius:7px 0 0 7px}
+.pista-periodo .anio:last-child{border-radius:0 7px 7px 0}
+.pista-periodo .anio:not(.dentro):hover{background:var(--hover);color:var(--texto)}
+.pista-periodo .anio.dentro{background:var(--texto);color:var(--superficie)}
+.pista-periodo .anio.inicio{border-top-left-radius:7px;border-bottom-left-radius:7px}
+.pista-periodo .anio.fin{border-top-right-radius:7px;border-bottom-right-radius:7px}
+.pista-periodo .anio:focus-visible{outline:2px solid var(--fuerte);outline-offset:-2px}
+.pista-periodo .volumen{
+  display:flex;align-items:flex-end;width:28px;height:16px;
+}
+.pista-periodo .volumen i{
+  display:block;width:100%;border-radius:2px 2px 0 0;
+  background:var(--linea);
+}
+.pista-periodo .anio:not(.dentro):hover .volumen i{background:var(--tenue)}
+.pista-periodo .anio.dentro .volumen i{
+  background:color-mix(in srgb, var(--superficie) 45%, transparent);
+}
+.lado-periodo{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0}
+.resumen-periodo{font-size:.95rem;font-variant-numeric:tabular-nums}
+.ayuda-periodo{color:var(--tenue);font-size:.8rem}
+.todos-periodo{
+  padding:2px 0;border:0;background:none;color:var(--tenue);
+  font:inherit;font-size:.8rem;text-decoration:underline;
+  text-underline-offset:3px;cursor:pointer;
+}
+.todos-periodo:hover{color:var(--texto)}
+.todos-periodo[hidden]{display:none}
 
-   Las marcas son TODOS los años del rango, no solo los que tienen datos:
-   con años sueltos —2021, 2025, 2026— repartidos a partes iguales, las
-   etiquetas no caían donde se clavaba el asa. */
-.anios{
-  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
-  margin:0;padding:8px 14px;
-  border:1px solid var(--linea);border-radius:8px;
-  background:var(--fondo);
-}
-.anios .rotulo{color:var(--tenue);font-size:.82rem;white-space:nowrap}
-.anios .pista-anios{position:relative;flex:1 1 200px;min-width:170px;height:26px}
-.anios .riel-anios{
-  position:absolute;top:8px;left:0;right:0;height:3px;
-  background:var(--linea);border-radius:99px;
-}
-.anios .tramo-elegido{
-  position:absolute;top:8px;height:3px;background:var(--texto);
-  border-radius:99px;
-}
-.anios input[type=range]{
-  position:absolute;top:0;left:0;width:100%;height:20px;
-  margin:0;background:none;appearance:none;pointer-events:none;
-}
-.anios input[type=range]::-webkit-slider-thumb{
-  appearance:none;pointer-events:auto;width:15px;height:15px;
-  border-radius:50%;background:var(--superficie);
-  border:2px solid var(--texto);cursor:grab;
-}
-.anios input[type=range]::-moz-range-thumb{
-  pointer-events:auto;width:15px;height:15px;border-radius:50%;
-  background:var(--superficie);border:2px solid var(--texto);cursor:grab;
-}
-/* El asa no recorre todo el ancho: se detiene a media anchura de su
-   propio círculo en cada extremo. Las marcas se colocan sobre ese mismo
-   recorrido, o no coinciden con la posición donde se clava. */
-.anios .marcas{position:absolute;top:18px;left:0;right:0;pointer-events:none}
-.anios .marcas span{
-  position:absolute;transform:translateX(-50%);
-  color:var(--tenue);font-size:.68rem;
-}
-.anios .elegido{
-  font-weight:650;white-space:nowrap;font-size:.85rem;
-  font-variant-numeric:tabular-nums;
+/* Donde va el selector en cada pantalla. */
+.hueco-periodo{margin-top:18px}
+.ficha-organo .hueco-periodo{margin:18px 0 4px}
+
+@media(max-width:720px){
+  .pista-periodo .anio{min-width:54px;padding:7px 8px 6px}
 }
 
 /* ---------- Buscador de organismo ---------- */
@@ -2277,6 +2289,11 @@ select:focus{
   opacity:0;
 }
 
+/* Al cambiar de periodo, lo de antes se atenúa mientras llega lo nuevo:
+   dejarlo igual parecía que el cambio no había hecho nada. */
+#datos-mov, #zona-ficha-emp, .ficha-organo .cuerpo-ficha{transition:opacity .16s ease}
+#datos-mov.cambiando, #zona-ficha-emp.cambiando, .cambiando{opacity:.45}
+
 .fila{
   display:grid;
   width:100%;
@@ -2873,6 +2890,187 @@ const alPulsar = (id, hacer) => {
 // "1 contrato", "3 contratos". Con el número delante siempre: repetir
 // el ternario en cada sitio acababa olvidándose y salía "1 contratos".
 const plural = (n, uno, varios) => `${n} ${Number(n) === 1 ? uno : varios}`;
+
+// ---------- Periodo por años ----------
+//
+// Organismos, Movimientos y Empresas miran el mismo periodo, y se
+// recuerda mientras dura la sesión: cambiar de pestaña no lo pierde, y
+// al volver otro día se empieza por el último año, que es lo que se
+// quiere ver casi siempre.
+//
+// Los años los da la base (`anios_de_mi_sector`): los que tienen datos
+// de verdad en los sectores de la empresa. Al importar más histórico
+// aparecen solos.
+const CACHE_ANIOS = new Map();
+
+async function aniosDelSector() {
+  const clave = perfilActivoId;
+  if (CACHE_ANIOS.has(clave)) return CACHE_ANIOS.get(clave);
+  const { data, error } = await sb.rpc('anios_de_mi_sector');
+  const anios = error ? [] : (data ?? []);
+  if (!error) CACHE_ANIOS.set(clave, anios);
+  return anios;
+}
+
+function periodoGuardado(anios) {
+  const ultimo = anios.at(-1)?.anio ?? null;
+  let p = null;
+  try { p = JSON.parse(sessionStorage.getItem('periodo:' + perfilActivoId)); }
+  catch { /* modo privado o dato roto */ }
+  const existe = a => anios.some(x => x.anio === a);
+  if (p && existe(p.desde) && existe(p.hasta) && p.desde <= p.hasta) return p;
+  return { desde: ultimo, hasta: ultimo };
+}
+
+function guardarPeriodo(p) {
+  try { sessionStorage.setItem('periodo:' + perfilActivoId, JSON.stringify(p)); }
+  catch { /* se usa igual, solo que no se recuerda */ }
+}
+
+// Los argumentos siempre en el mismo orden: `pedir` guarda por ellos, y
+// con otro orden la misma consulta se pediría dos veces.
+const argsPeriodo = (p, extra = {}) => ({ desde: p.desde, hasta: p.hasta, ...extra });
+
+// Para meterlo dentro de una frase: "66 contratos en 2025", "entre 2024
+// y 2025", "en todo el histórico (2024–2026)".
+function enPeriodo(p, anios) {
+  if (p.desde == null) return '';
+  if (p.desde === p.hasta) return `en ${p.desde}`;
+  const todos = anios.length > 1 && p.desde === anios[0].anio
+    && p.hasta === anios.at(-1).anio;
+  return todos ? `en todo el histórico (${p.desde}–${p.hasta})`
+               : `entre ${p.desde} y ${p.hasta}`;
+}
+
+function textoPeriodo(p, anios) {
+  if (p.desde === p.hasta) return String(p.desde);
+  const todos = anios.length > 1 && p.desde === anios[0].anio
+    && p.hasta === anios.at(-1).anio;
+  return `${todos ? 'Todos los años · ' : ''}${p.desde}–${p.hasta}`;
+}
+
+// El selector: los años en fila, como tramos de una misma barra.
+//
+// Pulsar un año lo elige solo a él; arrastrar de un año a otro (o
+// pulsar otro con mayúsculas) elige el tramo entre los dos. Así elegir
+// un solo año es lo más fácil, no un caso raro de un control de dos
+// asas en el que las dos asas se pisan.
+//
+// La barrita de cada año dice cuánto hay en él: con el histórico a
+// medio cargar, un año con poco no es un año sin actividad, y conviene
+// verlo antes de sacar conclusiones.
+//
+// `volumen` (opcional) cambia lo que miden las barritas, por ejemplo
+// los contratos de un organismo en vez de los del sector.
+function selectorPeriodo(hueco, anios, periodo, alCambiar, volumen = null) {
+  if (!hueco || !anios.length) return;
+  const cuanto = a => (volumen ? volumen[a.anio] : a.contratos) ?? 0;
+  const maximo = Math.max(1, ...anios.map(cuanto));
+  const tactil = matchMedia('(hover:none),(pointer:coarse)').matches;
+  let actual = { ...periodo };
+
+  hueco.innerHTML = `
+    <div class="periodo">
+      <div class="pista-periodo" role="group" aria-label="Años del periodo">
+        ${anios.map(a => `<button type="button" class="anio" data-anio="${a.anio}"
+            aria-label="${a.anio}: ${plural(cuanto(a), 'contrato', 'contratos')}">
+          <span class="volumen"><i style="height:${
+            Math.max(8, Math.round(cuanto(a) / maximo * 100))}%"></i></span>
+          <span class="numero">${a.anio}</span></button>`).join('')}
+      </div>
+      <div class="lado-periodo">
+        <strong class="resumen-periodo"></strong>
+        <span class="ayuda-periodo">${anios.length < 2 ? 'Todo el histórico disponible'
+          : tactil ? 'Toca un año, o desliza por varios'
+          : 'Pulsa un año, o arrastra por varios'}</span>
+        ${anios.length > 1 ? `<button type="button" class="todos-periodo">
+          Todos los años</button>` : ''}
+      </div>
+    </div>`;
+
+  const pista = hueco.querySelector('.pista-periodo');
+  const botones = [...pista.querySelectorAll('.anio')];
+  const resumen = hueco.querySelector('.resumen-periodo');
+  const todos = hueco.querySelector('.todos-periodo');
+
+  const pintar = p => {
+    botones.forEach(b => {
+      const a = +b.dataset.anio;
+      const dentro = a >= p.desde && a <= p.hasta;
+      b.classList.toggle('dentro', dentro);
+      b.classList.toggle('inicio', a === p.desde);
+      b.classList.toggle('fin', a === p.hasta);
+      b.setAttribute('aria-pressed', String(dentro));
+    });
+    resumen.textContent = textoPeriodo(p, anios);
+    if (todos) todos.hidden = p.desde === anios[0].anio && p.hasta === anios.at(-1).anio;
+  };
+
+  const elegir = p => {
+    pintar(p);
+    if (p.desde === actual.desde && p.hasta === actual.hasta) return;
+    actual = p;
+    guardarPeriodo(p);
+    alCambiar(p);
+  };
+
+  // Punteros y no clics: con el ratón y con el dedo es el mismo gesto, y
+  // el año bajo el puntero se busca por coordenadas, que siguen valiendo
+  // aunque el puntero esté capturado por la pista.
+  const anioBajo = ev => {
+    const b = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.anio');
+    return b && pista.contains(b) ? +b.dataset.anio : null;
+  };
+  let ancla = null, extremo = null;
+  const tramo = () => ({ desde: Math.min(ancla, extremo), hasta: Math.max(ancla, extremo) });
+
+  pista.addEventListener('pointerdown', ev => {
+    const a = anioBajo(ev);
+    if (a == null || ev.button > 0) return;
+    ev.preventDefault();
+    // Con mayúsculas se alarga lo elegido desde el extremo más lejano.
+    ancla = ev.shiftKey
+      ? (a < actual.desde ? actual.hasta : actual.desde)
+      : a;
+    extremo = a;
+    pista.setPointerCapture(ev.pointerId);
+    pintar(tramo());
+  });
+  pista.addEventListener('pointermove', ev => {
+    if (ancla == null) return;
+    const a = anioBajo(ev);
+    if (a != null && a !== extremo) { extremo = a; pintar(tramo()); }
+  });
+  const soltar = ev => {
+    if (ancla == null) return;
+    const p = tramo();
+    ancla = extremo = null;
+    if (ev.type === 'pointercancel') pintar(actual); else elegir(p);
+  };
+  pista.addEventListener('pointerup', soltar);
+  pista.addEventListener('pointercancel', soltar);
+
+  // Con el teclado: Intro elige el año, y con mayúsculas alarga.
+  // `detail === 0` es un clic que no viene del puntero.
+  botones.forEach(b => b.addEventListener('click', ev => {
+    if (ev.detail !== 0) return;
+    const a = +b.dataset.anio;
+    elegir(ev.shiftKey
+      ? { desde: Math.min(a, actual.desde), hasta: Math.max(a, actual.hasta) }
+      : { desde: a, hasta: a });
+  }));
+  pista.addEventListener('keydown', ev => {
+    if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+    const i = botones.indexOf(document.activeElement);
+    const j = i + (ev.key === 'ArrowLeft' ? -1 : 1);
+    if (i >= 0 && botones[j]) { ev.preventDefault(); botones[j].focus(); }
+  });
+
+  if (todos) todos.onclick = () =>
+    elegir({ desde: anios[0].anio, hasta: anios.at(-1).anio });
+
+  pintar(actual);
+}
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4241,8 +4439,15 @@ function precargar(donde) {
     return;
   }
   if (donde === 'movimientos') {
-    pedir('movimientos_mercado', { dias: 30 });
-    pedir('pulso_mercado', { dias: 30 });
+    // Con los mismos argumentos que pedirá la pantalla, o no se
+    // aprovecha: `pedir` guarda por nombre y argumentos.
+    aniosDelSector().then(anios => {
+      const p = periodoGuardado(anios);
+      if (p.desde == null) return;
+      const extra = { provincia_elegida: null };
+      pedir('resumen_periodo', argsPeriodo(p, extra));
+      pedir('movimientos_periodo', argsPeriodo(p, { ...extra, tope: 300 }));
+    });
   } else if (donde === 'mercado') {
     pedir('buscar_organismo', { texto: '', salto: 0, cuantos: 400 });
   } else if (donde === 'viabilidad') {
@@ -4734,11 +4939,12 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
       : TODOS.length;
 
     caja.innerHTML = (filas.length
+      // Solo el nombre y la provincia, que distingue organismos con el
+      // mismo nombre. Las cifras están en la ficha, con el periodo
+      // elegido: aquí serían de todo el histórico y no cuadrarían.
       ? filas.map(o => `<button data-organo="${esc(o.organo)}">
           ${esc(o.organo)}
-          <span class="cuantos">${esc(o.provincia ?? '')}${o.provincia ? ' · ' : ''}${
-            o.contratos} ${o.contratos === 1 ? 'contrato' : 'contratos'}${
-            o.importe ? ` · ${euros(Number(o.importe))}` : ''}</span>
+          ${o.provincia ? `<span class="cuantos">${esc(o.provincia)}</span>` : ''}
         </button>`).join('')
       : preguntarAlServidor && cortada && campo.value.trim().length >= 3
         ? `<p class="sinresultado">Buscando entre todos los organismos...</p>`
@@ -4764,7 +4970,9 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
   });
 
   // ---------- Ficha ----------
-  let desde = null, hasta = null, disponibles = [];
+  // El periodo es el de toda la sesión; las barritas del selector, en
+  // la ficha, son las del organismo.
+  let aniosSector = [], volumenOrgano = null, vueltaFicha = 0;
   let ultimoOrgano = null, ultimaFicha = null;
   let ultimasEmpresas = [], ultimosContratos = [];
   let señalarAhora = null, limpiarAhora = null;
@@ -4783,18 +4991,22 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
     pintar(ultimoOrgano, ultimaFicha);
   });
 
-  async function abrir(cual, conservarAnios = false) {
-    zona.innerHTML = `<p class="guia" style="margin-top:24px">Cargando...</p>`;
-    if (!conservarAnios) {
-      const { data: anios } = await sb.rpc('anios_de_organismo',
+  async function abrir(cual, mismoOrgano = false) {
+    const turno = ++vueltaFicha;
+    aniosSector = await aniosDelSector();
+    const periodo = periodoGuardado(aniosSector);
+    if (!mismoOrgano) {
+      zona.innerHTML = `<p class="guia" style="margin-top:24px">Cargando...</p>`;
+      const { data: porAnio } = await sb.rpc('anios_de_organismo',
         { organo_buscado: cual });
-      disponibles = (anios ?? []).map(a => a.anio).sort((a, b) => a - b);
-      desde = disponibles[0] ?? null;
-      hasta = disponibles[disponibles.length - 1] ?? null;
+      volumenOrgano = Object.fromEntries((porAnio ?? []).map(a => [a.anio, a.contratos]));
+    } else {
+      zona.querySelector('.cuerpo-ficha')?.classList.add('cambiando');
     }
 
     const { data, error } = await sb.rpc('ficha_organismo',
-      { organo_buscado: cual, desde, hasta });
+      { organo_buscado: cual, desde: periodo.desde, hasta: periodo.hasta });
+    if (turno !== vueltaFicha) return;
     // Distinguir "no hay datos" de "no se han podido leer": decir lo
     // primero cuando pasa lo segundo es afirmar algo falso.
     if (error) {
@@ -4804,11 +5016,25 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
       return;
     }
     if (!data || !data.contratos) {
-      zona.innerHTML = `<div class="aviso">No hay adjudicaciones de tu sector
-        para ese organismo en el periodo elegido.</div>`;
+      // Con el selector a la vista: si no, no hay forma de probar otro
+      // periodo sin volver a buscar el organismo.
+      zona.innerHTML = `
+        <div class="ficha-organo">
+          <div class="arriba"><div><h2>${esc(cual)}</h2></div></div>
+          <div class="hueco-periodo" id="periodo-org"></div>
+          <div class="aviso" style="margin-top:14px">No hay adjudicaciones de
+          tu sector para este organismo ${esc(enPeriodo(periodo, aniosSector))}.
+          Prueba con otro periodo.</div>
+        </div>`;
+      ponerSelector(cual);
       return;
     }
     pintar(cual, data);
+  }
+
+  function ponerSelector(cual) {
+    selectorPeriodo(document.getElementById('periodo-org'), aniosSector,
+      periodoGuardado(aniosSector), () => abrir(cual, true), volumenOrgano);
   }
 
   // Con pocos contratos una media no dice nada: tres adjudicaciones no
@@ -4886,20 +5112,18 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
             <h2>${esc(d.organo)}</h2>
             <p class="cifras">
               <span><strong>${d.contratos}</strong> ${
-                d.contratos === 1 ? 'contrato' : 'contratos'}</span>
-              <span><strong>${empresas.length}</strong> ${
-                empresas.length === 1 ? 'empresa' : 'empresas'}</span>
+                d.contratos === 1 ? 'contrato' : 'contratos'}${aniosSector.length
+                ? ` ${esc(enPeriodo(periodoGuardado(aniosSector), aniosSector))}` : ''}</span>
+              <span><strong>${d.n_empresas ?? empresas.length}</strong> ${
+                (d.n_empresas ?? empresas.length) === 1 ? 'empresa' : 'empresas'}</span>
               ${d.importe ? `<span><strong>${euros(Number(d.importe))}</strong>
                 adjudicados</span>` : ''}
               ${d.provincia ? `<span>${esc(d.provincia)}</span>` : ''}
             </p>
           </div>
-          <!-- Sin selector de años.
-               Con histórico de 2024 a 2026 son dos o tres posiciones, así
-               que apenas cambia lo que se ve, y el control no respondía
-               al arrastrarlo. Un mando que no reacciona resta más de lo
-               que aporta un filtro que casi no filtra. -->
         </div>
+        <div class="hueco-periodo" id="periodo-org"></div>
+        <div class="cuerpo-ficha">
 
         ${bloqueAdjudicacion(d)}
 
@@ -4931,10 +5155,12 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
             <div class="contratos-organo" id="contratos-organo"></div>
           </div>
         </div>
+        </div>
       </div>`;
 
     ultimoOrgano = cual; ultimaFicha = d; ultimasEmpresas = empresas;
     ultimosContratos = contratos;
+    ponerSelector(cual);
 
     // ---------- Los contratos siguen a lo que señalas ----------
     //
@@ -5089,359 +5315,321 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
   // lo criba el propio scraper.
   await cribarMercado();
 
+  // El periodo, compartido con Organismos y Empresas. Por defecto, el
+  // último año con datos.
+  const anios = await aniosDelSector();
+  let periodo = periodoGuardado(anios);
+  let provincia = provinciaElegida || null;
+
   // La estructura primero, los datos después: reemplazar la pantalla
   // entera por «Cargando...» da sensación de salto en cada cambio de
-  // pestaña. Así la cabecera y el titular no parpadean.
+  // pestaña o de periodo. Así la cabecera y el selector no parpadean.
   document.getElementById('zona').innerHTML = `
     <div class="cabeza-movimientos">
       <div>
         <h1 style="margin:0 0 12px">Qué se ha adjudicado en tu sector</h1>
-        <p class="guia" style="margin:0">Los contratos que se han cerrado en
-        los últimos treinta días con los mismos códigos que los tuyos.</p>
+        <p class="guia" style="margin:0">Los contratos adjudicados en el
+        periodo elegido con los mismos códigos que los tuyos. Quién los ganó,
+        de qué organismo y por cuánto.</p>
       </div>
+      <div class="hueco-periodo" id="periodo-mov"></div>
     </div>
-    <div class="pulso"><h4>El mes en tu sector</h4>
-      <p class="guia" style="margin:0;font-size:.9rem">Cargando...</p></div>`;
+    <div id="datos-mov">
+      <div class="pulso"><h4>En tu sector</h4>
+        <p class="guia" style="margin:0;font-size:.9rem">Cargando...</p></div>
+    </div>`;
 
-  const [mov, pul] = await Promise.all([
-    pedir('movimientos_mercado', { dias: 30 }),
-    pedir('pulso_mercado', { dias: 30 }),
-  ]);
-  // Un fallo NO se enseña como "no hay nada".
-  //
-  // Cuando la consulta se cae —un tiempo de espera agotado mientras el
-  // catálogo escribe, por ejemplo— la pantalla decía "Todavía no hay
-  // adjudicaciones en tus sectores". Y eso es mentira: las hay, pero no
-  // se han podido leer. El cliente concluye que su sector está parado.
-  if (mov.error || pul.error) {
-    const fallo = mov.error || pul.error;
-    document.getElementById('zona').innerHTML = `
-      <div class="aviso mal" style="margin-top:26px">
-        No hemos podido cargar los movimientos.
-        <div style="margin-top:10px;font-size:.86rem;color:var(--tenue)">
-          ${esc(fallo.message || 'Error desconocido')}</div>
-        <div style="margin-top:14px">
-          <button class="secundario" id="reintentar">Reintentar</button>
-        </div>
-      </div>`;
-    alPulsar('reintentar', () => pantallaMovimientos(perfil, session, true));
+  if (!anios.length) {
+    document.getElementById('datos-mov').innerHTML = `<p class="vacio">
+      Todavía no hay adjudicaciones registradas en tus sectores.</p>`;
     return;
   }
 
-  // Una fila por licitación, con TODOS sus ganadores. `total` es el
-  // importe del expediente e `importe` la parte de la principal. Antes
-  // el ranking apuntaba el expediente entero a la principal, también
-  // los lotes que habían ganado otras.
-  const todo = (mov.data ?? []).map(m => ({
-    ...m,
-    total: m.total ?? m.importe,
-    ganadores: m.ganadores?.length ? m.ganadores : [{
-      cif: m.cif, nombre: m.empresa, importe: m.importe, lotes: 1,
-      es_mia: m.es_mia, la_sigo: m.la_sigo }],
-  }));
-  const p = pul.data ?? {};
-
-  // Solo las provincias que de verdad aparecen en los datos: ofrecer un
-  // filtro que no devuelve nada es peor que no ofrecerlo.
-  const provincias = [...new Set(todo.map(m => m.provincia).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, 'es'));
-
-  const lista = provinciaElegida
-    ? todo.filter(m => m.provincia === provinciaElegida)
-    : todo;
-
-  // Las cifras se calculan sobre lo FILTRADO. Con el filtro puesto, las
-  // de `pulso_mercado` son las de toda España y no cuadrarían con la
-  // lista de debajo.
-  const cifras = provinciaElegida
-    ? {
-        contratos: lista.length,
-        importe: lista.reduce((s, m) => s + (Number(m.total) || 0), 0),
-        empresas: new Set(lista.flatMap(m => m.ganadores.map(g => g.cif))
-          .filter(Boolean)).size,
-        medio: Math.round(lista.reduce((s, m) => s + (Number(m.total) || 0), 0)
-               / (lista.filter(m => m.total).length || 1)),
-        mias: lista.filter(m => m.es_mia).length,
-      }
-    : {
-        contratos: p.contratos ?? 0,
-        importe: Number(p.importe) || 0,
-        empresas: p.empresas ?? 0,
-        medio: Number(p.importe_medio) || 0,
-        mias: p.mias ?? 0,
-      };
-
-  // Los rankings salen de la misma lista que se enseña debajo, no de otra
-  // consulta: así lo que se cuenta arriba y lo que se ve abajo coinciden
-  // siempre, y cada barra puede desglosarse en sus contratos.
-  //
-  // `repartir` dice a quién va cada licitación y con cuánto: al
-  // organismo, el total; a las empresas, cada una su parte.
-  function agrupar(repartir) {
-    const grupos = new Map();
-    lista.forEach(m => repartir(m).forEach(t => {
-      if (!t.clave) return;
-      if (!grupos.has(t.clave)) grupos.set(t.clave, {
-        clave: t.clave, nombre: t.nombre ?? t.clave, provincia: m.provincia,
-        es_mia: !!t.es_mia, la_sigo: !!t.la_sigo, contratos: [],
-      });
-      grupos.get(t.clave).contratos.push({ ...m, importe: t.importe });
-    }));
-    return [...grupos.values()]
-      .map(g => ({ ...g,
-        n: g.contratos.length,
-        euros: g.contratos.reduce((s, c) => s + (Number(c.importe) || 0), 0) }))
-      // Por importe y no por número de contratos.
-      //
-      // Ordenar por cantidad dejaba a la empresa que más factura en el
-      // último puesto: cuatro contratos y 1,2 millones frente a siete y
-      // 600.000 del primero. Para un proveedor pesa más quién se lleva el
-      // dinero que quién firma más veces.
-      .sort((a, b) => b.euros - a.euros || b.n - a.n)
-      .slice(0, 6);
-  }
-
-  const porEmpresa = agrupar(m => m.ganadores.map(g => ({
-    clave: g.cif, nombre: g.nombre, importe: g.importe,
-    es_mia: g.es_mia, la_sigo: g.la_sigo })));
-  const porOrgano = agrupar(m => [{
-    clave: m.organo, nombre: m.organo, importe: m.total,
-    es_mia: m.es_mia, la_sigo: m.la_sigo }]);
-
-  function bloqueRanking(filas, titulo, id) {
-    if (!filas.length) return '';
-    // Todas las barras ocupan lo mismo: el importe total ya está escrito
-    // a la derecha, así que la barra no tiene que repetirlo. Lo que
-    // muestra es OTRA cosa: cómo se reparte ese dinero entre sus
-    // contratos, y si depende de uno grande o lo tiene repartido.
-    return `
-      <div class="ranking" data-ranking="${id}">
-        <h4>${titulo}</h4>
-        <ol>${filas.map((f, i) => {
-          // Cada contrato, un tramo. Los muy pequeños se ven porque hay
-          // un ancho mínimo.
-          // Tres tramos y el resto agrupado. Con diez o quince, los
-          // pequeños quedaban en hilos de dos píxeles imposibles de
-          // señalar, y uno grande se comía la barra entera.
-          const ordenados = [...f.contratos]
-            .sort((a, b) => (Number(b.importe) || 0) - (Number(a.importe) || 0));
-          const cabeza = ordenados.slice(0, 3);
-          const cola = ordenados.slice(3);
-          const tramos = [...cabeza];
-          if (cola.length) {
-            tramos.push({
-              titulo: cola.length === 1
-                ? 'Otro contrato'
-                : `Otros ${cola.length} contratos`,
-              organo: '', empresa: '',
-              importe: cola.reduce((s, c) => s + (Number(c.importe) || 0), 0),
-              agrupado: true,
-            });
-          }
-          return `<li class="${f.es_mia ? 'mia' : f.la_sigo ? 'sigo' : ''}">
-            <div class="fila-ranking">
-              <span class="cual">${esc(f.nombre)}${
-                f.provincia && id === 'organos'
-                  ? `<span class="cuanto"> · ${esc(f.provincia)}</span>` : ''}</span>
-              <span class="cuanto">${f.n} · ${f.euros ? euros(f.euros) : 'sin importe'}</span>
-            </div>
-            <div class="barra-tramos">
-              ${tramos.map((c, j) => `<button class="tramo"
-                style="width:${f.euros
-                  ? (Number(c.importe) || 0) / f.euros * 100
-                  // En un acuerdo marco se sabe quién gana pero no
-                  // cuánto: tramos iguales, en vez de una barra vacía.
-                  : 100 / tramos.length}%;
-                       background:${c.agrupado ? COLOR_OTROS : PALETA[(i + j) % PALETA.length]}"
-                data-titulo="${esc(c.titulo ?? '')}"
-                data-quien="${esc(c.agrupado ? ''
-                  : (id === 'organos' ? (c.empresa ?? '') : (c.organo ?? '')))}"
-                data-importe="${esc(euros(Number(c.importe)) ?? '')}"
-                aria-label="${esc(c.titulo ?? '')}"></button>`).join('')}
-            </div>
-          </li>`;
-        }).join('')}</ol>
-        <div class="detalle-tramo" data-hueco-ranking>
-          <span class="titulo-tramo" style="font-weight:400;color:var(--tenue)">
-            Cada barra reparte ese dinero entre sus contratos. Toca o
-            pasa por encima de un tramo para ver cuál es.</span>
-        </div>
-      </div>`;
-  }
+  selectorPeriodo(document.getElementById('periodo-mov'), anios, periodo, p => {
+    periodo = p;
+    cargar();
+  });
 
   const fecha = s => s ? new Date(s).toLocaleDateString('es-ES',
-    { timeZone: ZONA, day: 'numeric', month: 'short' }) : '';
+    { timeZone: ZONA, day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
-  // Sin el porcentaje sobre el presupuesto.
-  //
-  // Medido sobre 263.412 contratos: la media salía en 4.896 % y 100.862
-  // estaban por encima del presupuesto. Los dos campos no comparan lo
-  // mismo —importes de acuerdos marco frente a presupuestos de contratos
-  // basados, lotes sueltos frente al expediente entero— y publicarlo
-  // sería peor que no dar el dato: alguien podría calcular una oferta con
-  // él.
-  //
-  // Para recuperarlo hay que extraer el número de lotes y el tipo de
-  // contrato al procesar el histórico.
-  // Una línea por contrato, no por compra.
-  //
-  // Un acuerdo marco de stents publica CADA compra derivada como su
-  // propio expediente: salían 41 líneas con el mismo título y distinta
-  // empresa. Se agrupan por organismo y título, y el detalle se
-  // despliega.
-  const grupos = new Map();
-  lista.forEach(m => {
-    const k = m.grupo || m.id_licitacion;
-    if (!grupos.has(k)) grupos.set(k, []);
-    grupos.get(k).push(m);
-  });
+  // Cada petición lleva su número: si el cliente cambia de periodo dos
+  // veces seguidas, la respuesta lenta de la primera no pisa la segunda.
+  let vuelta = 0;
 
-  // Con varios ganadores: la principal "y 12 más". Si entre los demás
-  // está tu empresa o una que sigues, se dice cuál y qué se llevó: es lo
-  // único de esos doce que le importa.
-  const unaLinea = m => {
-    const [principal, ...resto] = m.ganadores;
-    const destacados = resto.filter(g => g.es_mia || g.la_sigo);
-    const marca = principal?.es_mia ? 'tu empresa'
-      : principal?.la_sigo ? 'la sigues'
-      : m.es_mia ? 'tu empresa entre ellas'
-      : m.la_sigo ? 'una que sigues' : '';
-    return `<div class="movimiento ${m.es_mia ? 'mia' : m.la_sigo ? 'sigo' : ''}">
-      <div>
-        <p class="gano">${esc(m.empresa ?? '—')}${
-          resto.length ? ` <span class="cuanto">y ${resto.length} más</span>` : ''}${
-          marca ? `<span class="marca-mia">${marca}</span>` : ''}</p>
-        <p class="que">${esc(m.titulo ?? '')}</p>
-        <span class="donde">${esc([m.organo, m.provincia].filter(Boolean).join(' · '))}</span>
-        ${destacados.map(g => `<span class="donde">${
-          g.es_mia ? 'Tu empresa' : esc(g.nombre ?? g.cif)}: ${
-          plural(g.lotes ?? 1, 'lote', 'lotes')}${
-          g.importe ? ` · ${euros(Number(g.importe))}` : ''}</span>`).join('')}
-      </div>
-      <div class="cifra">
-        <strong>${m.total ? euros(Number(m.total)) : '—'}</strong>
-        <span class="baja">${esc(fecha(m.fecha))}</span>
-      </div>
-    </div>`;
-  };
+  async function cargar() {
+    const turno = ++vuelta;
+    const datos = document.getElementById('datos-mov');
+    if (!datos) return;
+    datos.classList.add('cambiando');
 
-  const cuerpo = lista.length ? [...grupos.values()].map(g => {
-    if (g.length === 1) return unaLinea(g[0]);
+    // Cifras y rankings sobre el periodo ENTERO, calculados en la base.
+    // La lista solo trae los más recientes: con un año son miles.
+    const extra = { provincia_elegida: provincia };
+    const [res, mov] = await Promise.all([
+      pedir('resumen_periodo', argsPeriodo(periodo, extra)),
+      pedir('movimientos_periodo', argsPeriodo(periodo, { ...extra, tope: 300 })),
+    ]);
+    if (turno !== vuelta || !document.getElementById('datos-mov')) return;
+    datos.classList.remove('cambiando');
 
-    // Del grupo se enseña la compra más reciente, y el resto debajo.
-    const primera = g[0];
-    const empresas = new Set(g.flatMap(x => x.ganadores.map(y => y.cif))
-      .filter(Boolean)).size;
-    const total = g.reduce((s, x) => s + (Number(x.total) || 0), 0);
-    const mia = g.some(x => x.es_mia);
-    const sigo = g.some(x => x.la_sigo);
+    // Un fallo NO se enseña como "no hay nada".
+    //
+    // Cuando la consulta se cae —un tiempo de espera agotado mientras el
+    // catálogo escribe, por ejemplo— la pantalla decía "Todavía no hay
+    // adjudicaciones en tus sectores". Y eso es mentira: las hay, pero no
+    // se han podido leer. El cliente concluye que su sector está parado.
+    if (res.error || mov.error) {
+      const fallo = res.error || mov.error;
+      datos.innerHTML = `
+        <div class="aviso mal" style="margin-top:26px">
+          No hemos podido cargar los movimientos.
+          <div style="margin-top:10px;font-size:.86rem;color:var(--tenue)">
+            ${esc(fallo.message || 'Error desconocido')}</div>
+          <div style="margin-top:14px">
+            <button class="secundario" id="reintentar">Reintentar</button>
+          </div>
+        </div>`;
+      alPulsar('reintentar', cargar);
+      return;
+    }
+    pintarDatos(res.data ?? {}, mov.data ?? []);
+  }
 
-    return `<details class="grupo-mov">
-      <summary>
+  function pintarDatos(r, filas) {
+    // Una fila por licitación, con TODOS sus ganadores. `total` es el
+    // importe del expediente e `importe` la parte de la principal.
+    const lista = filas.map(m => ({
+      ...m,
+      total: m.total ?? m.importe,
+      ganadores: m.ganadores?.length ? m.ganadores : [{
+        cif: m.cif, nombre: m.empresa, importe: m.importe, lotes: 1,
+        es_mia: m.es_mia, la_sigo: m.la_sigo }],
+    }));
+    const provincias = r.provincias ?? [];
+    const cuantos = Number(r.contratos) || 0;
+
+    function bloqueRanking(filas, titulo, id) {
+      if (!filas?.length) return '';
+      // Todas las barras ocupan lo mismo: el importe total ya está
+      // escrito a la derecha, así que la barra no tiene que repetirlo. Lo
+      // que muestra es OTRA cosa: cómo se reparte ese dinero entre sus
+      // contratos, y si depende de uno grande o lo tiene repartido.
+      //
+      // Tres tramos y el resto agrupado. Con diez o quince, los pequeños
+      // quedaban en hilos de dos píxeles imposibles de señalar, y uno
+      // grande se comía la barra entera.
+      return `
+        <div class="ranking" data-ranking="${id}">
+          <h4>${titulo}</h4>
+          <ol>${filas.map((f, i) => {
+            const euros_ = Number(f.euros) || 0;
+            const tramos = [...(f.tramos ?? [])];
+            if (f.resto_n) tramos.push({
+              titulo: f.resto_n === 1 ? 'Otro contrato' : `Otros ${f.resto_n} contratos`,
+              quien: '', importe: f.resto_importe, agrupado: true,
+            });
+            return `<li class="${f.es_mia ? 'mia' : f.la_sigo ? 'sigo' : ''}">
+              <div class="fila-ranking">
+                <span class="cual">${esc(f.nombre)}${
+                  f.provincia && id === 'organos'
+                    ? `<span class="cuanto"> · ${esc(f.provincia)}</span>` : ''}</span>
+                <span class="cuanto">${f.n} · ${euros_ ? euros(euros_) : 'sin importe'}</span>
+              </div>
+              <div class="barra-tramos">
+                ${tramos.map((c, j) => `<button class="tramo"
+                  style="width:${euros_
+                    ? (Number(c.importe) || 0) / euros_ * 100
+                    // En un acuerdo marco se sabe quién gana pero no
+                    // cuánto: tramos iguales, en vez de una barra vacía.
+                    : 100 / tramos.length}%;
+                         background:${c.agrupado ? COLOR_OTROS : PALETA[(i + j) % PALETA.length]}"
+                  data-titulo="${esc(c.titulo ?? '')}"
+                  data-quien="${esc(c.quien ?? '')}"
+                  data-importe="${esc(euros(Number(c.importe)) ?? '')}"
+                  aria-label="${esc(c.titulo ?? '')}"></button>`).join('')}
+              </div>
+            </li>`;
+          }).join('')}</ol>
+          <div class="detalle-tramo" data-hueco-ranking>
+            <span class="titulo-tramo" style="font-weight:400;color:var(--tenue)">
+              Cada barra reparte ese dinero entre sus contratos. Toca o
+              pasa por encima de un tramo para ver cuál es.</span>
+          </div>
+        </div>`;
+    }
+
+    // Sin el porcentaje sobre el presupuesto.
+    //
+    // Medido sobre 263.412 contratos: la media salía en 4.896 % y 100.862
+    // estaban por encima del presupuesto. Los dos campos no comparan lo
+    // mismo —importes de acuerdos marco frente a presupuestos de
+    // contratos basados, lotes sueltos frente al expediente entero— y
+    // publicarlo sería peor que no dar el dato: alguien podría calcular
+    // una oferta con él.
+    //
+    // Una línea por contrato, no por compra.
+    //
+    // Un acuerdo marco de stents publica CADA compra derivada como su
+    // propio expediente: salían 41 líneas con el mismo título y distinta
+    // empresa. Se agrupan por organismo y título, y el detalle se
+    // despliega.
+    const grupos = new Map();
+    lista.forEach(m => {
+      const k = m.grupo || m.id_licitacion;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(m);
+    });
+
+    // Con varios ganadores: la principal "y 12 más". Si entre los demás
+    // está tu empresa o una que sigues, se dice cuál y qué se llevó: es
+    // lo único de esos doce que le importa.
+    const unaLinea = m => {
+      const [principal, ...resto] = m.ganadores;
+      const destacados = resto.filter(g => g.es_mia || g.la_sigo);
+      const marca = principal?.es_mia ? 'tu empresa'
+        : principal?.la_sigo ? 'la sigues'
+        : m.es_mia ? 'tu empresa entre ellas'
+        : m.la_sigo ? 'una que sigues' : '';
+      return `<div class="movimiento ${m.es_mia ? 'mia' : m.la_sigo ? 'sigo' : ''}">
         <div>
-          <p class="gano">${empresas} ${empresas === 1 ? 'empresa' : 'empresas'}
-            ${mia ? '<span class="marca-mia">tu empresa entre ellas</span>'
-            : sigo ? '<span class="marca-mia">una que sigues</span>' : ''}</p>
-          <p class="que">${esc(primera.titulo ?? '')}</p>
-          <span class="donde">${esc([primera.organo, primera.provincia]
-            .filter(Boolean).join(' · '))}</span>
-          <span class="cuantas-veces">${plural(g.length, 'compra', 'compras')}
-            <span class="flechita">▾</span></span>
+          <p class="gano">${esc(m.empresa ?? '—')}${
+            resto.length ? ` <span class="cuanto">y ${resto.length} más</span>` : ''}${
+            marca ? `<span class="marca-mia">${marca}</span>` : ''}</p>
+          <p class="que">${esc(m.titulo ?? '')}</p>
+          <span class="donde">${esc([m.organo, m.provincia].filter(Boolean).join(' · '))}</span>
+          ${destacados.map(g => `<span class="donde">${
+            g.es_mia ? 'Tu empresa' : esc(g.nombre ?? g.cif)}: ${
+            plural(g.lotes ?? 1, 'lote', 'lotes')}${
+            g.importe ? ` · ${euros(Number(g.importe))}` : ''}</span>`).join('')}
         </div>
         <div class="cifra">
-          <strong>${total ? euros(total) : '—'}</strong>
-          <span class="baja">${esc(fecha(primera.fecha))}</span>
+          <strong>${m.total ? euros(Number(m.total)) : '—'}</strong>
+          <span class="baja">${esc(fecha(m.fecha))}</span>
         </div>
-      </summary>
-      <div class="dentro">${g.map(unaLinea).join('')}</div>
-    </details>`;
-  }).join('') : `<p class="vacio">Todavía no hay adjudicaciones registradas en
-    tus sectores este mes.</p>`;
+      </div>`;
+    };
 
-  document.getElementById('zona').innerHTML = `
-    <div class="cabeza-movimientos">
-      <div>
-        <h1 style="margin:0 0 12px">Qué se ha adjudicado en tu sector</h1>
-        <p class="guia" style="margin:0">Los contratos que se han cerrado en
-        los últimos treinta días con los mismos códigos que los tuyos. Quién
-        los ganó, de qué organismo y por cuánto.</p>
+    const cuerpo = lista.length ? [...grupos.values()].map(g => {
+      if (g.length === 1) return unaLinea(g[0]);
+
+      // Del grupo se enseña la compra más reciente, y el resto debajo.
+      const primera = g[0];
+      const empresas = new Set(g.flatMap(x => x.ganadores.map(y => y.cif))
+        .filter(Boolean)).size;
+      const total = g.reduce((s, x) => s + (Number(x.total) || 0), 0);
+      const mia = g.some(x => x.es_mia);
+      const sigo = g.some(x => x.la_sigo);
+
+      return `<details class="grupo-mov">
+        <summary>
+          <div>
+            <p class="gano">${empresas} ${empresas === 1 ? 'empresa' : 'empresas'}
+              ${mia ? '<span class="marca-mia">tu empresa entre ellas</span>'
+              : sigo ? '<span class="marca-mia">una que sigues</span>' : ''}</p>
+            <p class="que">${esc(primera.titulo ?? '')}</p>
+            <span class="donde">${esc([primera.organo, primera.provincia]
+              .filter(Boolean).join(' · '))}</span>
+            <span class="cuantas-veces">${plural(g.length, 'compra', 'compras')}
+              <span class="flechita">▾</span></span>
+          </div>
+          <div class="cifra">
+            <strong>${total ? euros(total) : '—'}</strong>
+            <span class="baja">${esc(fecha(primera.fecha))}</span>
+          </div>
+        </summary>
+        <div class="dentro">${g.map(unaLinea).join('')}</div>
+      </details>`;
+    }).join('') : `<p class="vacio">No hay adjudicaciones de tus sectores en
+      este periodo${provincia ? ` en ${esc(provincia)}` : ''}.</p>`;
+
+    const cuando = textoPeriodo(periodo, anios);
+
+    document.getElementById('datos-mov').innerHTML = `
+      <div class="pulso">
+        <h4>${esc(cuando)} en tu sector${provincia ? ` · ${esc(provincia)}` : ''}</h4>
+        <dl>
+          <div><dt>Adjudicaciones</dt><dd>${cuantos}</dd></div>
+          <div><dt>Importe total</dt><dd>${
+            Number(r.importe) ? euros(Number(r.importe)) : '—'}</dd></div>
+          <div><dt>Empresas distintas</dt><dd>${r.empresas ?? 0}</dd></div>
+          ${Number(r.importe_medio) ? `<div><dt>Importe medio</dt>
+            <dd>${euros(Number(r.importe_medio))}</dd></div>` : ''}
+          ${r.mias ? `<div><dt>Las has ganado tú</dt>
+            <dd>${r.mias}</dd></div>` : ''}
+          <p class="destacado">Cada contrato cuenta una vez aunque tenga
+          varios lotes o varias empresas ganadoras, y el importe medio es por
+          contrato. En «Quién más ha facturado», cada empresa suma solo su
+          parte.</p>
+        </dl>
       </div>
 
-    </div>
+      ${provincias.length > 1 ? `
+        <div class="filtro-provincia">
+          <label for="f-provincia">Ver solo</label>
+          <select id="f-provincia">
+            <option value="">Toda España</option>
+            ${provincias.map(pr => `<option value="${esc(pr)}"${
+              pr === provincia ? ' selected' : ''}>${esc(pr)}</option>`).join('')}
+          </select>
+        </div>` : ''}
 
-    <div class="pulso">
-      <h4>El mes en tu sector</h4>
-      <dl>
-        <div><dt>Adjudicaciones</dt><dd>${cifras.contratos}</dd></div>
-        <div><dt>Importe total</dt><dd>${
-          cifras.importe ? euros(cifras.importe) : '—'}</dd></div>
-        <div><dt>Empresas distintas</dt><dd>${cifras.empresas}</dd></div>
-        ${cifras.medio ? `<div><dt>Importe medio</dt>
-          <dd>${euros(cifras.medio)}</dd></div>` : ''}
-        ${cifras.mias ? `<div><dt>Las has ganado tú</dt>
-          <dd>${cifras.mias}</dd></div>` : ''}
-        <p class="destacado">Cada contrato cuenta una vez aunque tenga
-        varios lotes o varias empresas ganadoras, y el importe medio es por
-        contrato. En «Quién más ha facturado», cada empresa suma solo su
-        parte.</p>
-      </dl>
-    </div>
-
-    ${provincias.length > 1 ? `
-      <div class="filtro-provincia">
-        <label for="f-provincia">Ver solo</label>
-        <select id="f-provincia">
-          <option value="">Toda España</option>
-          ${provincias.map(pr => `<option value="${esc(pr)}"${
-            pr === provinciaElegida ? ' selected' : ''}>${esc(pr)}</option>`).join('')}
-        </select>
+      ${(r.por_empresa?.length || r.por_organo?.length) ? `
+      <div class="dos-columnas">
+        ${bloqueRanking(r.por_empresa, 'Quién más ha facturado', 'empresas')}
+        ${bloqueRanking(r.por_organo, 'Quién ha adjudicado más', 'organos')}
       </div>` : ''}
 
-    ${(porEmpresa.length || porOrgano.length) ? `
-    <div class="dos-columnas">
-      ${bloqueRanking(porEmpresa, 'Quién más ha facturado este mes', 'empresas')}
-      ${bloqueRanking(porOrgano, 'Quién ha adjudicado más', 'organos')}
-    </div>` : ''}
+      <div style="margin-top:32px">
+        ${cuantos > lista.length ? `<p class="guia" style="font-size:.88rem">
+          Las ${lista.length} adjudicaciones más recientes de ${
+          new Intl.NumberFormat('es-ES').format(cuantos)}. Las cifras y los
+          rankings de arriba cuentan todas.</p>` : ''}
+        ${cuerpo}
+      </div>`;
 
-    <div style="margin-top:32px">${cuerpo}</div>`;
-
-  const selProv = document.getElementById('f-provincia');
-  if (selProv) selProv.onchange = () =>
-    pantallaMovimientos(perfil, session, true, selProv.value);
-
-  // Cada tramo dice de qué contrato es. Sin esto la barra solo compara
-  // tamaños; con esto se puede ir al detalle sin bajar a la lista.
-  raiz.querySelectorAll('[data-ranking]').forEach(caja => {
-    const hueco = caja.querySelector('[data-hueco-ranking]');
-    const reposo = hueco.innerHTML;
-    const tramos = [...caja.querySelectorAll('.tramo')];
-
-    const mostrar = t => {
-      const contexto = [t.dataset.quien, t.dataset.importe]
-        .filter(Boolean).join(' · ');
-      hueco.innerHTML =
-        `<span class="titulo-tramo">${esc(t.dataset.titulo)}</span>` +
-        (contexto ? `<span class="meta-tramo">${esc(contexto)}</span>` : '');
-      tramos.forEach(x => x.classList.toggle('activo', x === t));
-    };
-    const soltar = () => {
-      hueco.innerHTML = reposo;
-      tramos.forEach(x => x.classList.remove('activo'));
+    const selProv = document.getElementById('f-provincia');
+    if (selProv) selProv.onchange = () => {
+      provincia = selProv.value || null;
+      cargar();
     };
 
-    // Se escucha en la tarjeta entera y no tramo a tramo: así el detalle
-    // solo se borra al salir de la tarjeta, no cada vez que el cursor
-    // cruza de un tramo al siguiente.
-    caja.addEventListener('mouseover', ev => {
-      const t = ev.target.closest('.tramo');
-      if (t) mostrar(t);
+    // Cada tramo dice de qué contrato es. Sin esto la barra solo compara
+    // tamaños; con esto se puede ir al detalle sin bajar a la lista.
+    raiz.querySelectorAll('[data-ranking]').forEach(caja => {
+      const hueco = caja.querySelector('[data-hueco-ranking]');
+      const reposo = hueco.innerHTML;
+      const tramos = [...caja.querySelectorAll('.tramo')];
+
+      const mostrar = t => {
+        const contexto = [t.dataset.quien, t.dataset.importe]
+          .filter(Boolean).join(' · ');
+        hueco.innerHTML =
+          `<span class="titulo-tramo">${esc(t.dataset.titulo)}</span>` +
+          (contexto ? `<span class="meta-tramo">${esc(contexto)}</span>` : '');
+        tramos.forEach(x => x.classList.toggle('activo', x === t));
+      };
+      const soltar = () => {
+        hueco.innerHTML = reposo;
+        tramos.forEach(x => x.classList.remove('activo'));
+      };
+
+      // Se escucha en la tarjeta entera y no tramo a tramo: así el
+      // detalle solo se borra al salir de la tarjeta, no cada vez que el
+      // cursor cruza de un tramo al siguiente.
+      caja.addEventListener('mouseover', ev => {
+        const t = ev.target.closest('.tramo');
+        if (t) mostrar(t);
+      });
+      caja.addEventListener('mouseleave', soltar);
+      tramos.forEach(t => {
+        t.onfocus = () => mostrar(t);
+        t.onclick = () => mostrar(t);
+      });
     });
-    caja.addEventListener('mouseleave', soltar);
-    tramos.forEach(t => {
-      t.onfocus = () => mostrar(t);
-      t.onclick = () => mostrar(t);
-    });
-  });
+  }
+
+  await cargar();
 }
 
 async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
@@ -5472,6 +5660,8 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
         empresa</button>` : ''}
     </div>
 
+    <div class="hueco-periodo" id="periodo-emp"></div>
+
     <div id="zona" style="margin-top:22px"></div>`;
 
   activarMenu(perfil, session);
@@ -5484,6 +5674,25 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   // Ver la propia empresa es la misma acción que buscar otra, así que va
   // junto al buscador y no abajo con las listas.
   alPulsar('ver-mia', () => verEmpresa(perfil.cif));
+
+  // El periodo vale para las listas y para la ficha: al cambiarlo se
+  // repinta lo que haya a la vista.
+  const aniosEmp = await aniosDelSector();
+  let periodoEmp = periodoGuardado(aniosEmp);
+  let repintarVista = null;
+  let vueltaEmp = 0;
+  selectorPeriodo(document.getElementById('periodo-emp'), aniosEmp, periodoEmp, p => {
+    periodoEmp = p;
+    repintarVista?.();
+  });
+  const cuandoEmp = () => aniosEmp.length ? enPeriodo(periodoEmp, aniosEmp) : '';
+
+  // Mientras llega lo nuevo, lo anterior se atenúa en vez de sustituirse
+  // por "Cargando...": así no salta la página al cambiar de periodo.
+  const esperando = texto => {
+    if (zona.children.length) zona.classList.add('cambiando');
+    else zona.innerHTML = `<p class="guia">${texto}</p>`;
+  };
 
   // Cambiar de forma repinta la ficha y guarda la elección para todos los
   // gráficos. Enganchado una sola vez sobre el contenedor, que no se
@@ -5499,11 +5708,15 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
   // ---------- Estado: listas ----------
   async function verListas() {
-    zona.innerHTML = `<p class="guia">Cargando...</p>`;
+    repintarVista = verListas;
+    const turno = ++vueltaEmp;
+    esperando('Cargando...');
     const [comp, seg] = await Promise.all([
-      sb.rpc('competencia'),
-      sb.rpc('mi_seguimiento'),
+      pedir('competencia_periodo', argsPeriodo(periodoEmp)),
+      pedir('seguimiento_periodo', argsPeriodo(periodoEmp)),
     ]);
+    if (turno !== vueltaEmp) return;
+    zona.classList.remove('cambiando');
 
     // Un fallo NO se enseña como «no hay empresas».
     //
@@ -5568,10 +5781,11 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
         <h3>Quién gana más en tus sectores
           <span class="cuantas">${competencia.length}</span></h3>
         <p class="guia" style="margin:0 0 14px;font-size:.9rem">Empresas que
-        han ganado contratos de los mismos códigos que tú. Pulsa una para ver
+        han ganado contratos de los mismos códigos que tú${
+          cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}. Pulsa una para ver
         su ficha.</p>
         ${competencia.length ? tabla(competencia, 't-competencia')
-          : '<p class="sin-datos">Todavía no hay datos de tus sectores.</p>'}
+          : '<p class="sin-datos">No hay adjudicaciones de tus sectores en este periodo.</p>'}
       </div>`;
 
     zona.querySelectorAll('tr[data-cif]').forEach(f =>
@@ -5595,6 +5809,8 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
         recado(data
           ? 'Añadida a tu lista de seguimiento'
           : 'Quitada de tu lista de seguimiento');
+        olvidar('seguimiento_periodo', 'competencia_periodo',
+                'movimientos_periodo', 'resumen_periodo');
 
         // Al seguirla desde la competencia, su fila se va: ya está arriba
         // en la lista de seguimiento y saldría dos veces. Si deja de
@@ -5638,13 +5854,23 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   // en vez de devolver a las listas.
   async function verEmpresa(cif, restaurando = false) {
     if (!restaurando) irA('mercado', { cif });
-    zona.innerHTML = `<p class="guia">Buscando...</p>`;
-    const { data, error } = await sb.rpc('ficha_empresa', { cif_buscado: cif });
+    repintarVista = () => verEmpresa(cif, true);
+    const turno = ++vueltaEmp;
+    esperando('Buscando...');
+    const { data, error } = await sb.rpc('ficha_empresa',
+      { cif_buscado: cif, ...argsPeriodo(periodoEmp) });
+    if (turno !== vueltaEmp) return;
+    zona.classList.remove('cambiando');
     if (error || !data || !data.contratos) {
+      // Con nombre es que existe y ha ganado algo, pero no en este
+      // periodo: decir "no hemos encontrado ese NIF" sería falso.
       zona.innerHTML = `
         <button class="volver-listas" id="volver-listas">← Volver a las listas</button>
-        <div class="aviso">No hemos encontrado contratos adjudicados con ese
-        NIF. Puede que no haya ganado ninguno todavía.</div>`;
+        <div class="aviso">${data?.nombre
+          ? `${esc(data.nombre)} no tiene contratos adjudicados
+             ${esc(cuandoEmp())}. Prueba con otro periodo.`
+          : `No hemos encontrado contratos adjudicados con ese NIF. Puede
+             que no haya ganado ninguno todavía.`}</div>`;
       alPulsar('volver-listas', () => history.back());
       return;
     }
@@ -5664,7 +5890,8 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
             <h3>${esc(e.nombre ?? e.cif)}</h3>
             <p class="cifras">
               <span><strong>${e.contratos}</strong> ${e.contratos === 1 ? 'contrato' : 'contratos'}${
-                e.lotes > e.contratos ? ` (${e.lotes} lotes)` : ''}</span>
+                e.lotes > e.contratos ? ` (${e.lotes} lotes)` : ''}${
+                cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}</span>
               ${e.importe ? `<span><strong>${euros(Number(e.importe))}</strong>
                 adjudicados</span>` : ''}
               ${e.ultimo ? `<span>último en ${esc(new Date(e.ultimo)
@@ -5730,7 +5957,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       recado(data
         ? 'Añadida a tu lista de seguimiento'
         : 'Quitada de tu lista de seguimiento');
-      olvidar('mi_seguimiento', 'competencia', 'movimientos_mercado');
+      olvidar('mi_seguimiento', 'competencia', 'movimientos_mercado',
+              'seguimiento_periodo', 'competencia_periodo',
+              'movimientos_periodo', 'resumen_periodo');
     });
   }
 
