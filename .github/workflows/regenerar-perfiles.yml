@@ -21,6 +21,10 @@ on:
       perfiles:
         description: 'UUID de perfiles, separados por comas (vacío = todos los que tienen NIF)'
         default: ''
+      solo_cribar:
+        description: 'Solo cribar lo pendiente, sin regenerar (el cribador hace 300 por pasada)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -64,7 +68,9 @@ jobs:
             ids=$(deno run -A scripts/regenerar_perfiles.ts --listar)
           fi
           for id in $ids; do
-            if [ "${{ inputs.ensayo }}" = "true" ]; then
+            if [ "${{ inputs.solo_cribar }}" = "true" ]; then
+              python cribador.py --perfil "$id"
+            elif [ "${{ inputs.ensayo }}" = "true" ]; then
               deno run -A scripts/regenerar_perfiles.ts --perfil="$id" --ensayo
             else
               deno run -A scripts/regenerar_perfiles.ts --perfil="$id"
