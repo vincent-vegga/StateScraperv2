@@ -114,24 +114,6 @@ def normalizar_cif(valor: str) -> str:
     return limpio
 
 
-def resumir_adjudicaciones(adjudicaciones: list[dict]) -> tuple[str, str, float | None]:
-    """
-    De la lista de lotes, el ganador principal y el importe total.
-
-    Principal es quien más dinero se lleva, no quien aparece primero: en
-    un contrato por lotes el orden no significa nada.
-
-    El importe es la SUMA de todos los lotes y SIN impuestos, que es lo
-    único comparable con el presupuesto base publicado.
-    """
-    if not adjudicaciones:
-        return "", "", None
-
-    total = sum(a["importe"] for a in adjudicaciones if a.get("importe") is not None)
-    principal = max(adjudicaciones, key=lambda a: a.get("importe") or 0)
-    return principal["adjudicatario"], principal["cif"], (total or None)
-
-
 def extraer_adjudicacion(entrada) -> tuple[str, str, float | None]:
     """
     Quién ganó el contrato, con qué CIF y por cuánto.
@@ -186,8 +168,21 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
     # de cómo es un expediente por dentro. Tener una copia aquí hacía que
     # los arreglos solo llegaran a la mitad del sistema.
     adjudicaciones = lector.extraer_adjudicaciones(entrada)
-    adjudicatario, cif, importe = resumir_adjudicaciones(adjudicaciones)
     base, estimado = lector.extraer_presupuesto_detallado(entrada)
+    # El resumen también es el del lector, con sus dos defensas: acuerdo
+    # marco con varios lotes sin importe, y nada de totales que pasen de
+    # 1,5 veces el presupuesto. La copia que había aquí sumaba a ciegas y
+    # llegó a meter 72.000 M€ que no existen: un marco de uniformidad de
+    # 26 M€ salía con 81 M€, todos para un único adjudicatario.
+    techo = max((x for x in (base, datos["presupuesto"], estimado)
+                 if x is not None), default=None)
+    resumen = lector.resumir_adjudicaciones(
+        adjudicaciones, techo,
+        lector.extraer_sistema(entrada) in ("Acuerdo marco",
+                                            "Sistema dinámico de adquisición"))
+    adjudicatario = resumen.get("adjudicatario", "")
+    cif = resumen.get("adjudicatario_cif", "")
+    importe = resumen.get("importe_adjudicacion")
     principal = (max(adjudicaciones, key=lambda a: a.get("importe") or 0)
                  if adjudicaciones else {})
     fecha_act = lector.a_fecha(datos["fecha_actualizacion"])
