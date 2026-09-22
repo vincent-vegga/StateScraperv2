@@ -271,3 +271,27 @@ plazo de solicitudes. En los dos casos, verificar antes la hipótesis de la
 fecha con el XML de uno de ellos y medir cuántos hay: el 21/09/2026 salían
 133 contratos "vivos" del histórico de 2024 (100 sin fecha límite y 33 con
 plazo futuro), además de 520 de 2025.
+
+---
+
+## 9. Varias empresas por cuenta: lo que quedó fuera (22/09/2026)
+
+La función (hasta 3 NIF por cuenta, `20260922100000_varias_empresas.sql`)
+se hizo con lo mínimo para la prueba con betatesters. Queda:
+
+- **Un correo por empresa.** `alertador.py` recorre perfiles, así que quien
+  lleve 3 empresas recibiría 3 correos al mismo buzón. Hoy no importa: el
+  correo está apagado en la beta. Antes de encenderlo, agrupar por
+  `usuario_id` en un solo correo con una sección por empresa.
+- **Sin vuelta atrás a mitad del alta.** Al añadir una empresa, la pantalla
+  del NIF tiene "Cancelar", pero las siguientes (confirmar, describir,
+  entrenar, cribando) no enseñan el selector. Quien se arrepienta ahí tiene
+  que terminar o recargar la página (entonces vuelve a esa empresa a medias).
+- **Sin contador de novedades por empresa en el selector.** El boceto lo
+  tenía ("4 nuevos"); pide una consulta por empresa en cada carga y se dejó
+  para después de medir la carga.
+- **Coste del cribado.** Cada empresa se criba aparte con el modelo: una
+  cuenta con 3 cuesta como 3 clientes.
+- **Respaldo.** Las definiciones anteriores de las 21 funciones reescritas
+  están en `public.respaldo_funciones_20260922`. Para volver atrás, ejecutar
+  cada `definicion` de esa tabla.

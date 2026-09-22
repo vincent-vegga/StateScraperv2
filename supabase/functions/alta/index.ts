@@ -553,12 +553,25 @@ Deno.serve(async (peticion) => {
     const autorizacion = peticion.headers.get("Authorization");
     if (!autorizacion) return responder({ error: "sin_sesion" }, 401);
 
+    const { accion, descripcion, prefijos, respuestas, cif, empresa, dias,
+            perfil_id } = await peticion.json();
+
+    // Con varias empresas por cuenta, la web dice cuál está mirando. Se
+    // reenvía a la base como `x-perfil` para que las funciones que buscan
+    // "mi perfil" (mi_perfil_id) resuelvan la misma. No da acceso a nada:
+    // solo elige entre los perfiles del propio usuario.
+    const perfilPedido = typeof perfil_id === "string" &&
+        /^[0-9a-f-]{36}$/i.test(perfil_id) ? perfil_id : null;
+
     // Cliente en nombre del usuario: las políticas de acceso se aplican,
     // así que no puede tocar el perfil de otro aunque lo intente.
     const comoUsuario = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: autorizacion } } },
+      { global: { headers: {
+        Authorization: autorizacion,
+        ...(perfilPedido ? { "x-perfil": perfilPedido } : {}),
+      } } },
     );
 
     const { data: { user } } = await comoUsuario.auth.getUser();
@@ -571,12 +584,12 @@ Deno.serve(async (peticion) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { accion, descripcion, prefijos, respuestas, cif, empresa, dias } =
-      await peticion.json();
-
+    // La pedida si es suya; si no (borrada, o de una versión vieja de la
+    // web que no la manda), la más antigua, igual que mi_perfil_id().
     const { data: perfiles } = await comoUsuario.from("perfiles")
-      .select("*").eq("usuario_id", user.id).limit(1);
-    const perfil = perfiles?.[0];
+      .select("*").eq("usuario_id", user.id)
+      .order("fecha_alta").order("id").limit(3);
+    const perfil = perfiles?.find((p) => p.id === perfilPedido) ?? perfiles?.[0];
     if (!perfil) return responder({ error: "sin_perfil" }, 403);
 
     // --- Buscar la empresa por su CIF ---

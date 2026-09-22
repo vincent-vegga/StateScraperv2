@@ -1663,6 +1663,35 @@ select:focus{
 }
 .menu .peligroso{color:var(--no)}
 
+/* ---------- Selector de empresa ----------
+   Solo aparece con más de una. Va donde estaba el nombre, entre el
+   título y las pestañas: es lo que dice DE QUIÉN son los datos de
+   debajo, así que tiene que verse sin abrir nada. */
+.selector-empresa{display:inline-block;margin-top:4px;max-width:100%}
+.boton-empresa{
+  display:inline-flex;align-items:center;gap:7px;max-width:100%;min-height:30px;
+  padding:0 10px;border:1px solid var(--linea);border-radius:7px;
+  background:var(--superficie);color:var(--texto);font:inherit;
+  font-size:.86rem;cursor:pointer;transition:border-color .15s,background-color .15s;
+}
+.boton-empresa:hover,.boton-empresa[aria-expanded="true"]{
+  border-color:var(--fuerte);background:var(--hover);
+}
+.boton-empresa .nombre{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.boton-empresa .flechita{color:var(--tenue);font-size:.7rem;transition:transform .18s}
+.boton-empresa[aria-expanded="true"] .flechita{transform:rotate(180deg)}
+.menu-empresas{left:0;right:auto;min-width:260px;max-width:min(360px,calc(100vw - 32px))}
+.menu-empresas button{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.menu-empresas .nombre{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu-empresas .nif{flex:none;color:var(--tenue);font-size:.8rem}
+.menu-empresas [aria-checked="true"]{font-weight:650}
+.menu-empresas [aria-checked="true"]::after{content:'✓';color:var(--texto)}
+.menu-empresas [aria-checked="true"] .nif{margin-left:auto}
+.menu-empresas .tope{margin:6px 12px 8px;color:var(--tenue);font-size:.82rem}
+.pista-empresas{margin-top:26px;font-size:.84rem;text-align:center}
+
 .seccion[hidden]{display:none !important}
 
 /* ---------- Barras apiladas ----------
@@ -2597,7 +2626,33 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = 'https://swgrbzqxagrqdyddmvfy.supabase.co';
 const SUPABASE_ANON = 'sb_publishable_asxZq0hsC7OjJ7_F5hcefA_QngjLLQk';
 
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+// ---------- Empresa activa ----------
+//
+// Una cuenta puede llevar hasta 3 empresas (un perfil por NIF). Cuál se
+// está mirando lo decide ESTE dispositivo, no la base: con el móvil en
+// una y el ordenador en otra, ninguno le cambia la pantalla al otro.
+//
+// Viaja en cada petición como cabecera `x-perfil`, y en la base
+// `mi_perfil_id()` la usa para elegir entre los perfiles del usuario.
+// No abre nada: un id que no sea suyo cae en su perfil más antiguo.
+const TOPE_EMPRESAS = 3;
+let PERFILES = [];
+let perfilActivoId = (() => {
+  try { return localStorage.getItem('empresa-activa'); } catch { return null; }
+})();
+
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
+  global: {
+    fetch: (url, opciones = {}) => {
+      if (perfilActivoId) {
+        const cabeceras = new Headers(opciones.headers);
+        cabeceras.set('x-perfil', perfilActivoId);
+        opciones = { ...opciones, headers: cabeceras };
+      }
+      return fetch(url, opciones);
+    },
+  },
+});
 const raiz = document.getElementById('raiz');
 
 // Usuario cuya sesión ya se ha atendido. Evita reiniciar la pantalla
@@ -2670,9 +2725,7 @@ window.addEventListener('popstate', async (ev) => {
 
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return pantallaEntrar();
-  const { data: perfiles } = await sb.from('perfiles')
-    .select('*').eq('usuario_id', session.user.id).limit(1);
-  const perfil = perfiles?.[0];
+  const perfil = await cargarPerfil(session).catch(() => null);
   if (!perfil) return arrancar(true);
 
   // Quien tuviera guardada la vista de viabilidad no se queda en una
@@ -2771,6 +2824,102 @@ const diasHasta = iso => {
     - Date.parse(diaPeninsular(ahora))) / 86400000);
 };
 
+// Trae las empresas de la cuenta y devuelve la activa: la que recuerda
+// este dispositivo si sigue existiendo, y si no la más antigua.
+async function cargarPerfil(session) {
+  const { data, error } = await sb.from('perfiles').select('*')
+    .eq('usuario_id', session.user.id)
+    .order('fecha_alta').order('id').limit(TOPE_EMPRESAS);
+  if (error) throw error;
+  PERFILES = data ?? [];
+  const perfil = PERFILES.find(p => p.id === perfilActivoId) ?? PERFILES[0];
+  fijarEmpresa(perfil?.id ?? null);
+  return perfil;
+}
+
+function fijarEmpresa(id) {
+  if (id !== perfilActivoId) {
+    // Lo guardado es de la otra empresa: enseñarlo, aunque fuera un
+    // instante, sería mostrar los contratos de una sociedad bajo el
+    // nombre de otra.
+    CACHE.clear();
+    refrescarListaAbierta = null;
+  }
+  perfilActivoId = id;
+  try {
+    if (id) localStorage.setItem('empresa-activa', id);
+    else localStorage.removeItem('empresa-activa');
+  } catch { /* modo privado: vale para esta visita */ }
+}
+
+async function cambiarEmpresa(id) {
+  if (id === perfilActivoId) return;
+  fijarEmpresa(id);
+  arrancar();
+}
+
+async function anadirEmpresa() {
+  const { data, error } = await sb.rpc('nueva_empresa');
+  if (error || !data?.ok) {
+    recado(data?.error === 'tope_empresas'
+      ? `De momento se pueden llevar ${TOPE_EMPRESAS} empresas por cuenta`
+      : 'No se ha podido añadir. Inténtalo de nuevo.');
+    return;
+  }
+  cambiarEmpresa(data.perfil_id);
+}
+
+const nombreEmpresa = p => p.empresa || (p.paso_alta === 'listo'
+  ? (p.email || 'Tu empresa') : 'Empresa nueva, sin terminar');
+
+// Donde iba el nombre de la empresa, bajo el título. Con una sola se
+// queda como siempre; con varias se convierte en el selector.
+function cabeceraEmpresa(perfil) {
+  if (PERFILES.length <= 1)
+    return `<div class="quien">${esc(perfil.empresa || perfil.email || '')}</div>`;
+  const quedan = PERFILES.length < TOPE_EMPRESAS;
+  return `
+    <div class="menu-envoltorio selector-empresa">
+      <button class="boton-empresa" id="abrir-empresas" aria-haspopup="true"
+              aria-expanded="false">
+        <span class="nombre">${esc(nombreEmpresa(perfil))}</span><span class="flechita">▾</span>
+      </button>
+      <div class="menu menu-empresas" id="menu-empresas" role="menu" hidden>
+        ${PERFILES.map(p => `
+          <button role="menuitemradio" data-empresa="${esc(p.id)}"
+                  aria-checked="${p.id === perfil.id}">
+            <span class="nombre">${esc(nombreEmpresa(p))}</span>
+            ${p.cif ? `<span class="nif">${esc(p.cif)}</span>` : ''}
+          </button>`).join('')}
+        <div class="separa"></div>
+        ${quedan
+          ? `<button role="menuitem" data-anadir-empresa>+ Añadir empresa
+               <span class="nif">${PERFILES.length} de ${TOPE_EMPRESAS}</span></button>`
+          : `<p class="tope">Máximo de ${TOPE_EMPRESAS} empresas por cuenta</p>`}
+      </div>
+    </div>`;
+}
+
+// Delegado y una sola vez: las cabeceras se repintan en cada pantalla y
+// así no hay que acordarse de activar el selector en cada una.
+document.addEventListener('click', ev => {
+  const abrir = ev.target.closest('#abrir-empresas');
+  const menu = document.getElementById('menu-empresas');
+  if (abrir && menu) {
+    ev.stopPropagation();
+    menu.hidden = !menu.hidden;
+    abrir.setAttribute('aria-expanded', String(!menu.hidden));
+    return;
+  }
+  const elegida = ev.target.closest('[data-empresa]');
+  if (elegida) return cambiarEmpresa(elegida.dataset.empresa);
+  if (ev.target.closest('[data-anadir-empresa]')) return anadirEmpresa();
+  if (menu && !ev.target.closest('.selector-empresa')) {
+    menu.hidden = true;
+    document.getElementById('abrir-empresas')?.setAttribute('aria-expanded', 'false');
+  }
+});
+
 async function llamar(accion, cuerpo = {}) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) throw new Error('sin_sesion');
@@ -2780,7 +2929,7 @@ async function llamar(accion, cuerpo = {}) {
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ accion, ...cuerpo }),
+    body: JSON.stringify({ accion, perfil_id: perfilActivoId, ...cuerpo }),
   });
   const datos = await r.json();
   if (!r.ok || datos.error) throw new Error(datos.error || 'error');
@@ -2802,9 +2951,13 @@ async function arrancar(volviendo = false) {
   if (!raiz.innerHTML.trim())
     raiz.innerHTML = `<div class="centro"><p class="guia">Cargando...</p></div>`;
 
-  const { data: perfiles } = await sb.from('perfiles')
-    .select('*').eq('usuario_id', session.user.id).limit(1);
-  const perfil = perfiles?.[0];
+  let perfil;
+  try { perfil = await cargarPerfil(session); }
+  catch {
+    raiz.innerHTML = `<div class="centro"><div class="aviso mal">
+      No hemos podido cargar tu cuenta. Recarga la página.</div></div>`;
+    return;
+  }
 
   if (!perfil) return pantallaCodigo(session);
 
@@ -2863,13 +3016,16 @@ async function cribarPendientesDeFondo(perfil) {
     // no clasifican nada, las siguientes tampoco lo harán.
     let hechas = 0, sinAvance = 0;
     for (let vuelta = 0; vuelta < 200; vuelta++) {
-      const r = await llamar('cribar');
+      // Con su perfil fijo: si cambia de empresa a mitad, esto sigue
+      // cribando la que empezó en vez de saltar a la otra.
+      const r = await llamar('cribar', { perfil_id: perfil.id });
       hechas += r.hechas || 0;
       if (r.terminado) break;
       sinAvance = r.hechas ? 0 : sinAvance + 1;
       if (sinAvance >= 2) break;
     }
-    if (hechas && refrescarListaAbierta) await refrescarListaAbierta();
+    if (hechas && refrescarListaAbierta && perfil.id === perfilActivoId)
+      await refrescarListaAbierta();
   } catch { /* lo que quede lo criba el scraper por la noche */ }
   finally { cribandoDeFondo = false; }
 }
@@ -3103,10 +3259,12 @@ function pantallaCodigo(session) {
 // ============================================================
 
 function pantallaEmpresa(perfil, session) {
+  // ¿Es una empresa más de una cuenta que ya tiene otra lista?
+  const otra = PERFILES.find(p => p.id !== perfil.id && p.paso_alta === 'listo');
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
     <div class="paso">
-      <h1>¿Cuál es el NIF de tu empresa?</h1>
+      <h1>¿Cuál es el NIF de ${otra ? 'la otra empresa' : 'tu empresa'}?</h1>
       <p class="guia">Con él encontramos los contratos públicos que ya has
       ganado. De ahí sabemos a qué te presentas, sin que tengas que
       explicárnoslo.</p>
@@ -3117,7 +3275,19 @@ function pantallaEmpresa(perfil, session) {
       <button class="principal" id="buscar">Buscar</button>
       <button class="enlace" id="sin-cif">No tengo contratos públicos todavía</button>
       <div id="resultado"></div>
+      ${otra
+        ? `<button class="enlace" id="cancelar-empresa">Cancelar y volver a
+             ${esc(nombreEmpresa(otra))}</button>`
+        : `<p class="guia pista-empresas">¿Llevas varias empresas? Podrás
+             añadir hasta ${TOPE_EMPRESAS} cuando termines con esta.</p>`}
     </div>`;
+
+  // Se quita la empresa a medio hacer: si no, ocuparía uno de los tres
+  // huecos sin servir para nada.
+  if (otra) alPulsar('cancelar-empresa', async () => {
+    await sb.rpc('quitar_empresa', { perfil: perfil.id });
+    cambiarEmpresa(otra.id);
+  });
 
   const boton = document.getElementById('buscar');
   const campo = document.getElementById('cif');
@@ -3802,7 +3972,9 @@ const CACHE = new Map();
 const VIGENCIA = 90_000;   // Metro y medio de margen: pasado eso, se pide de nuevo.
 
 async function pedir(nombre, args = {}, opciones = {}) {
-  const clave = nombre + ':' + JSON.stringify(args);
+  // La empresa va en la clave: un refresco que llega tarde, después de
+  // cambiar de empresa, no puede colarse en la de la otra.
+  const clave = nombre + ':' + perfilActivoId + ':' + JSON.stringify(args);
   const guardado = CACHE.get(clave);
   const fresco = guardado && (Date.now() - guardado.cuando) < VIGENCIA;
 
@@ -3895,7 +4067,7 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>Viabilidad</strong>
-        <div class="quien">${esc(perfil.empresa || '')}</div>
+        ${cabeceraEmpresa(perfil)}
         ${navPrincipal('viabilidad')}</div>
       <div style="display:flex;gap:9px;align-items:center">
         ${campanaAvisos()}
@@ -4256,7 +4428,7 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>Organismos</strong>
-        <div class="quien">${esc(perfil.empresa || '')}</div>
+        ${cabeceraEmpresa(perfil)}
         ${navPrincipal('organismos')}</div>
       <div style="display:flex;gap:9px;align-items:center">
         ${campanaAvisos()}
@@ -4687,7 +4859,7 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>Movimientos</strong>
-        <div class="quien">${esc(perfil.empresa || '')}</div>
+        ${cabeceraEmpresa(perfil)}
         ${navPrincipal('movimientos')}</div>
       <div style="display:flex;gap:9px;align-items:center">
         ${campanaAvisos()}
@@ -5036,7 +5208,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>Empresas</strong>
-        <div class="quien">${esc(perfil.empresa || '')}</div>
+        ${cabeceraEmpresa(perfil)}
         ${navPrincipal('mercado')}</div>
       <div style="display:flex;gap:9px;align-items:center">
         ${campanaAvisos()}
@@ -5428,6 +5600,9 @@ function menuCuenta(actual = null) {
       <div class="menu" id="menu" role="menu" hidden>
         ${Object.keys(SECCIONES).map(k => `<button role="menuitem" data-ir="${k}"
           aria-current="${k === actual}">${SECCIONES[k]}</button>`).join('')}
+        ${PERFILES.length < TOPE_EMPRESAS && PERFILES.every(p => p.paso_alta === 'listo')
+          ? `<div class="separa"></div>
+        <button role="menuitem" data-anadir-empresa>Añadir otra empresa</button>` : ''}
         <div class="separa"></div>
         <button role="menuitem" class="tema" id="tema"
                 aria-pressed="false">Modo oscuro<span class="palanca"></span></button>
@@ -5556,14 +5731,24 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         tu historial de contratos sigue ahí.</p>
         <button class="secundario" id="reiniciar">Rehacer mi filtro</button>
         <div id="resultado"></div>
-      </div>`,
+      </div>
+      ${PERFILES.length > 1 ? `
+      <div class="bloque peligro">
+        <h3>Quitar esta empresa</h3>
+        <p class="guia" style="margin:0 0 18px">Deja de vigilar
+        ${esc(nombreEmpresa(perfil))} y libera su hueco. Se borran su filtro,
+        sus correcciones y las empresas que sigues desde ella. Tus otras
+        empresas no cambian.</p>
+        <button class="secundario" id="quitar-empresa">Quitar esta empresa</button>
+        <div id="resultado-quitar"></div>
+      </div>` : ''}`,
 
   };
 
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>${esc(SECCIONES[seccion] ?? 'Mi cuenta')}</strong>
-        <div class="quien">${esc(p.empresa || p.email || '')}</div>
+        ${cabeceraEmpresa(perfil)}
         ${navPrincipal('panel')}</div>
       <div style="display:flex;gap:9px;align-items:center">
         ${campanaAvisos()}
@@ -5594,6 +5779,29 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         Hecho. Volverá a aparecer en tu lista.</p>`;
     });
   }
+
+  // ---------- Quitar esta empresa ----------
+  alPulsar('quitar-empresa', () => {
+    const zona = document.getElementById('resultado-quitar');
+    zona.innerHTML = `
+      <div class="aviso">¿Seguro? No se puede deshacer: para volver a
+      vigilarla habría que darla de alta otra vez.
+      <div style="margin-top:14px;display:flex;gap:10px">
+        <button class="secundario" id="no-quitar">Cancelar</button>
+        <button class="principal" id="si-quitar">Sí, quitarla</button>
+      </div></div>`;
+    alPulsar('no-quitar', () => zona.innerHTML = '');
+    alPulsar('si-quitar', async () => {
+      zona.innerHTML = `<div class="aviso">Quitando...</div>`;
+      const { data, error } = await sb.rpc('quitar_empresa', { perfil: perfil.id });
+      if (error || !data?.ok) {
+        zona.innerHTML = `<div class="aviso mal">No se ha podido. Inténtalo de nuevo.</div>`;
+        return;
+      }
+      fijarEmpresa(PERFILES.find(p => p.id !== perfil.id)?.id ?? null);
+      arrancar();
+    });
+  });
 
   // ---------- Rehacer el filtro ----------
   alPulsar('reiniciar', () => {
@@ -5711,7 +5919,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   raiz.innerHTML = `
     <div class="cabecera-app">
       <div><strong>Tus contratos</strong>
-        <div class="quien">${esc(perfil.empresa || perfil.email || '')}</div>
+        ${cabeceraEmpresa(perfil)}
         ${navPrincipal('contratos')}</div>
       <div style="display:flex;gap:9px;align-items:center">
         ${campanaAvisos()}
