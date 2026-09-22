@@ -294,6 +294,19 @@ async def alta_usuario(api: Api, u: dict, codigo: str, reserva: list[dict],
         segundos = time.perf_counter() - inicio
         M.anotar("alta", "empresa completa (cribado inicial)", segundos * 1000, True)
 
+        # Resultado del alta, para medir cuánto varía entre altas de la
+        # misma empresa: tamaño de la lista y huella del criterio.
+        lista = await api.tabla("alta", "resultado:lista",
+                                f"mis_oportunidades?select=id_licitacion&perfil_id=eq.{perfil}",
+                                u["token"], perfil) or []
+        fila = await api.tabla("alta", "resultado:perfil",
+                               f"perfiles?select=criterio,cpv_prefijos&id=eq.{perfil}",
+                               u["token"], perfil) or [{}]
+        crit = (fila[0] or {}).get("criterio") or ""
+        logging.info("RESULTADO %s · en lista %d · prefijos %s · criterio %s (%d car.): %s",
+                     empresa["cif"], len(lista), (fila[0] or {}).get("cpv_prefijos"),
+                     format(abs(hash(crit)) % 10**6, "06d"), len(crit), crit[:600])
+
         # Lo que hace la web al abrir la lista por primera vez.
         r = await api.alta("alta", "sectores", u["token"], perfil)
         if r and r.get("sectores"):
