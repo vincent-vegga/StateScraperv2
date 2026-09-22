@@ -4864,17 +4864,25 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
     const cajaContratos = document.getElementById('contratos-organo');
     const rotulo = document.getElementById('rotulo-contratos');
 
+    // Al señalar una empresa salen también los contratos en los que ganó
+    // un lote sin ser la principal, y con SU parte, no con el total.
     const pintarContratos = (cifs, quien) => {
+      const ganadoresDe = c => c.cifs ?? [c.cif];
       const filtrados = cifs
-        ? contratos.filter(c => cifs.includes(c.cif))
+        ? contratos.filter(c => ganadoresDe(c).some(x => cifs.includes(x)))
         : contratos;
+      const cifra = c => {
+        if (cifs?.length === 1 && c.partes) return c.partes[cifs[0]];
+        return c.total ?? c.importe;
+      };
       rotulo.textContent = quien ? `Contratos de ${quien}` : 'Sus contratos';
       cajaContratos.innerHTML = filtrados.length
         ? filtrados.slice(0, 14).map(c => `
             <div class="${c.es_mia ? 'mia' : ''}">
               <p class="que">${esc(c.titulo ?? '')}</p>
               <span class="quien">${esc(c.empresa ?? '')}${
-                c.importe ? ` · ${euros(Number(c.importe))}` : ''}</span>
+                c.otros ? ` y ${c.otros} más` : ''}${
+                cifra(c) ? ` · ${euros(Number(cifra(c)))}` : ''}</span>
               ${(c.licitadores || c.baja || c.oferta_baja) ? `
                 <span class="detalle-contrato">
                   ${c.licitadores ? `<span><strong>${c.licitadores}</strong>
@@ -5039,7 +5047,17 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
     return;
   }
 
-  const todo = mov.data ?? [];
+  // Una fila por licitación, con TODOS sus ganadores. `total` es el
+  // importe del expediente e `importe` la parte de la principal. Antes
+  // el ranking apuntaba el expediente entero a la principal, también
+  // los lotes que habían ganado otras.
+  const todo = (mov.data ?? []).map(m => ({
+    ...m,
+    total: m.total ?? m.importe,
+    ganadores: m.ganadores?.length ? m.ganadores : [{
+      cif: m.cif, nombre: m.empresa, importe: m.importe, lotes: 1,
+      es_mia: m.es_mia, la_sigo: m.la_sigo }],
+  }));
   const p = pul.data ?? {};
 
   // Solo las provincias que de verdad aparecen en los datos: ofrecer un
@@ -5057,10 +5075,11 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
   const cifras = provinciaElegida
     ? {
         contratos: lista.length,
-        importe: lista.reduce((s, m) => s + (Number(m.importe) || 0), 0),
-        empresas: new Set(lista.map(m => m.cif).filter(Boolean)).size,
-        medio: Math.round(lista.reduce((s, m) => s + (Number(m.importe) || 0), 0)
-               / (lista.filter(m => m.importe).length || 1)),
+        importe: lista.reduce((s, m) => s + (Number(m.total) || 0), 0),
+        empresas: new Set(lista.flatMap(m => m.ganadores.map(g => g.cif))
+          .filter(Boolean)).size,
+        medio: Math.round(lista.reduce((s, m) => s + (Number(m.total) || 0), 0)
+               / (lista.filter(m => m.total).length || 1)),
         mias: lista.filter(m => m.es_mia).length,
       }
     : {
@@ -5074,17 +5093,19 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
   // Los rankings salen de la misma lista que se enseña debajo, no de otra
   // consulta: así lo que se cuenta arriba y lo que se ve abajo coinciden
   // siempre, y cada barra puede desglosarse en sus contratos.
-  function agrupar(clave, etiqueta) {
+  //
+  // `repartir` dice a quién va cada licitación y con cuánto: al
+  // organismo, el total; a las empresas, cada una su parte.
+  function agrupar(repartir) {
     const grupos = new Map();
-    lista.forEach(m => {
-      const k = m[clave];
-      if (!k) return;
-      if (!grupos.has(k)) grupos.set(k, {
-        clave: k, nombre: m[etiqueta] ?? k, provincia: m.provincia,
-        es_mia: !!m.es_mia, la_sigo: !!m.la_sigo, contratos: [],
+    lista.forEach(m => repartir(m).forEach(t => {
+      if (!t.clave) return;
+      if (!grupos.has(t.clave)) grupos.set(t.clave, {
+        clave: t.clave, nombre: t.nombre ?? t.clave, provincia: m.provincia,
+        es_mia: !!t.es_mia, la_sigo: !!t.la_sigo, contratos: [],
       });
-      grupos.get(k).contratos.push(m);
-    });
+      grupos.get(t.clave).contratos.push({ ...m, importe: t.importe });
+    }));
     return [...grupos.values()]
       .map(g => ({ ...g,
         n: g.contratos.length,
@@ -5099,8 +5120,12 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
       .slice(0, 6);
   }
 
-  const porEmpresa = agrupar('cif', 'empresa');
-  const porOrgano = agrupar('organo', 'organo');
+  const porEmpresa = agrupar(m => m.ganadores.map(g => ({
+    clave: g.cif, nombre: g.nombre, importe: g.importe,
+    es_mia: g.es_mia, la_sigo: g.la_sigo })));
+  const porOrgano = agrupar(m => [{
+    clave: m.organo, nombre: m.organo, importe: m.total,
+    es_mia: m.es_mia, la_sigo: m.la_sigo }]);
 
   function bloqueRanking(filas, titulo, id) {
     if (!filas.length) return '';
@@ -5137,11 +5162,15 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
               <span class="cual">${esc(f.nombre)}${
                 f.provincia && id === 'organos'
                   ? `<span class="cuanto"> · ${esc(f.provincia)}</span>` : ''}</span>
-              <span class="cuanto">${f.n} · ${euros(f.euros)}</span>
+              <span class="cuanto">${f.n} · ${f.euros ? euros(f.euros) : 'sin importe'}</span>
             </div>
             <div class="barra-tramos">
               ${tramos.map((c, j) => `<button class="tramo"
-                style="width:${(Number(c.importe) || 0) / f.euros * 100}%;
+                style="width:${f.euros
+                  ? (Number(c.importe) || 0) / f.euros * 100
+                  // En un acuerdo marco se sabe quién gana pero no
+                  // cuánto: tramos iguales, en vez de una barra vacía.
+                  : 100 / tramos.length}%;
                        background:${c.agrupado ? COLOR_OTROS : PALETA[(i + j) % PALETA.length]}"
                 data-titulo="${esc(c.titulo ?? '')}"
                 data-quien="${esc(c.agrupado ? ''
@@ -5186,17 +5215,30 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
     grupos.get(k).push(m);
   });
 
+  // Con varios ganadores: la principal "y 12 más". Si entre los demás
+  // está tu empresa o una que sigues, se dice cuál y qué se llevó: es lo
+  // único de esos doce que le importa.
   const unaLinea = m => {
+    const [principal, ...resto] = m.ganadores;
+    const destacados = resto.filter(g => g.es_mia || g.la_sigo);
+    const marca = principal?.es_mia ? 'tu empresa'
+      : principal?.la_sigo ? 'la sigues'
+      : m.es_mia ? 'tu empresa entre ellas'
+      : m.la_sigo ? 'una que sigues' : '';
     return `<div class="movimiento ${m.es_mia ? 'mia' : m.la_sigo ? 'sigo' : ''}">
       <div>
         <p class="gano">${esc(m.empresa ?? '—')}${
-          m.es_mia ? '<span class="marca-mia">tu empresa</span>'
-          : m.la_sigo ? '<span class="marca-mia">la sigues</span>' : ''}</p>
+          resto.length ? ` <span class="cuanto">y ${resto.length} más</span>` : ''}${
+          marca ? `<span class="marca-mia">${marca}</span>` : ''}</p>
         <p class="que">${esc(m.titulo ?? '')}</p>
         <span class="donde">${esc([m.organo, m.provincia].filter(Boolean).join(' · '))}</span>
+        ${destacados.map(g => `<span class="donde">${
+          g.es_mia ? 'Tu empresa' : esc(g.nombre ?? g.cif)}: ${
+          plural(g.lotes ?? 1, 'lote', 'lotes')}${
+          g.importe ? ` · ${euros(Number(g.importe))}` : ''}</span>`).join('')}
       </div>
       <div class="cifra">
-        <strong>${m.importe ? euros(Number(m.importe)) : '—'}</strong>
+        <strong>${m.total ? euros(Number(m.total)) : '—'}</strong>
         <span class="baja">${esc(fecha(m.fecha))}</span>
       </div>
     </div>`;
@@ -5207,8 +5249,9 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
 
     // Del grupo se enseña la compra más reciente, y el resto debajo.
     const primera = g[0];
-    const empresas = new Set(g.map(x => x.cif).filter(Boolean)).size;
-    const total = g.reduce((s, x) => s + (Number(x.importe) || 0), 0);
+    const empresas = new Set(g.flatMap(x => x.ganadores.map(y => y.cif))
+      .filter(Boolean)).size;
+    const total = g.reduce((s, x) => s + (Number(x.total) || 0), 0);
     const mia = g.some(x => x.es_mia);
     const sigo = g.some(x => x.la_sigo);
 
@@ -5538,7 +5581,8 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
           <div>
             <h3>${esc(e.nombre ?? e.cif)}</h3>
             <p class="cifras">
-              <span><strong>${e.contratos}</strong> ${e.contratos === 1 ? 'contrato' : 'contratos'}</span>
+              <span><strong>${e.contratos}</strong> ${e.contratos === 1 ? 'contrato' : 'contratos'}${
+                e.lotes > e.contratos ? ` (${e.lotes} lotes)` : ''}</span>
               ${e.importe ? `<span><strong>${euros(Number(e.importe))}</strong>
                 adjudicados</span>` : ''}
               ${e.ultimo ? `<span>último en ${esc(new Date(e.ultimo)
@@ -5827,7 +5871,9 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
       <div class="bloque">
         <h3>Tu historial</h3>
         <dl>
-          <dt>Contratos ganados</dt><dd>${p.contratos_ganados ?? 0}</dd>
+          <dt>Contratos ganados</dt><dd>${p.contratos_ganados ?? 0}${
+            p.lotes_ganados > p.contratos_ganados
+              ? ` <span style="color:var(--tenue)">(${p.lotes_ganados} lotes)</span>` : ''}</dd>
           <dt>Importe adjudicado</dt><dd>${
             p.importe_ganado ? euros(Number(p.importe_ganado)) : '—'}</dd>
           <dt>Contratos abiertos que te mostramos</dt><dd>${p.oportunidades ?? 0}</dd>
