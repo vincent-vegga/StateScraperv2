@@ -1,0 +1,85 @@
+# ============================================================
+# SIMULAR EL ALTA SIN NIF
+# ============================================================
+# Toma los perfiles con NIF, hace como si hubieran entrado describiendo
+# su negocio y compara el filtro que les saldría con el suyo real
+# (scripts/simular_sin_nif.ts). SOLO LEE: no escribe en la base.
+#
+# El repositorio es público y sus registros también: en la consola y en
+# el resumen solo salen cifras y perfiles anónimos. El detalle se cifra
+# con scripts/simulacion_certificado.pem y solo se puede leer con la
+# clave privada, que no está en el repositorio.
+#
+# Cuesta dinero: unas mil llamadas al modelo por perfil.
+# ============================================================
+
+name: Simular alta sin NIF
+
+on:
+  push:
+    branches: [simulacion-sin-nif]
+    paths:
+      - 'scripts/simular_sin_nif.ts'
+      - '.github/workflows/simular-sin-nif.yml'
+  workflow_dispatch:
+    inputs:
+      solo:
+        description: 'Un solo perfil (P01, P02...). Vacío = todos'
+        default: ''
+      muestra:
+        description: 'Licitaciones por estrato en la evaluación'
+        default: '100'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simular-sin-nif
+  cancel-in-progress: true
+
+jobs:
+  simular:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      # Por push no hay formulario: el alcance se cambia aquí. Una prueba
+      # corta antes de la ejecución completa (solo vacío = todos).
+      SOLO: ${{ inputs.solo || 'P05' }}
+      MUESTRA: ${{ inputs.muestra || '15' }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Comprobar tipos
+        run: deno check scripts/simular_sin_nif.ts
+
+      - name: Simular
+        run: >
+          deno run -A scripts/simular_sin_nif.ts
+          --solo="$SOLO"
+          --muestra="$MUESTRA"
+
+      # Aunque la simulación falle a medias, lo hecho se cifra y se sube.
+      - name: Cifrar el detalle
+        if: ${{ always() }}
+        run: |
+          for f in detalle resumen; do
+            [ -f "simulacion/$f.json" ] || continue
+            openssl cms -encrypt -binary -aes256 -outform DER \
+              -in "simulacion/$f.json" -out "simulacion/$f.json.cms" \
+              scripts/simulacion_certificado.pem
+            rm "simulacion/$f.json"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: simulacion-cifrada
+          path: simulacion/*.cms
+          if-no-files-found: ignore
+          retention-days: 7
