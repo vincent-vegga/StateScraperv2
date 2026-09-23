@@ -10,8 +10,8 @@
 # con scripts/simulacion_certificado.pem y solo se puede leer con la
 # clave privada, que no está en el repositorio.
 #
-# Cuesta dinero: unas mil llamadas al modelo por perfil. Antes de cada
-# perfil espera a que no esté corriendo el scraper.
+# Cuesta dinero: unas mil llamadas al modelo por perfil. Convive con el
+# scraper con poca simultaneidad (ver el script).
 # ============================================================
 
 name: Simular alta sin NIF
@@ -33,8 +33,6 @@ on:
 
 permissions:
   contents: read
-  # Para ver si el scraper está corriendo y esperarle.
-  actions: read
 
 concurrency:
   group: simular-sin-nif
@@ -52,7 +50,6 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2

@@ -688,30 +688,15 @@ await Deno.mkdir(SALIDA, { recursive: true });
 const detalle: Record<string, unknown>[] = [];
 const resumen: Record<string, unknown>[] = [];
 
-// Se cede el paso al scraper: si está corriendo, se espera a que acabe
-// antes de cada perfil. Comparten la base y la clave de OpenAI, y el
-// scraper es lo que ven los clientes. No se usa su grupo de concurrencia
-// porque entonces sería él quien esperase a la simulación.
-async function esperarAlScraper() {
-  for (let vuelta = 0; vuelta < 60; vuelta++) {
-    let corriendo = 0;
-    for (const estado of ["in_progress", "queued"]) {
-      try {
-        const { stdout, success } = await new Deno.Command("gh", { args: [
-          "run", "list", "--workflow", "scraper.yml", "--status", estado,
-          "--json", "databaseId", "-q", "length"] }).output();
-        if (success) corriendo += Number(new TextDecoder().decode(stdout).trim() || 0);
-      } catch { /* sin gh no se puede mirar: se sigue */ }
-    }
-    if (!corriendo) return;
-    if (vuelta === 0) console.log("   el scraper está corriendo: se espera");
-    await new Promise((ok) => setTimeout(ok, 30_000));
-  }
-}
+// No se espera a que el scraper esté parado: se lanza en cadena, uno
+// detrás de otro con segundos de diferencia, y esa espera no acababa
+// nunca. Convive con él (la primera vuelta coincidió con tres
+// ejecuciones suyas y acabaron bien) con poca simultaneidad: seis
+// llamadas al modelo a la vez y lecturas de cuatro en cuatro por índice,
+// con reintento si encuentra algo bloqueado.
 
 for (const { codigo, p } of casos) {
   if (SOLO && !SOLO.split(",").includes(codigo)) continue;
-  await esperarAlScraper();
   const inicio = Date.now();
   const llamadasAntes = llamadas;
   const r = azar(Number.parseInt(codigo.slice(1)) * 7919);
