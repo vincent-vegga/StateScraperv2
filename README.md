@@ -119,6 +119,7 @@ La caché existe porque calcular competencia o fichas sobre 25.000 contratos cad
 | `ficha_organismo(organo)` | Datos de un organismo concreto, con caché |
 | `pulso_mercado()` | Cifras del mes: contratos, importe, empresas |
 | `viabilidad(id)` | Puntuación de viabilidad de un contrato concreto |
+| `comprobar_codigo(codigo)` | Dice si un código de acceso vale, sin consumirlo ni pedir sesión (primera pantalla) |
 | `canjear_codigo(codigo)` | Valida y consume un código de acceso (insensible a mayúsculas) |
 
 ---

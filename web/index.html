@@ -3334,7 +3334,24 @@ async function arrancar(volviendo = false) {
     return;
   }
 
-  if (!perfil) return pantallaCodigo(session);
+  // Sin perfil: es su primera entrada. El código de acceso lo escribió
+  // antes que el correo; se canjea aquí, ya con sesión, sin pedírselo
+  // otra vez.
+  if (!perfil) {
+    const guardado = codigoGuardado();
+    if (!guardado) return pantallaCodigo(session);
+    // Se retira ANTES de canjearlo: si arrancar() corriera dos veces a
+    // la vez, la segunda no lo canjea otra vez (gastaría dos usos y
+    // crearía dos perfiles).
+    guardarCodigo(null);
+    const { data, error } = await sb.rpc('canjear_codigo',
+      { codigo_entrada: guardado });
+    // Si falla (lo ha gastado otro entre medias, ha caducado...), a la
+    // pantalla del código con el motivo, para que escriba otro.
+    if (error || !data?.ok)
+      return pantallaCodigo(session, data?.error ?? 'error');
+    return arrancar(volviendo);
+  }
 
   // Si queda algo sin clasificar, se clasifica, pero SIN hacer esperar.
   //
@@ -3428,8 +3445,41 @@ sb.auth.onAuthStateChange((evento, sesion) => {
 });
 
 // ============================================================
-// 1 · Entrar
+// 1 · Entrar: primero el código de acceso, luego el correo
 // ============================================================
+//
+// El orden era correo → código del correo → código de acceso. Justo
+// después de escribir el código que llega al correo salía otra pantalla
+// pidiendo OTRO código, y se leía como un fallo. Ahora el de acceso va
+// delante: se comprueba sin gastarlo (comprobar_codigo, sin sesión), se
+// guarda, y al entrar con el correo arrancar() lo canjea solo.
+//
+// Quien ya tiene cuenta no necesita código: tiene un enlace directo al
+// correo.
+
+// En sessionStorage para que sobreviva a una recarga entre el código y
+// el correo, y en memoria por si el navegador no deja guardar.
+let codigoEnMemoria = null;
+function codigoGuardado() {
+  try { return sessionStorage.getItem('codigo-acceso') ?? codigoEnMemoria; }
+  catch { return codigoEnMemoria; }
+}
+function guardarCodigo(codigo) {
+  codigoEnMemoria = codigo;
+  try {
+    if (codigo) sessionStorage.setItem('codigo-acceso', codigo);
+    else sessionStorage.removeItem('codigo-acceso');
+  } catch { /* modo privado: queda en memoria */ }
+}
+
+const MENSAJES_CODIGO = {
+  codigo_no_valido: 'Ese código no existe. Revísalo.',
+  codigo_caducado: 'Ese código ha caducado.',
+  codigo_agotado: 'Ese código ya se ha usado.',
+  sin_sesion: 'La sesión ha expirado. Vuelve a entrar.',
+};
+const mensajeCodigo = e =>
+  MENSAJES_CODIGO[e] ?? 'No se ha podido validar el código.';
 
 function pantallaEntrar() {
   raiz.className = 'envoltorio';
@@ -3439,18 +3489,71 @@ function pantallaEntrar() {
       <p class="guia">Cada mañana te enviamos solo las licitaciones que encajan
       con tu negocio. Nada de listas de mil contratos entre los que rebuscar.</p>
       <div class="campo">
+        <input type="text" id="codigo" class="clave" placeholder="CÓDIGO DE ACCESO"
+               autocomplete="off" aria-label="Código de acceso">
+      </div>
+      <button class="principal" id="continuar">Continuar</button>
+      <p class="guia" style="margin-top:20px;font-size:.87rem">
+      El código que te facilitamos al contratar el servicio.</p>
+      <div id="resultado"></div>
+      <button class="enlace" id="ya-tengo">Ya tengo cuenta: entrar con mi correo</button>
+    </div>`;
+
+  const boton = document.getElementById('continuar');
+  const campo = document.getElementById('codigo');
+  campo.value = codigoGuardado() ?? '';
+  campo.addEventListener('keydown', e => { if (e.key === 'Enter') boton.click(); });
+  alPulsar('ya-tengo', () => { guardarCodigo(null); pantallaCorreo(); });
+
+  boton.onclick = async () => {
+    const codigo = campo.value.trim();
+    if (!codigo) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">Escribe tu código de acceso.</div>`;
+      return;
+    }
+    boton.disabled = true;
+    boton.textContent = 'Comprobando...';
+    const { data, error } = await sb.rpc('comprobar_codigo',
+      { codigo_entrada: codigo });
+    if (error || !data?.ok) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">${esc(mensajeCodigo(data?.error))}</div>`;
+      boton.disabled = false;
+      boton.textContent = 'Continuar';
+      campo.select();
+      return;
+    }
+    guardarCodigo(codigo);
+    pantallaCorreo();
+  };
+}
+
+// El correo, después del código (o directamente, si ya tiene cuenta).
+function pantallaCorreo() {
+  const conCodigo = !!codigoGuardado();
+  raiz.className = 'envoltorio';
+  raiz.innerHTML = `
+    <div class="paso ancha">
+      <h1>${conCodigo ? 'Tu correo' : 'Entra con tu correo'}</h1>
+      <p class="guia">Te mandamos un código al correo. Sin contraseñas que
+      recordar.</p>
+      <div class="campo">
         <input type="email" id="correo" placeholder="nombre@empresa.es"
                autocomplete="email" aria-label="Tu correo">
       </div>
-      <button class="principal" id="enviar">Entrar</button>
-      <p class="guia" style="margin-top:20px;font-size:.87rem">
-      Te mandamos un código al correo. Sin contraseñas que recordar.</p>
+      <button class="principal" id="enviar">${conCodigo ? 'Continuar' : 'Entrar'}</button>
+      <button class="enlace" id="volver">${conCodigo
+        ? 'Cambiar el código de acceso' : 'Tengo un código de acceso'}</button>
       <div id="resultado"></div>
     </div>`;
 
   const boton = document.getElementById('enviar');
   const correo = document.getElementById('correo');
+  const textoBoton = boton.textContent;
+  correo.focus();
   correo.addEventListener('keydown', e => { if (e.key === 'Enter') boton.click(); });
+  alPulsar('volver', () => pantallaEntrar());
 
   boton.onclick = async () => {
     const email = correo.value.trim();
@@ -3479,7 +3582,7 @@ function pantallaEntrar() {
       document.getElementById('resultado').innerHTML =
         `<div class="aviso mal">No se ha podido enviar: ${esc(error.message)}</div>`;
       boton.disabled = false;
-      boton.textContent = 'Entrar';
+      boton.textContent = textoBoton;
       return;
     }
     pantallaCodigoCorreo(email);
@@ -3519,7 +3622,7 @@ function pantallaCodigoCorreo(email) {
     campo.value = campo.value.replace(/\D/g, '');
   });
 
-  alPulsar('otro-correo', () => pantallaEntrar());
+  alPulsar('otro-correo', () => pantallaCorreo());
 
   // Reenviar sin volver a escribir el correo. Antes, si el código no
   // llegaba o caducaba, el aviso decía que se pidiera otro con «usar otro
@@ -3584,36 +3687,34 @@ function pantallaCodigoCorreo(email) {
 }
 
 // ============================================================
-// 2 · Código de acceso
+// 2 · Código de acceso, ya con sesión
 // ============================================================
+//
+// Solo se llega aquí si entró por «Ya tengo cuenta» sin tenerla, o si
+// el código que escribió al principio dejó de valer antes del canje.
 
-function pantallaCodigo(session) {
+function pantallaCodigo(session, error = null) {
   raiz.className = 'envoltorio';
   raiz.innerHTML = `
     <div class="paso">
       <h1>Tu código de acceso</h1>
-      <p class="guia">El que te hemos facilitado al contratar el servicio.
-      Solo hace falta esta vez.</p>
+      <p class="guia">No hay ninguna cuenta con este correo todavía. Escribe
+      el código que te facilitamos al contratar el servicio.</p>
       <div class="campo">
         <input type="text" id="codigo" class="clave" placeholder="CÓDIGO"
                autocomplete="off" aria-label="Código de acceso">
       </div>
       <button class="principal" id="canjear">Continuar</button>
-      <div id="resultado"></div>
+      <div id="resultado">${error
+        ? `<div class="aviso mal">${esc(mensajeCodigo(error))}</div>` : ''}</div>
       <button class="enlace" id="salir">Salir</button>
     </div>`;
 
   const boton = document.getElementById('canjear');
   const campo = document.getElementById('codigo');
+  campo.focus();
   campo.addEventListener('keydown', e => { if (e.key === 'Enter') boton.click(); });
   document.getElementById('salir').onclick = () => sb.auth.signOut();
-
-  const mensajes = {
-    codigo_no_valido: 'Ese código no existe. Revísalo.',
-    codigo_caducado: 'Ese código ha caducado.',
-    codigo_agotado: 'Ese código ya se ha usado.',
-    sin_sesion: 'La sesión ha expirado. Vuelve a entrar.',
-  };
 
   boton.onclick = async () => {
     boton.disabled = true;
@@ -3621,7 +3722,7 @@ function pantallaCodigo(session) {
       { codigo_entrada: campo.value.trim() });
     if (error || !data?.ok) {
       document.getElementById('resultado').innerHTML =
-        `<div class="aviso mal">${esc(mensajes[data?.error] ?? 'No se ha podido validar el código.')}</div>`;
+        `<div class="aviso mal">${esc(mensajeCodigo(data?.error))}</div>`;
       boton.disabled = false;
       return;
     }
