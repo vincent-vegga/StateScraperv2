@@ -8,23 +8,26 @@
 //
 // Variantes, todas desde la misma descripción:
 //
-//   tarjetas_hoy         El camino actual, tal cual: familias CPV y
-//                        treinta tarjetas. El vecindario busca por
-//                        `prefijo_principal` (4 dígitos) con divisiones
-//                        de 2, no encuentra nada y las tarjetas salen del
-//                        relleno sin ordenar de `licitaciones_por_prefijo`.
-//   tarjetas_arregladas  Lo mismo, con el vecindario buscando en los
-//                        prefijos de 4 dígitos que cuelgan de cada familia
-//                        y el catálogo de familias con nombre (ver
-//                        DIVISIONES). Las variantes de referentes también
-//                        parten de esas familias.
-//   referentes           Empresas que ganan lo que describe, de su tamaño
-//                        primero. Con las que marca se arma un historial
-//                        prestado y se lee con `leerHistorial`, como si
-//                        fuera suyo. Sin contratos menores.
-//   referentes_menores   Igual, contando los menores de 2025.
+//   tarjetas_hoy       El camino actual, tal cual, solo como vara de
+//                      medir: familias CPV y treinta tarjetas. El
+//                      vecindario busca por `prefijo_principal` (4
+//                      dígitos) con divisiones de 2, no encuentra nada y
+//                      las tarjetas salen del relleno sin ordenar.
+//   solo_descripcion   Sin tarjetas ni referentes: criterio de la
+//                      descripción y captura por familias. El suelo.
+//   referentes_medio   El camino nuevo, sin tarjetas: descripción →
+//                      referentes → franjas. Con los que marca se arma un
+//                      historial prestado y se lee con `leerHistorial`.
+//                      Captura: sus prefijos y el vecindario en 4 dígitos.
+//   referentes_amplio  El mismo criterio, capturando por sus prefijos y
+//                      las familias enteras.
 //
-// Las respuestas del "cliente" (familias, tarjetas, franjas, referentes)
+// Los tres últimos parten del catálogo de familias con nombre (ver
+// DIVISIONES). Sin contratos menores: la primera vuelta no dio una
+// señal clara con ellos.
+//
+// Las respuestas del "cliente" (familias, tarjetas, franjas, referentes,
+// la empresa que conoce por su nombre)
 // las da un oráculo con sus datos reales: es la cota de lo que cada
 // camino puede dar si el cliente contesta bien, no lo que dará siempre.
 //
@@ -35,7 +38,7 @@
 //   - El detalle, con nombres, en `simulacion/detalle.json`, que el
 //     workflow cifra antes de subir.
 //
-//   deno run -A scripts/simular_sin_nif.ts [--solo=P03] [--muestra=100]
+//   deno run -A scripts/simular_sin_nif.ts [--solo=P03,P08] [--muestra=100]
 //
 // Variables: SUPABASE_URL, SUPABASE_KEY (clave secreta), OPENAI_API_KEY.
 // ============================================================
@@ -412,7 +415,7 @@ async function contestarTarjetas(descripcion: string, familias: string[],
                                  tarjetas: Lic[], criterioReal: string,
                                  extra: Record<string, unknown>): Promise<Resultado> {
   // El oráculo: le interesa lo que su filtro real daría por "sí".
-  const respuestas = await enParalelo(tarjetas, 10, async (t) => ({
+  const respuestas = await enParalelo(tarjetas, 5, async (t) => ({
     titulo: t.titulo, organo: t.organo ?? "", cpvs: (t.cpvs ?? []).join(","),
     interesa: (await veredicto(criterioReal, t)) === "si",
   }));
@@ -448,39 +451,45 @@ async function tarjetasHoy(descripcion: string, prop: Awaited<ReturnType<typeof 
     { del_vecindario: delVecindario });
 }
 
-async function tarjetasArregladas(descripcion: string, prop: Awaited<ReturnType<typeof proponer>>,
-                                  familias: string[], criterioReal: string, r: () => number) {
-  const todas = await deLosPrefijos(desplegar(familias));
-  const dice = (l: Lic, palabras: string[]) => {
-    const t = sinTildes(l.titulo ?? "");
-    return palabras.some((p) => t.includes(p));
-  };
-  const vecindario = todas.filter((l) => dice(l, prop.producto));
-  const claras = vecindario.filter((l) => dice(l, prop.destinatario));
-  let dudosas = vecindario.filter((l) => !dice(l, prop.destinatario));
-  const delVecindario = claras.length + dudosas.length;
-  if (delVecindario < CUANTAS) dudosas = [...dudosas, ...barajar([...todas], r).slice(0, 300)];
-  const tarjetas = escogerTarjetas(claras, dudosas, r);
-  return contestarTarjetas(descripcion, familias, tarjetas, criterioReal,
-    { del_vecindario: delVecindario });
+// Sin tarjetas ni ejemplos: el criterio sale solo de la descripción y
+// captura por las familias. Es el suelo del camino nuevo: lo que queda
+// si no reconoce a nadie ni conoce ninguna empresa del sector.
+async function soloDescripcion(descripcion: string, familias: string[]): Promise<Resultado> {
+  return { criterio: await generarCriterio(descripcion, []), prefijos: familias,
+           usadas: [], detalle: {} };
 }
 
-async function porReferentes(prop: Awaited<ReturnType<typeof proponer>>, familias: string[],
-                             franjas: string[], cifPropio: string, prefijosReales: string[],
-                             conMenores: boolean): Promise<Resultado | null> {
+type Candidata = {
+  cif: string; nombre: string; contratos: number; importe_mediano: number | null;
+  de_su_tamano: boolean; competidora: boolean; ejemplos: string[]; ls: Lic[];
+};
+
+// El camino nuevo: descripción → referentes → franjas.
+//
+// Devuelve dos resultados con el mismo criterio y distinta captura:
+//   medio   Los prefijos de los referentes y los de 4 dígitos donde más
+//           aparece lo que describe (el vecindario).
+//   amplio  Los prefijos de los referentes y las familias enteras.
+// En la primera vuelta la captura eran solo los prefijos de los
+// referentes, y salía estrecha: su especialidad, no todo lo suyo.
+//
+// Si con la lista no llega al mínimo (3 referentes o 15 contratos
+// prestados), busca por nombre una empresa que conozca. Si ni así,
+// se queda con el criterio de la descripción.
+async function porReferentes(descripcion: string, prop: Awaited<ReturnType<typeof proponer>>,
+                             familias: string[], franjas: string[], cifPropio: string,
+                             prefijosReales: string[], suelo: Resultado) {
   const t0 = Date.now();
-  const todas = (await deLosPrefijos(desplegar(familias)))
-    .filter((l) => conMenores || !esMenor(l));
+  const todas = (await deLosPrefijos(desplegar(familias))).filter((l) => !esMenor(l));
   const msLectura = Date.now() - t0;
 
+  const dice = (l: Lic) => {
+    const t = sinTildes(l.titulo ?? "");
+    return prop.producto.some((p) => t.includes(p));
+  };
   // Solo lo que se parece a su descripción: de una empresa que lo hace
   // todo, la parte que coincide con lo suyo.
-  const coinciden = prop.producto.length
-    ? todas.filter((l) => {
-        const t = sinTildes(l.titulo ?? "");
-        return prop.producto.some((p) => t.includes(p));
-      })
-    : todas;
+  const coinciden = prop.producto.length ? todas.filter(dice) : todas;
 
   const porEmpresa = new Map<string, Lic[]>();
   for (const l of coinciden) {
@@ -490,63 +499,95 @@ async function porReferentes(prop: Awaited<ReturnType<typeof proponer>>, familia
   }
 
   const encaja = (p4: string) => prefijosReales.some((p) => p4.startsWith(p.slice(0, 4)));
-  const candidatas = [...porEmpresa.entries()]
-    .filter(([, ls]) => ls.length >= 2)
-    .map(([cif, ls]) => {
-      const importes = ls.map(importeDe).filter((x): x is number => x != null);
-      const enFranja = ls.filter((l) => franjas.includes(franja(importeDe(l)) ?? "")).length;
-      return {
-        cif, nombre: ls[0].adjudicatario ?? "", contratos: ls.length,
-        importe_mediano: mediana(importes),
-        de_su_tamano: enFranja / ls.length >= 0.5,
-        // Lo que el oráculo mira para "reconocerla" como competidora: que
-        // la mayor parte de lo que gana caiga en sus prefijos reales.
-        competidora: ls.filter((l) => encaja(l.prefijo_principal)).length / ls.length >= 0.5,
-        ejemplos: ls.slice(0, 3).map((l) => l.titulo),
-        ls,
-      };
-    })
-    .sort((a, b) => b.contratos - a.contratos);
+  const enFranja = (l: Lic) => franjas.includes(franja(importeDe(l)) ?? "");
+  const describir = (cif: string, ls: Lic[]): Candidata => ({
+    cif, nombre: ls[0]?.adjudicatario ?? "", contratos: ls.length,
+    importe_mediano: mediana(ls.map(importeDe).filter((x): x is number => x != null)),
+    de_su_tamano: ls.filter(enFranja).length / (ls.length || 1) >= 0.5,
+    // Lo que el oráculo mira para "reconocerla" como competidora: que
+    // la mayor parte de lo que gana caiga en sus prefijos reales.
+    competidora: ls.filter((l) => encaja(l.prefijo_principal)).length / (ls.length || 1) >= 0.5,
+    ejemplos: ls.slice(0, 3).map((l) => l.titulo), ls,
+  });
+  const candidatas = [...porEmpresa.entries()].filter(([, ls]) => ls.length >= 2)
+    .map(([cif, ls]) => describir(cif, ls)).sort((a, b) => b.contratos - a.contratos);
 
   const suTamano = candidatas.filter((c) => c.de_su_tamano).slice(0, 12);
   const grandes = candidatas.filter((c) => !c.de_su_tamano).slice(0, 6);
   const elegidas = [...suTamano, ...grandes].filter((c) => c.competidora).slice(0, 5);
 
-  const resumenCandidatas = [...suTamano, ...grandes].map(({ ls: _, ...c }) => c);
-  if (!elegidas.length) {
-    return { criterio: "", prefijos: [], usadas: [], detalle: {
-      sin_referentes: true, candidatas: candidatas.length, enseñadas: resumenCandidatas,
-      ms_lectura: msLectura } };
-  }
-
   // El historial prestado: lo de sus referentes que coincide con lo suyo
   // y cae en sus franjas. Si en sus franjas hay muy poco, todo lo que
   // coincide: mejor un historial algo grande que uno de tres contratos.
-  const coincidentes = elegidas.flatMap((c) => c.ls);
-  const enFranjas = coincidentes.filter((l) => franjas.includes(franja(importeDe(l)) ?? ""));
-  const prestados = (enFranjas.length >= 8 ? enFranjas : coincidentes)
-    .sort((a, b) => b.fecha_actualizacion.localeCompare(a.fecha_actualizacion))
-    .slice(0, 40);
+  const prestar = (es: Candidata[]) => {
+    const coincidentes = es.flatMap((c) => c.ls);
+    const enFranjas = coincidentes.filter(enFranja);
+    return (enFranjas.length >= 8 ? enFranjas : coincidentes)
+      .sort((a, b) => b.fecha_actualizacion.localeCompare(a.fecha_actualizacion)).slice(0, 40);
+  };
+  const llega = (es: Candidata[]) => es.length >= 3 || prestar(es).length >= 15;
 
-  const cuenta = new Map<string, number>();
-  for (const l of prestados) cuenta.set(l.prefijo_principal, (cuenta.get(l.prefijo_principal) ?? 0) + 1);
-  const prefijos = [...cuenta.entries()].map(([prefijo, contratos]) => ({ prefijo, contratos }));
+  let salida = "lista";
+  let porNombre: string | null = null;
+  if (!llega(elegidas)) {
+    // "¿Conoces alguna empresa que haga lo mismo que tú?". El oráculo
+    // conoce la que más gana en sus prefijos reales, que es la que
+    // cualquiera del sector sabría nombrar. Sus contratos se toman por
+    // NIF (índice idx_licitaciones_cif), cruzados con lo que describe.
+    const reales = await deLosPrefijos(desplegar(prefijosReales));
+    const cuenta = new Map<string, number>();
+    for (const l of reales) {
+      const c = String(l.adjudicatario_cif ?? "");
+      if (c && c !== cifPropio && !esMenor(l)) cuenta.set(c, (cuenta.get(c) ?? 0) + 1);
+    }
+    const conocida = [...cuenta.entries()].sort((a, b) => b[1] - a[1])
+      .map(([c]) => c).find((c) => !elegidas.some((e) => e.cif === c));
+    if (conocida) {
+      const { data } = await leer(() => db.from("licitaciones").select(COLUMNAS)
+        .eq("adjudicatario_cif", conocida).order("fecha_actualizacion", { ascending: false })
+        .limit(300));
+      const suyas = ((data ?? []) as unknown as Lic[]).filter((l) => !esMenor(l));
+      const cruzadas = prop.producto.length ? suyas.filter(dice) : suyas;
+      const c = describir(conocida, cruzadas.length >= 8 ? cruzadas : suyas);
+      if (c.contratos) { elegidas.push(c); porNombre = c.nombre; salida = "por_nombre"; }
+    }
+  }
+
+  const resumenCandidatas = [...suTamano, ...grandes].map(({ ls: _, ...c }) => c);
+  const base = { candidatas: candidatas.length, enseñadas: resumenCandidatas,
+                 elegidas: elegidas.map((c) => c.nombre), por_nombre: porNombre, ms_lectura: msLectura };
+
+  // Con la empresa que conoce basta un historial algo más corto.
+  if (!elegidas.length || (!llega(elegidas) && prestar(elegidas).length < 8)) {
+    const d = { ...base, salida: "solo_descripcion" };
+    return { medio: { ...suelo, detalle: d }, amplio: { ...suelo, detalle: d } };
+  }
+
+  const prestados = prestar(elegidas);
+  const cuentaP = new Map<string, number>();
+  for (const l of prestados) cuentaP.set(l.prefijo_principal, (cuentaP.get(l.prefijo_principal) ?? 0) + 1);
+  const prefijos = [...cuentaP.entries()].map(([prefijo, contratos]) => ({ prefijo, contratos }));
 
   const lectura = await leerHistorial(prestados.map((l) => ({
     titulo: l.titulo, organo: l.organo ?? "", importe: importeDe(l),
   })), prefijos) as Record<string, unknown>;
   llamadas++;
+  const deReferentes = prefijosDeLectura(lectura, prefijos);
 
+  // El vecindario en 4 dígitos: donde aparece lo que describe al menos
+  // tres veces, los diez que más.
+  const porP4 = new Map<string, number>();
+  for (const l of coinciden) porP4.set(l.prefijo_principal, (porP4.get(l.prefijo_principal) ?? 0) + 1);
+  const vecindario = [...porP4.entries()].filter(([, n]) => n >= 3)
+    .sort((a, b) => b[1] - a[1]).slice(0, 10).map(([p]) => p);
+
+  const detalle = { ...base, salida, prestados: prestados.length, de_referentes: deReferentes,
+                    vecindario, actividad: lectura.actividad };
+  const usadas = prestados.map((l) => l.id_licitacion);
+  const criterio = String(lectura.criterio ?? "");
   return {
-    criterio: String(lectura.criterio ?? ""),
-    prefijos: prefijosDeLectura(lectura, prefijos),
-    usadas: prestados.map((l) => l.id_licitacion),
-    detalle: {
-      candidatas: candidatas.length, enseñadas: resumenCandidatas,
-      elegidas: elegidas.map((c) => c.nombre), prestados: prestados.length,
-      prestados_en_franja: enFranjas.length >= 8, ms_lectura: msLectura,
-      actividad: lectura.actividad,
-    },
+    medio: { criterio, usadas, detalle, prefijos: [...new Set([...deReferentes, ...vecindario])] },
+    amplio: { criterio, usadas, detalle, prefijos: [...new Set([...deReferentes, ...familias])] },
   };
 }
 
@@ -590,7 +631,7 @@ async function evaluar(real: { criterio: string; prefijos: string[] },
   const muestra = [...dentro.map((l) => ({ l, w: peso.dentro })),
                    ...fuera.map((l) => ({ l, w: peso.fuera }))];
 
-  const veredictos = await enParalelo(muestra, 12, async ({ l, w }) => {
+  const veredictos = await enParalelo(muestra, 6, async ({ l, w }) => {
     const fila: Record<string, string | null> = {};
     fila.real = pasa(l, real.prefijos) ? await veredicto(real.criterio, l) : "fuera";
     for (const [nombre, v] of Object.entries(variantes)) {
@@ -647,8 +688,30 @@ await Deno.mkdir(SALIDA, { recursive: true });
 const detalle: Record<string, unknown>[] = [];
 const resumen: Record<string, unknown>[] = [];
 
+// Se cede el paso al scraper: si está corriendo, se espera a que acabe
+// antes de cada perfil. Comparten la base y la clave de OpenAI, y el
+// scraper es lo que ven los clientes. No se usa su grupo de concurrencia
+// porque entonces sería él quien esperase a la simulación.
+async function esperarAlScraper() {
+  for (let vuelta = 0; vuelta < 60; vuelta++) {
+    let corriendo = 0;
+    for (const estado of ["in_progress", "queued"]) {
+      try {
+        const { stdout, success } = await new Deno.Command("gh", { args: [
+          "run", "list", "--workflow", "scraper.yml", "--status", estado,
+          "--json", "databaseId", "-q", "length"] }).output();
+        if (success) corriendo += Number(new TextDecoder().decode(stdout).trim() || 0);
+      } catch { /* sin gh no se puede mirar: se sigue */ }
+    }
+    if (!corriendo) return;
+    if (vuelta === 0) console.log("   el scraper está corriendo: se espera");
+    await new Promise((ok) => setTimeout(ok, 30_000));
+  }
+}
+
 for (const { codigo, p } of casos) {
-  if (SOLO && SOLO !== codigo) continue;
+  if (SOLO && !SOLO.split(",").includes(codigo)) continue;
+  await esperarAlScraper();
   const inicio = Date.now();
   const llamadasAntes = llamadas;
   const r = azar(Number.parseInt(codigo.slice(1)) * 7919);
@@ -689,21 +752,14 @@ for (const { codigo, p } of casos) {
     }
 
     const variantes: Record<string, Resultado | null> = {};
+    // Lo de hoy, solo como vara de medir.
     variantes.tarjetas_hoy = await tarjetasHoy(descripcion, propHoy, hoy.familias, real.criterio, r);
-    variantes.tarjetas_arregladas = await tarjetasArregladas(descripcion, prop, familias, real.criterio, r);
-    variantes.referentes = await porReferentes(prop, familias, franjas, cif, real.prefijos, false);
-    variantes.referentes_menores = await porReferentes(prop, familias, franjas, cif, real.prefijos, true);
-
-    // Si nadie de la lista le suena, en producción iría a las tarjetas:
-    // se mide así, y se cuenta aparte cuántas veces pasa.
-    const sinReferentes: string[] = [];
-    for (const nombre of ["referentes", "referentes_menores"]) {
-      if (variantes[nombre]?.detalle.sin_referentes) {
-        sinReferentes.push(nombre);
-        variantes[nombre] = { ...variantes.tarjetas_arregladas!,
-          detalle: { ...variantes[nombre]!.detalle, recurre_a_tarjetas: true } };
-      }
-    }
+    variantes.solo_descripcion = await soloDescripcion(descripcion, familias);
+    const ref = await porReferentes(descripcion, prop, familias, franjas, cif, real.prefijos,
+                                    variantes.solo_descripcion);
+    variantes.referentes_medio = ref.medio;
+    variantes.referentes_amplio = ref.amplio;
+    const salida = String(ref.medio.detalle.salida);
 
     const usadas = new Set(Object.values(variantes).flatMap((v) => v?.usadas ?? []));
     const ev = await evaluar(real, variantes, usadas, r);
@@ -715,11 +771,9 @@ for (const { codigo, p } of casos) {
       franjas: franjas.join(" "),
       familias_hoy_aciertan: hoy.acierta,
       familias_con_nombres_aciertan: acierta,
-      tarjetas_hoy_del_vecindario: variantes.tarjetas_hoy?.detalle.del_vecindario,
-      tarjetas_arregladas_del_vecindario: variantes.tarjetas_arregladas?.detalle.del_vecindario,
-      referentes_elegidos: (variantes.referentes?.detalle.elegidas as string[] | undefined)?.length ?? 0,
-      referentes_menores_elegidos: (variantes.referentes_menores?.detalle.elegidas as string[] | undefined)?.length ?? 0,
-      sin_referentes: sinReferentes.join(" "),
+      referentes_elegidos: (ref.medio.detalle.elegidas as string[] | undefined)?.length ?? 0,
+      salida,
+      prefijos: Object.fromEntries(Object.entries(variantes).map(([k, v]) => [k, v?.prefijos.length ?? 0])),
       muestra: ev.muestra,
       metricas: ev.metricas,
       llamadas: llamadas - llamadasAntes,
@@ -738,8 +792,9 @@ for (const { codigo, p } of casos) {
       const m = (ev.metricas[n]?.si_quizas as Record<string, number | null>) ?? {};
       return m.f1 == null ? "—" : m.f1.toFixed(2);
     };
-    console.log(`${codigo}: F1 hoy ${f1("tarjetas_hoy")} · arregladas ${f1("tarjetas_arregladas")} · ` +
-                `referentes ${f1("referentes")} · con menores ${f1("referentes_menores")} ` +
+    console.log(`${codigo}: F1 tarjetas hoy ${f1("tarjetas_hoy")} · solo descripción ` +
+                `${f1("solo_descripcion")} · referentes medio ${f1("referentes_medio")} · ` +
+                `amplio ${f1("referentes_amplio")} [${salida}] ` +
                 `(${segundos} s, ${filaResumen.llamadas} llamadas)`);
   } catch (e) {
     // Solo el tipo de fallo: el mensaje podría llevar datos del cliente.
@@ -756,7 +811,7 @@ for (const { codigo, p } of casos) {
 // Resumen público: solo cifras
 // ------------------------------------------------------------
 
-const VARIANTES = ["tarjetas_hoy", "tarjetas_arregladas", "referentes", "referentes_menores"];
+const VARIANTES = ["tarjetas_hoy", "solo_descripcion", "referentes_medio", "referentes_amplio"];
 const celda = (fila: Record<string, unknown>, v: string, campo: string) => {
   const m = ((fila.metricas as Record<string, Record<string, Record<string, number | null>>>)?.[v]?.si_quizas) ?? {};
   return m[campo] == null ? "—" : (m[campo] as number).toFixed(2);
@@ -766,12 +821,12 @@ const lineas = [
   "",
   "F1 frente al filtro real (sí + quizás). Precisión / cobertura entre paréntesis.",
   "",
-  `| Perfil | Contratos | Familias hoy / con nombres | ${VARIANTES.join(" | ")} | Sin referentes |`,
+  `| Perfil | Contratos | Familias hoy / con nombres | ${VARIANTES.join(" | ")} | Salida |`,
   `|---|---|---|${VARIANTES.map(() => "---").join("|")}|---|`,
   ...resumen.map((f) => f.fallo
     ? `| ${f.codigo} | — | — | ${VARIANTES.map(() => "falló").join(" | ")} | |`
     : `| ${f.codigo} | ${f.contratos} | ${f.familias_hoy_aciertan ? "✓" : "✗"} / ${f.familias_con_nombres_aciertan ? "✓" : "✗"} | ${VARIANTES.map((v) =>
-        `${celda(f, v, "f1")} (${celda(f, v, "precision")} / ${celda(f, v, "cobertura")})`).join(" | ")} | ${f.sin_referentes || ""} |`),
+        `${celda(f, v, "f1")} (${celda(f, v, "precision")} / ${celda(f, v, "cobertura")})`).join(" | ")} | ${f.salida} |`),
   "",
   `Lectura por prefijo: mediana ${mediana(tiempos) ?? "—"} ms, máximo ${tiempos.length ? Math.max(...tiempos) : "—"} ms ` +
   `(${tiempos.length} consultas). Llamadas al modelo: ${llamadas}.`,

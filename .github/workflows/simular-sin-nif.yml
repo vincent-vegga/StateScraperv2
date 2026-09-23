@@ -10,7 +10,8 @@
 # con scripts/simulacion_certificado.pem y solo se puede leer con la
 # clave privada, que no está en el repositorio.
 #
-# Cuesta dinero: unas mil llamadas al modelo por perfil.
+# Cuesta dinero: unas mil llamadas al modelo por perfil. Antes de cada
+# perfil espera a que no esté corriendo el scraper.
 # ============================================================
 
 name: Simular alta sin NIF
@@ -24,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       solo:
-        description: 'Un solo perfil (P01, P02...). Vacío = todos'
+        description: 'Perfiles (P01,P02...). Vacío = todos'
         default: ''
       muestra:
         description: 'Licitaciones por estrato en la evaluación'
@@ -32,6 +33,8 @@ on:
 
 permissions:
   contents: read
+  # Para ver si el scraper está corriendo y esperarle.
+  actions: read
 
 concurrency:
   group: simular-sin-nif
@@ -44,11 +47,12 @@ jobs:
     env:
       # Por push no hay formulario: el alcance se cambia aquí. Una prueba
       # corta antes de la ejecución completa (solo vacío = todos).
-      SOLO: ${{ inputs.solo || '' }}
-      MUESTRA: ${{ inputs.muestra || '100' }}
+      SOLO: ${{ inputs.solo || 'P06,P08' }}
+      MUESTRA: ${{ inputs.muestra || '15' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
