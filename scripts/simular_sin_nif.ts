@@ -135,6 +135,20 @@ function franja(importe: number | null): string | null {
 // Datos
 // ------------------------------------------------------------
 
+// Si el scraper tiene algo bloqueado (recalcula resúmenes mientras
+// corre), la lectura espera y reintenta: se le cede el paso en vez de
+// fallar. 55P03 = lock timeout; 57014 = tiempo agotado.
+async function leer<T extends { error: unknown }>(consulta: () => PromiseLike<T>): Promise<T> {
+  let r = await consulta();
+  for (let intento = 1; intento <= 8 && r.error; intento++) {
+    const codigo = (r.error as { code?: string }).code;
+    if (codigo !== "55P03" && codigo !== "57014") break;
+    await new Promise((ok) => setTimeout(ok, 15_000 * intento));
+    r = await consulta();
+  }
+  return r;
+}
+
 type Lic = {
   id_licitacion: string; titulo: string; organo: string | null;
   presupuesto: number | null; presupuesto_base: number | null;
@@ -156,9 +170,9 @@ const importeDe = (l: Lic) =>
 // estratos de la evaluación.
 const volumen4 = new Map<string, number>();
 for (let desde = 0; ; desde += 1000) {
-  const { data, error } = await db.from("resumen_cpv_total")
+  const { data, error } = await leer(() => db.from("resumen_cpv_total")
     .select("prefijo, licitaciones").like("prefijo", "____")
-    .range(desde, desde + 999);
+    .range(desde, desde + 999));
   if (error) throw error;
   for (const r of data ?? []) volumen4.set(r.prefijo, Number(r.licitaciones ?? 0));
   if ((data ?? []).length < 1000) break;
@@ -188,9 +202,9 @@ function delPrefijo(p4: string): Promise<Lic[]> {
     cache.set(p4, (async () => {
       for (let intento = 0; intento < 3; intento++) {
         const t0 = Date.now();
-        const { data, error } = await db.from("licitaciones").select(COLUMNAS)
+        const { data, error } = await leer(() => db.from("licitaciones").select(COLUMNAS)
           .eq("prefijo_principal", p4).not("adjudicatario_cif", "is", null)
-          .order("fecha_actualizacion", { ascending: false }).limit(POR_PREFIJO);
+          .order("fecha_actualizacion", { ascending: false }).limit(POR_PREFIJO));
         tiempos.push(Date.now() - t0);
         if (!error) return (data ?? []) as unknown as Lic[];
         await new Promise((r) => setTimeout(r, 2000 * (intento + 1)));
@@ -254,9 +268,9 @@ async function describirComoCliente(actividad: string): Promise<string> {
 
 // Réplica de `proponer` en alta/index.ts.
 async function proponer(descripcion: string) {
-  const { data: divisiones } = await db.from("resumen_cpv_total")
+  const { data: divisiones } = await leer(() => db.from("resumen_cpv_total")
     .select("prefijo, licitaciones").gt("licitaciones", 50)
-    .order("licitaciones", { ascending: false }).limit(400);
+    .order("licitaciones", { ascending: false }).limit(400));
   const catalogo = (divisiones ?? []).filter((d) => d.prefijo.length === 2)
     .map((d) => `${d.prefijo}: ${d.licitaciones}`).join("\n");
 
@@ -275,15 +289,15 @@ async function proponer(descripcion: string) {
   let producto = limpiar(salida.producto);
   let destinatario = limpiar(salida.destinatario);
 
-  const { data: resumen } = await db.from("resumen_cpv_total")
-    .select("prefijo, licitaciones").in("prefijo", prefijos);
+  const { data: resumen } = await leer(() => db.from("resumen_cpv_total")
+    .select("prefijo, licitaciones").in("prefijo", prefijos));
   const vol = Object.fromEntries((resumen ?? []).map((r) => [r.prefijo, r.licitaciones]));
   const conVolumen = prefijos.filter((p) => (vol[p] ?? 0) > 0);
   if (conVolumen.length) prefijos = conVolumen;
 
   const util = async (palabras: string[], tope: number) => {
     if (!palabras.length) return [];
-    const { data } = await db.rpc("utilidad_palabras", { palabras });
+    const { data } = await leer(() => db.rpc("utilidad_palabras", { palabras }));
     if (!data) return palabras;
     const buenas = (data as { palabra: string; porcentaje: number }[])
       .filter((d) => d.porcentaje <= tope).map((d) => d.palabra);
@@ -357,17 +371,17 @@ async function tarjetasHoy(descripcion: string, prop: Awaited<ReturnType<typeof 
   const args = { prefijos_buscados: familias, producto: prop.producto,
                  destinatario: prop.destinatario, solo_vivas: false, tope: 60 };
   const [encajan, frontera] = await Promise.all([
-    prop.producto.length ? db.rpc("licitaciones_del_vecindario", { ...args, con_destinatario: true })
+    prop.producto.length ? leer(() => db.rpc("licitaciones_del_vecindario", { ...args, con_destinatario: true }))
       : Promise.resolve({ data: [] }),
-    prop.producto.length ? db.rpc("licitaciones_del_vecindario", { ...args, con_destinatario: false })
+    prop.producto.length ? leer(() => db.rpc("licitaciones_del_vecindario", { ...args, con_destinatario: false }))
       : Promise.resolve({ data: [] }),
   ]);
   const claras = (encajan.data ?? []) as Lic[];
   let dudosas = (frontera.data ?? []) as Lic[];
   const delVecindario = claras.length + dudosas.length;
   if (delVecindario < CUANTAS) {
-    const { data: sueltas } = await db.rpc("licitaciones_por_prefijo",
-      { prefijos: familias, solo_vivas: false, tope: 300 });
+    const { data: sueltas } = await leer(() => db.rpc("licitaciones_por_prefijo",
+      { prefijos: familias, solo_vivas: false, tope: 300 }));
     dudosas = [...dudosas, ...((sueltas ?? []) as Lic[])];
   }
   const tarjetas = escogerTarjetas([...claras], dudosas, r);
@@ -555,10 +569,10 @@ async function evaluar(real: { criterio: string; prefijos: string[] },
 // Principal
 // ------------------------------------------------------------
 
-const { data: perfilesCrudos, error: fallo } = await db.from("perfiles")
+const { data: perfilesCrudos, error: fallo } = await leer(() => db.from("perfiles")
   .select("id, cif, descripcion, criterio, cpv_prefijos, contratos_ganados, criterio_version")
   .not("cif", "is", null).eq("paso_alta", "listo")
-  .order("contratos_ganados", { ascending: false });
+  .order("contratos_ganados", { ascending: false }));
 if (fallo) throw fallo;
 
 // Un perfil por NIF: dos cuentas de la misma empresa no son dos casos.
@@ -596,9 +610,9 @@ for (const { codigo, p } of casos) {
     const familias = deLoSuyo.length ? deLoSuyo : prop.prefijos;
 
     // Sus franjas: las que suman al menos el 15 % de lo que ha ganado.
-    const { data: suyos } = await db.from("licitaciones")
+    const { data: suyos } = await leer(() => db.from("licitaciones")
       .select("importe_adjudicacion, presupuesto_base, procedimiento")
-      .eq("adjudicatario_cif", cif).limit(1000);
+      .eq("adjudicatario_cif", cif).limit(1000));
     const cuentaFranjas = new Map<string, number>();
     for (const l of (suyos ?? []) as Lic[]) {
       const f = franja(importeDe(l));
