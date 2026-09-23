@@ -2889,6 +2889,10 @@ const alPulsar = (id, hacer) => {
 
 // "1 contrato", "3 contratos". Con el número delante siempre: repetir
 // el ternario en cada sitio acababa olvidándose y salía "1 contratos".
+// Por qué una adjudicación sale sin importe. Una sola línea: los saltos
+// de un atributo `title` se ven tal cual en el texto flotante.
+const SIN_IMPORTE = 'El organismo no publica qué parte le corresponde a esta empresa: pasa en acuerdos marco cuyos lotes no llevan importe o repiten el total, y en lotes compartidos entre varias empresas.';
+
 const plural = (n, uno, varios) => `${n} ${Number(n) === 1 ? uno : varios}`;
 
 // ---------- Periodo por años ----------
@@ -5928,10 +5932,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
               <td class="quien">${esc(o.organo)}</td>
               <td class="num">${o.contratos}</td>
               <td class="num">${o.importe ? euros(Number(o.importe))
-                : `<span style="color:var(--tenue);font-size:.86rem" title="El organismo no publica qué parte
-                   le corresponde a esta empresa: pasa en acuerdos marco cuyos
-                   lotes no llevan importe o repiten el total, y en lotes
-                   compartidos entre varias empresas">sin importe publicado</span>`}</td>
+                // Corto: la columna mide 112 px (92 en el móvil) y no parte
+                // líneas. El porqué va en el texto flotante.
+                : `<span style="color:var(--tenue)" title="${SIN_IMPORTE}">sin importe</span>`}</td>
             </tr>`).join('')}
           </tbody></table>` : ''}
 
