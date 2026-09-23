@@ -2,8 +2,14 @@
 -- Año de formalización (3 de 3): lo que lee la web
 -- ============================================================
 --
--- SIN APLICAR. Solo después del paso 2 (sin sus índices, estas
--- consultas agotarían el tiempo de espera).
+-- Aplicada el 23/09/2026, después del paso 2 (sin sus índices, estas
+-- consultas agotarían el tiempo de espera). Hechos también los tres
+-- pasos de "después de aplicar".
+--
+-- Medido con el perfil de uniformidad, cada año de 2024 a 2026:
+-- resumen_periodo 163-192 ms, ficha_empresa 14-56 ms,
+-- movimientos_periodo 775 ms, competencia_periodo 106 ms,
+-- ficha_organismo 13 ms, anios_de_mi_sector 48 ms.
 --
 -- Tres cambios en todas las pantallas de mercado (Movimientos, Empresas,
 -- Organismos y los años del selector):

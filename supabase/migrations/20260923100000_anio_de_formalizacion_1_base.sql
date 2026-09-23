@@ -2,8 +2,8 @@
 -- Año de formalización (1 de 3): columnas, fecha de mercado y escritura
 -- ============================================================
 --
--- Orden: 1 → código (lector_atom.py, procesar_historico.py) → 2 (relleno,
--- fuera de transacción) → 3 → reprocesar 643 y 1044.
+-- Aplicada el 23/09/2026. Orden seguido: 1 → código (lector_atom.py,
+-- procesar_historico.py) → 2 (relleno) → 3 → reprocesar 643 y 1044.
 -- Este paso no cambia nada de lo que ve la web: prepara los datos.
 --
 -- El problema (medido el 23/09/2026):

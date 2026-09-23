@@ -199,7 +199,14 @@ la web tras las primeras noches. Con todo el histórico, los índices (~1,4
 GB) no caben en 1 GB de RAM: lo prudente es la instancia **Small (2 GB)**.
 Los menores (1143) son el 70 % del crecimiento y su integración es una
 decisión de producto pendiente (ver deuda técnica en `DECISIONES.md`):
-no cargarlos sin decidirlo.
+no cargarlos sin decidirlo. Desde el 23/09/2026 los de 2025 que ya hay
+están guardados pero fuera de las métricas de mercado
+(`adjudicaciones_empresa.es_menor`, decisión 36).
+
+Al reprocesar un mes ya cargado, la versión del expediente igual de
+reciente o más que la guardada manda en fecha, estado, lotes, importe y
+fechas (decisión 36). Por eso los meses se relanzan **en orden**, del más
+viejo al más nuevo.
 
 **Para importar sin tocar el código:** lanzar un mes por ejecución
 (`gh workflow run scraper.yml -f modo=catalogar_historico -f conjunto_xml=643

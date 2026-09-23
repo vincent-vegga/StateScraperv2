@@ -2,7 +2,14 @@
 -- Año de formalización (2 de 3): relleno e índices
 -- ============================================================
 --
--- SIN APLICAR. Después del paso 1 y antes del 3.
+-- Aplicada el 23/09/2026, después del paso 1 y antes del 3.
+--
+-- Desde el SQL del MCP el `call` falla ("invalid transaction
+-- termination": todo va dentro de una transacción). Se hizo con una
+-- función equivalente que procesa un tramo de ~200.000 licitaciones y
+-- devuelve el último id, llamada siete veces y borrada al acabar. Dio 0
+-- filas descuadradas y 541.989 ganadores de contratos menores. Los
+-- `concurrently` sí funcionan uno a uno. Índices: 126, 162 y 121 MB.
 --
 -- FUERA DE TRANSACCIÓN, sentencia a sentencia (el relleno va por tandas
 -- con commit y los índices son `concurrently`). El relleno toca ~1,1

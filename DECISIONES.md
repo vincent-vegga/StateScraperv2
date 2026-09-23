@@ -900,6 +900,31 @@ preferencia caducada nunca hace perder contratos.
 
 ---
 
+## 36. El dinero cuenta en el año de la formalización
+
+**Contexto.** Movimientos, Empresas y Organismos repartían por años con la
+fecha de la primera versión del expediente que entró en la base: el
+histórico rellenaba huecos en las versiones posteriores pero no avanzaba
+ni fecha ni estado. Un contrato licitado en 2025 y formalizado en 2026
+contaba en 2025. Además, los contratos menores (solo cargados de 2025)
+triplicaban ese año, y la media del importe la movían tres contratos de
+35-65 M€.
+
+**Decisión** (23/09/2026). Cada contrato cuenta en el año en que se
+formaliza (estado RES), y cada empresa en el de la formalización de sus
+lotes (`Contract/IssueDate`, que no se leía). Si aún no está formalizado,
+cuenta en su adjudicación y se mueve cuando se formalice. Los contratos
+menores se guardan pero no entran en las métricas de mercado. Movimientos
+da el importe mediano.
+
+**Motivo.** Es cuando el dinero queda comprometido, y es lo que espera el
+cliente: un contrato adjudicado en mayo de 2025, recurrido y firmado en
+febrero de 2026 es trabajo de 2026. La fecha la traen el 99 % de los
+formalizados del 643 y el 91 % del 1044. Detalle y orden de aplicación en
+`supabase/migrations/20260923100000_anio_de_formalizacion_1_base.sql`.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
