@@ -923,6 +923,15 @@ febrero de 2026 es trabajo de 2026. La fecha la traen el 99 % de los
 formalizados del 643 y el 91 % del 1044. Detalle y orden de aplicación en
 `supabase/migrations/20260923100000_anio_de_formalizacion_1_base.sql`.
 
+**Añadido el mismo día.** Un acuerdo marco cuyos lotes suman como mucho
+el presupuesto sí reparte su importe por lote (antes todos salían en
+blanco; se recuperaron 3.040 contratos). Los que siguen sin importe
+atribuible (lotes a 0 o que repiten el total) son homologaciones, no
+contratos: fuera de recuentos y rankings, y en la ficha de empresa en un
+bloque aparte, "Acuerdos marco en los que está homologada". Su dinero ya
+cuenta por los contratos derivados. Ver
+`supabase/migrations/20260923140000_marcos_aparte.sql`.
+
 ---
 
 ## Deuda técnica anotada

@@ -5868,7 +5868,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       { cif_buscado: cif, ...argsPeriodo(periodoEmp) });
     if (turno !== vueltaEmp) return;
     zona.classList.remove('cambiando');
-    if (error || !data || !data.contratos) {
+    // Una empresa que en el periodo solo está homologada en acuerdos
+    // marco no tiene contratos, pero sí algo que enseñar.
+    if (error || !data || (!data.contratos && !data.marcos?.length)) {
       // Con nombre es que existe y ha ganado algo, pero no en este
       // periodo: decir "no hemos encontrado ese NIF" sería falso.
       zona.innerHTML = `
@@ -5888,6 +5890,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const sectores = e.sectores ?? [];
     const organos = e.organos ?? [];
     const ultimos = e.ultimos ?? [];
+    const marcos = e.marcos ?? [];
 
     zona.innerHTML = `
       <button class="volver-listas" id="volver-listas">← Volver a las listas</button>
@@ -5947,6 +5950,24 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
               <p class="que">${esc(u.titulo)}</p>
               <span class="quien">${esc(u.organo ?? '')}${
                 u.importe ? ` · ${euros(Number(u.importe))}` : ''}</span>
+            </div>`).join('')}
+          </div>` : ''}
+
+        ${marcos.length ? `
+          <h4 style="margin:26px 0 4px;font-size:.83rem;font-weight:650;
+                     color:var(--tenue);letter-spacing:.05em;
+                     text-transform:uppercase">Acuerdos marco en los que está homologada</h4>
+          <p class="guia" style="margin:0 0 6px;font-size:.86rem">Cualquier organismo
+            adherido le puede encargar sin nueva licitación. No cuentan en las
+            cifras de arriba: el dinero llega por los contratos que salen de ellos.</p>
+          <div class="ultimos-contratos">
+            ${marcos.map(m => `<div>
+              <p class="que">${esc(m.titulo)}</p>
+              <span class="quien">${esc(m.organo ?? '')}${
+                m.lotes > 1 ? ` · ${plural(m.lotes, 'lote', 'lotes')}` : ''}${
+                m.fecha ? ` · desde ${esc(new Date(m.fecha).toLocaleDateString('es-ES',
+                  {timeZone:ZONA, month:'long', year:'numeric'}))}` : ''}${
+                m.valor_marco ? ` · marco de ${euros(Number(m.valor_marco))} en total` : ''}</span>
             </div>`).join('')}
           </div>` : ''}
       </div>`;
