@@ -45,7 +45,7 @@ jobs:
     env:
       # Por push no hay formulario: el alcance se cambia aquí. Una prueba
       # corta antes de la ejecución completa (solo vacío = todos).
-      SOLO: ${{ inputs.solo || 'P06,P08' }}
+      SOLO: ${{ inputs.solo || 'P05,P06,P08' }}
       MUESTRA: ${{ inputs.muestra || '15' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
