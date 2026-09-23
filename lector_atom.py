@@ -590,17 +590,26 @@ def resumir_adjudicaciones(adjudicaciones: list[dict[str, Any]],
     total = sum(a["importe"] for a in adjudicaciones if a.get("importe") is not None)
     principal = max(adjudicaciones, key=lambda a: a.get("importe") or 0)
 
-    # En un ACUERDO MARCO no se puede atribuir importe a nadie.
+    # En un ACUERDO MARCO, a menudo no se puede atribuir importe a nadie.
     #
-    # Cada lote publica el importe del marco entero, no la parte de esa
+    # Muchas veces cada lote publica el importe del marco entero, no la parte de esa
     # empresa, así que ni sumar ni coger el mayor da algo cierto. Con
     # 185 lotes, Philips salía con 6.743 millones adjudicados por el
     # Servicio Andaluz de Salud.
     #
     # Mejor un hueco que un número falso: nadie decide nada con un
     # hueco, y con seis mil millones sí.
+    #
+    # SALVO que los lotes sumen como mucho el presupuesto: entonces cada
+    # lote publica SU importe y no el del marco. Un acuerdo marco de
+    # uniformidad de Oviedo (2026, seis lotes de 50.820 a 772.998 €)
+    # sumaba 1,29 M€ con 1,32 M€ de presupuesto, y salía en blanco para
+    # las cinco empresas. Medido el 23/09/2026: se recuperan así unos
+    # 2.700 acuerdos marco; los ~400 cuyos lotes repiten el total siguen
+    # en blanco.
     if es_marco and len(adjudicaciones) > 1:
-        total = None
+        if not (presupuesto and 0 < total <= presupuesto * 1.05):
+            total = None
 
     # Sumar los lotes NO siempre da el total del contrato.
     #
