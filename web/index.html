@@ -490,213 +490,6 @@ textarea:focus-visible{
   font-variant-numeric:tabular-nums;
 }
 
-.baraja{
-  position:relative;
-  height:410px;
-  margin-top:24px;
-  touch-action:pan-y;
-}
-
-.carta{
-  position:absolute;
-  inset:0;
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-  padding:28px;
-  border:1px solid var(--linea);
-  border-radius:14px;
-  background:var(--superficie);
-  box-shadow:var(--sombra);
-  user-select:none;
-  -webkit-user-select:none;
-  will-change:transform;
-}
-
-.carta.detras-1{
-  z-index:2;
-  transform:scale(.965) translateY(11px);
-  opacity:.58;
-  pointer-events:none;
-}
-
-.carta.detras-2{
-  z-index:1;
-  transform:scale(.93) translateY(22px);
-  opacity:.3;
-  pointer-events:none;
-}
-
-.carta.encima{
-  z-index:3;
-  cursor:grab;
-}
-
-.carta.arrastrando{
-  cursor:grabbing;
-}
-
-.carta.volando{
-  transition:transform .34s ease-out,opacity .34s ease-out;
-}
-
-.franja{
-  position:relative;
-  height:34px;
-  margin:-4px 0 11px;
-}
-
-.sello{
-  position:absolute;
-  top:0;
-  padding:5px 12px;
-  border:2px solid;
-  border-radius:6px;
-  font-size:.78rem;
-  font-weight:750;
-  letter-spacing:.07em;
-  line-height:1.1;
-  opacity:0;
-  pointer-events:none;
-  transition:opacity .1s;
-}
-
-.sello.si{
-  right:0;
-  border-color:var(--si);
-  background:var(--tinte-si);
-  color:var(--si);
-}
-
-.sello.no{
-  left:0;
-  border-color:var(--no);
-  background:var(--tinte-no);
-  color:var(--no);
-}
-
-.carta .titulo{
-  max-width:55ch;
-  margin:0 0 13px;
-  color:var(--texto);
-  font-size:1.12rem;
-  font-weight:600;
-  line-height:1.42;
-}
-
-.carta .datos{
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px 18px;
-  margin:0;
-  color:var(--tenue);
-  font-size:.88rem;
-}
-
-.carta .ganador{
-  margin-top:auto;
-  padding-top:16px;
-  border-top:1px solid var(--linea);
-  color:var(--tenue);
-  font-size:.88rem;
-}
-
-.carta .ganador strong{
-  color:var(--texto);
-  font-weight:650;
-}
-
-.botones{
-  display:flex;
-  gap:12px;
-  margin-top:24px;
-}
-
-.botones button{
-  flex:1;
-  min-height:50px;
-  padding:13px 14px;
-  border:1px solid var(--fuerte);
-  border-radius:8px;
-  background:var(--superficie);
-  color:var(--texto);
-  font-size:1rem;
-  font-weight:600;
-  transition:background-color .16s,border-color .16s,color .16s;
-}
-
-.botones .si:hover{
-  border-color:var(--si);
-  background:var(--tinte-si);
-  color:var(--si);
-}
-
-.botones .no:hover{
-  border-color:var(--no);
-  background:var(--tinte-no);
-  color:var(--no);
-}
-
-.atajos{
-  margin-top:13px;
-  color:var(--tenue);
-  font-size:.82rem;
-  text-align:center;
-}
-
-kbd{
-  padding:2px 6px;
-  border:1px solid var(--linea);
-  border-bottom-color:var(--fuerte);
-  border-radius:5px;
-  background:var(--superficie);
-  color:var(--tenue);
-  font-size:.78rem;
-}
-
-.gestos{
-  display:flex;
-  gap:14px;
-  justify-content:center;
-  margin:30px 0 6px;
-}
-
-.gesto{
-  flex:1;
-  max-width:190px;
-  padding:16px 13px;
-  border:1px solid var(--linea);
-  border-radius:10px;
-  background:var(--superficie);
-  box-shadow:var(--sombra-baja);
-}
-
-.gesto .flecha{
-  display:block;
-  margin-bottom:6px;
-  font-size:1.55rem;
-  line-height:1;
-}
-
-.gesto.no .flecha{
-  color:var(--no);
-}
-
-.gesto.si .flecha{
-  color:var(--si);
-}
-
-.gesto strong{
-  display:block;
-  color:var(--texto);
-  font-size:.93rem;
-  font-weight:650;
-}
-
-.gesto span{
-  color:var(--tenue);
-  font-size:.83rem;
-}
 
 /* Aplicación y resumen */
 
@@ -2668,23 +2461,6 @@ select:focus{
   .detalle dd{
     margin-bottom:7px;
   }
-
-  .baraja{
-    height:430px;
-  }
-
-  .carta{
-    padding:24px 21px;
-  }
-
-  .gestos{
-    gap:8px;
-  }
-
-  .gesto{
-    padding-right:9px;
-    padding-left:9px;
-  }
 }
 
 @media(max-width:480px){
@@ -2697,19 +2473,6 @@ select:focus{
   }
 
   .familia .volumen{
-    display:none;
-  }
-
-  .botones{
-    gap:8px;
-  }
-
-  .botones button{
-    padding-right:8px;
-    padding-left:8px;
-  }
-
-  .gestos{
     display:none;
   }
 
@@ -2736,7 +2499,6 @@ select:focus{
     transition-duration:.01ms !important;
   }
 
-  .carta,
   .relleno,
   #lista,
   .apilada .trozo{
@@ -3380,8 +3142,8 @@ async function arrancar(volviendo = false) {
     return pantallaOportunidades(perfil, session, volviendo);
   }
   if (perfil.paso_alta === 'cribando') return pantallaCribando(perfil, session);
-  if (perfil.paso_alta === 'entrenando' && perfil.cpv_prefijos)
-    return pantallaEntrenar(perfil, perfil.cpv_prefijos.split(','), session);
+  // 'entrenando' era el paso de las tarjetas, que ya no existen: quien
+  // se quedó a medias vuelve a su descripción, que conserva escrita.
   // El CIF va primero: si la empresa tiene historial, no hace falta que
   // describa nada. Lo que ha ganado dice mejor a qué se presenta que
   // cualquier descripción.
@@ -3980,7 +3742,9 @@ function pantallaFamilias(perfil, propuesta, session) {
     <div class="paso ancha" style="text-align:left">
       <h1>Esto es lo que vamos a buscar por ti</h1>
       <p class="guia">${esc(propuesta.resumen)} Desmarca lo que no encaje.
-      Es preferible dejar de más: el siguiente paso afina el resultado.</p>
+      Es preferible dejar de más: después revisamos cada contrato con lo que
+      nos has contado, y lo que no te interese lo puedes descartar desde tu
+      lista.</p>
       <div class="propuesta">
         ${propuesta.prefijos.map((p, i) => `
           <label class="familia">
@@ -3992,7 +3756,7 @@ function pantallaFamilias(perfil, propuesta, session) {
             <span class="volumen">${p.volumen ?? '—'} al año</span>
           </label>`).join('')}
       </div>
-      <button class="principal" id="seguir">Ver ejemplos</button>
+      <button class="principal" id="seguir">Continuar</button>
       <button class="enlace" id="atras">Cambiar la descripción</button>
       <div id="resultado"></div>
     </div>`;
@@ -4009,175 +3773,18 @@ function pantallaFamilias(perfil, propuesta, session) {
       return;
     }
     boton.disabled = true;
-    boton.textContent = 'Buscando ejemplos...';
+    boton.textContent = 'Preparando tu filtro...';
     try {
-      const r = await llamar('material', { prefijos });
-      pantallaEntrenar(perfil, prefijos, session, r.licitaciones);
-    } catch (error) {
-      document.getElementById('resultado').innerHTML = error.message === 'catalogo_vacio'
-        ? `<div class="aviso mal">No hemos encontrado contratos con esas
-           categorías. Prueba a describir tu negocio de otra forma.</div>`
-        : `<div class="aviso mal">Algo ha fallado. Inténtalo de nuevo.</div>`;
-      boton.disabled = false;
-      boton.textContent = 'Ver ejemplos';
-    }
-  };
-}
-
-// ============================================================
-// 4 · Entrenamiento
-// ============================================================
-
-async function pantallaEntrenar(perfil, prefijos, session, items) {
-  if (!items) {
-    raiz.innerHTML = `<div class="centro"><p class="guia">Preparando ejemplos...</p></div>`;
-    try {
-      items = (await llamar('material', { prefijos })).licitaciones;
-    } catch {
-      raiz.innerHTML = `<div class="centro"><div class="aviso mal">
-        No hemos podido cargar los ejemplos.</div></div>`;
-      return;
-    }
-  }
-
-  const respuestas = [];
-  let i = 0;
-
-  const intro = () => {
-    raiz.className = 'envoltorio';
-    raiz.innerHTML = `
-      <div class="paso ancha">
-        <h1>¿Cuáles de estos contratos te interesan?</h1>
-        <p class="guia">Son licitaciones reales de tu sector. Con tus respuestas
-        construimos tu filtro: a partir de ahí solo verás lo que encaje.</p>
-        <p class="guia">No hay respuestas correctas, solo las tuyas. Son
-        ${items.length} y se tarda unos cinco minutos.</p>
-        <div class="gestos">
-          <div class="gesto no"><span class="flecha">←</span>
-            <strong>Izquierda</strong><span>No me interesa</span></div>
-          <div class="gesto si"><span class="flecha">→</span>
-            <strong>Derecha</strong><span>Sí me interesa</span></div>
-        </div>
-        <p class="atajos">También valen las flechas del teclado o los botones.</p>
-        <button class="principal" id="empezar" style="margin-top:18px">Empezar</button>
-      </div>`;
-    document.getElementById('empezar').onclick = pintar;
-  };
-
-  const tarjeta = (o, clase) => {
-    const datos = [o.organo, euros(o.presupuesto)].filter(Boolean);
-    return `<article class="carta ${clase}">
-      <div class="franja">
-        <div class="sello no">NO ME INTERESA</div>
-        <div class="sello si">SÍ ME INTERESA</div>
-      </div>
-      <p class="titulo">${esc(o.titulo)}</p>
-      <p class="datos">${datos.map(d => `<span>${esc(d)}</span>`).join('')}</p>
-      ${o.adjudicatario ? `<p class="ganador">Lo ganó <strong>${esc(o.adjudicatario)}</strong>${
-        o.importe_adjudicacion ? ` por ${euros(o.importe_adjudicacion)}` : ''}</p>` : ''}
-    </article>`;
-  };
-
-  function pintar() {
-    if (i >= items.length) return finalizar();
-
-    const pila = [items[i+2], items[i+1], items[i]].filter(Boolean);
-    const clases = pila.length === 3 ? ['detras-2','detras-1','encima']
-                 : pila.length === 2 ? ['detras-1','encima'] : ['encima'];
-    const si = respuestas.filter(r => r.interesa).length;
-
-    raiz.className = 'envoltorio';
-    raiz.innerHTML = `
-      <div class="avance">
-        <div class="barra"><div class="relleno" style="width:${i/items.length*100}%"></div></div>
-        <div class="cuenta"><span>${i} de ${items.length}</span>
-        <span>${respuestas.length ? `${si} sí · ${respuestas.length-si} no` : ''}</span></div>
-      </div>
-      <div class="baraja">${pila.map((o,n) => tarjeta(o, clases[n])).join('')}</div>
-      <div class="botones">
-        <button class="no" id="b-no">No me interesa</button>
-        <button class="si" id="b-si">Sí me interesa</button>
-      </div>
-      <p class="atajos">Desliza la tarjeta, usa <kbd>←</kbd> <kbd>→</kbd> o pulsa los botones</p>`;
-
-    document.getElementById('b-si').onclick = () => volar(true);
-    document.getElementById('b-no').onclick = () => volar(false);
-    arrastrable(raiz.querySelector('.carta.encima'));
-  }
-
-  const UMBRAL = 110;
-  function arrastrable(carta) {
-    if (!carta) return;
-    let x0 = 0, dx = 0, activo = false;
-    const empezar = ev => {
-      activo = true; dx = 0;
-      x0 = ev.touches ? ev.touches[0].clientX : ev.clientX;
-      carta.classList.add('arrastrando');
-    };
-    const mover = ev => {
-      if (!activo) return;
-      dx = (ev.touches ? ev.touches[0].clientX : ev.clientX) - x0;
-      carta.style.transform = `translateX(${dx}px) rotate(${dx*0.05}deg)`;
-      const fuerza = Math.min(Math.abs(dx)/UMBRAL, 1);
-      carta.querySelector('.sello.si').style.opacity = dx > 0 ? fuerza : 0;
-      carta.querySelector('.sello.no').style.opacity = dx < 0 ? fuerza : 0;
-    };
-    const soltar = () => {
-      if (!activo) return;
-      activo = false;
-      carta.classList.remove('arrastrando');
-      if (Math.abs(dx) >= UMBRAL) return volar(dx > 0);
-      // Soltar a medias no decide nada: arrastrar sin querer sería el
-      // peor fallo posible aquí.
-      carta.classList.add('volando');
-      carta.style.transform = '';
-      carta.querySelectorAll('.sello').forEach(s => s.style.opacity = 0);
-    };
-    carta.addEventListener('mousedown', empezar);
-    carta.addEventListener('touchstart', empezar, {passive:true});
-    document.addEventListener('mousemove', mover);
-    document.addEventListener('touchmove', mover, {passive:true});
-    document.addEventListener('mouseup', soltar);
-    document.addEventListener('touchend', soltar);
-  }
-
-  function volar(interesa) {
-    const carta = raiz.querySelector('.carta.encima');
-    if (carta) {
-      carta.classList.add('volando');
-      carta.style.transform = `translateX(${interesa?700:-700}px) rotate(${interesa?28:-28}deg)`;
-      carta.style.opacity = '0';
-    }
-    const o = items[i];
-    respuestas.push({
-      id_licitacion: o.id_licitacion, titulo: o.titulo, organo: o.organo ?? '',
-      cpvs: (o.cpvs || []).join(','), presupuesto: o.presupuesto ?? null, interesa,
-    });
-    i++;
-    setTimeout(pintar, carta ? 200 : 0);
-  }
-
-  document.addEventListener('keydown', ev => {
-    if (!raiz.querySelector('.carta.encima')) return;
-    if (ev.key === 'ArrowRight') { ev.preventDefault(); volar(true); }
-    if (ev.key === 'ArrowLeft') { ev.preventDefault(); volar(false); }
-  });
-
-  async function finalizar() {
-    raiz.innerHTML = `<div class="paso">
-      <h1>Construyendo tu filtro</h1>
-      <p class="guia">Un momento...</p></div>`;
-    try {
-      await llamar('guardar', { respuestas });
+      await llamar('confirmar_familias', { prefijos });
       const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
       pantallaCribando(data?.[0] ?? perfil, session);
-    } catch {
-      raiz.innerHTML = `<div class="centro"><div class="aviso mal">
-        No hemos podido guardar tus respuestas. Recarga e inténtalo de nuevo.</div></div>`;
+    } catch (error) {
+      document.getElementById('resultado').innerHTML =
+        `<div class="aviso mal">Algo ha fallado. Inténtalo de nuevo.</div>`;
+      boton.disabled = false;
+      boton.textContent = 'Continuar';
     }
-  }
-
-  intro();
+  };
 }
 
 // ============================================================

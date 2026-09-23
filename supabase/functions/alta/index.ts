@@ -2,13 +2,15 @@
 // STATE SCRAPER · Función de alta
 // ============================================================
 //
-// Atiende el flujo de alta de un cliente, en tres acciones:
+// Atiende el flujo de alta de un cliente. Sin historial, en dos acciones:
 //
-//   proponer  -> lee su descripción, propone prefijos CPV y cuenta
-//                cuántas licitaciones trae cada uno
-//   material  -> filtra el catálogo por esos prefijos y devuelve las
-//                licitaciones que se le van a enseñar
-//   guardar   -> recibe sus respuestas, genera su criterio y lo activa
+//   proponer            -> lee su descripción, propone prefijos CPV y
+//                          cuenta cuántas licitaciones trae cada uno
+//   confirmar_familias  -> guarda las familias que deja marcadas, genera
+//                          su criterio a partir de la descripción y lo
+//                          activa
+//
+// Con NIF, `buscar_empresa` y `confirmar_empresa` (ver más abajo).
 //
 // Va aquí y no en el navegador por dos motivos: la clave de OpenAI no
 // puede salir del servidor, y el catálogo son ficheros de decenas de
@@ -28,12 +30,6 @@ import {
 } from "./modelo.ts";
 
 
-// Cuántas licitaciones se le enseñan y cómo se reparten. El núcleo fija
-// el centro del negocio; la frontera define el borde. Solo con frontera,
-// el criterio sale sesgado hacia la excepción y rechaza el negocio
-// principal; solo con núcleo, no aprende dónde termina.
-const CUANTAS = 30;
-const PROPORCION_NUCLEO = 0.4;
 
 // Cribado por lotes. Una función de Supabase no puede tardar minutos, y
 // un cliente nuevo puede tener cientos de licitaciones vivas que
@@ -170,17 +166,6 @@ async function proponerCpv(descripcion: string, disponibles: string) {
 // ------------------------------------------------------------
 // Catálogo
 // ------------------------------------------------------------
-
-// ------------------------------------------------------------
-// Selección de la muestra
-// ------------------------------------------------------------
-
-function barajar<T>(lista: T[]) {
-  for (let i = lista.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [lista[i], lista[j]] = [lista[j], lista[i]];
-  }
-}
 
 // ------------------------------------------------------------
 // Sectores: sus CPV agrupados con nombre de persona
@@ -407,7 +392,7 @@ Deno.serve(async (peticion) => {
     const autorizacion = peticion.headers.get("Authorization");
     if (!autorizacion) return responder({ error: "sin_sesion" }, 401);
 
-    const { accion, descripcion, prefijos, respuestas, cif, empresa, dias,
+    const { accion, descripcion, prefijos, cif, empresa, dias,
             perfil_id } = await peticion.json();
 
     // Con varias empresas por cuenta, la web dice cuál está mirando. Se
@@ -691,202 +676,29 @@ Deno.serve(async (peticion) => {
       return responder({ ok: true, ...propuesta });
     }
 
-    // --- Material de entrenamiento ---
-    if (accion === "material") {
+    // --- Confirmar las familias y generar el criterio (sin historial) ---
+    //
+    // Aquí iban treinta tarjetas que deslizar. Se quitaron el 23/09/2026:
+    // en la simulación con los perfiles que tienen NIF, el criterio que
+    // salía de las tarjetas no mejoraba al de la descripción sola, y
+    // costaba cinco minutos al cliente. El vecindario que debía elegirlas
+    // buscaba por `prefijo_principal` (4 dígitos) con divisiones de 2 y
+    // nunca encontraba nada: salían contratos al azar de la división y el
+    // cliente les decía que no a casi todos.
+    //
+    // El criterio sale de su descripción; lo que no encaje lo corrige él
+    // desde la lista ("no me interesa"), que regenera el criterio con
+    // `ajustar`.
+    if (accion === "confirmar_familias") {
       const lista = (prefijos ?? []).map((p: string) => String(p).replace(/\D/g, ""))
         .filter((p: string) => p.length >= 2 && p.length <= 6);
       if (!lista.length) return responder({ error: "sin_prefijos" }, 400);
+      if (!perfil.descripcion) return responder({ error: "descripcion_corta" }, 400);
 
-      // Con historial, el material sale de sus sectores reales: lo que
-      // NO ganó dentro de ellos. Puede que ni se presentara —y entonces
-      // no le interesa— o que perdiera, y entonces sí. Esa distinción es
-      // la que el historial no da y solo él sabe.
-      if (perfil.cif) {
-        // El reparto lo hace la base, en proporción a cuántos contratos
-        // ha ganado en cada prefijo: si el 90% de su historial es
-        // protección y ropa, el 90% de las tarjetas lo son.
-        const { data: candidatas, error: falloEmpresa } = await admin
-          .rpc("material_de_empresa",
-               { cif_buscado: perfil.cif, prefijos: lista, tope: CUANTAS });
-
-        if (falloEmpresa) {
-          console.error("Fallo al buscar material de empresa:", falloEmpresa);
-          return responder({ error: "error_interno" }, 500);
-        }
-
-        const todas = (candidatas ?? []) as Record<string, unknown>[];
-        barajar(todas);
-        const escogidas = todas.slice(0, CUANTAS);
-        if (!escogidas.length) return responder({ error: "catalogo_vacio" }, 404);
-
-        await comoUsuario.from("perfiles").update({
-          cpv_prefijos: lista.join(","), paso_alta: "entrenando",
-        }).eq("id", perfil.id);
-
-        console.log(`Material de historial: ${escogidas.length} de ${(candidatas ?? []).length}`);
-
-        return responder({
-          ok: true,
-          total_disponibles: (candidatas ?? []).length,
-          licitaciones: escogidas.map((f) => ({
-            id_licitacion: f.id_licitacion,
-            titulo: f.titulo,
-            organo: f.organo ?? "",
-            presupuesto: f.presupuesto ? Number(f.presupuesto) : null,
-            cpvs: (f.cpvs ?? []) as string[],
-            adjudicatario: String(f.adjudicatario ?? ""),
-            importe_adjudicacion: f.importe_adjudicacion
-              ? Number(f.importe_adjudicacion) : null,
-          })),
-        });
-      }
-
-      const producto = (perfil.palabras_producto ?? []) as string[];
-      const destinatario = (perfil.palabras_destinatario ?? []) as string[];
-
-      // LA FRONTERA, DENTRO DEL VECINDARIO.
-      //
-      // Separar "menciona lo que vende" de "no lo menciona" llenaba la
-      // mitad de las tarjetas de formación, obras o instalaciones
-      // eléctricas: cosas que nadie confundiría con equipamiento
-      // policial. El cliente rechazaba veintiocho de treinta y esos
-      // rechazos no enseñaban nada.
-      //
-      // La frontera real está entre uniformidad PARA POLICÍA y
-      // uniformidad para jardineros municipales. Así que ambos grupos
-      // salen del vecindario —contratos que mencionan lo que vende— y
-      // lo que los separa es el destinatario.
-      const mitad = Math.floor(CUANTAS / 2);
-      // El parámetro se llama `prefijos_buscados` en la base, no
-      // `prefijos`. Enviarlo mal hacía que PostgREST no encontrara la
-      // función y el alta sin historial fallara con «algo ha fallado».
-      const argumentos = {
-        prefijos_buscados: lista, producto, destinatario,
-        solo_vivas: false, tope: 60,
-      };
-
-      const [encajan, frontera] = await Promise.all([
-        producto.length
-          ? admin.rpc("licitaciones_del_vecindario",
-                      { ...argumentos, con_destinatario: true })
-          : Promise.resolve({ data: [], error: null }),
-        producto.length
-          ? admin.rpc("licitaciones_del_vecindario",
-                      { ...argumentos, con_destinatario: false })
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-
-      if (encajan.error || frontera.error) {
-        console.error("Fallo al buscar material:", encajan.error ?? frontera.error);
-        return responder({ error: "error_interno" }, 500);
-      }
-
-      let claras = (encajan.data ?? []) as Record<string, unknown>[];
-      let dudosas = (frontera.data ?? []) as Record<string, unknown>[];
-
-      // Si el negocio no tiene destinatario característico, o el
-      // vecindario se queda corto, se recurre al conjunto entero: mejor
-      // treinta tarjetas imperfectas que ninguna.
-      if (claras.length + dudosas.length < CUANTAS) {
-        const { data: sueltas } = await admin.rpc("licitaciones_por_prefijo",
-          { prefijos: lista, solo_vivas: false, tope: 300 });
-        dudosas = [...dudosas, ...((sueltas ?? []) as Record<string, unknown>[])];
-      }
-      if (!claras.length && !dudosas.length) {
-        return responder({ error: "catalogo_vacio" }, 404);
-      }
-
-      barajar(claras);
-      barajar(dudosas);
-
-      const deClaras = Math.min(mitad, claras.length);
-      const escogidas = [
-        ...claras.slice(0, deClaras),
-        ...dudosas.slice(0, CUANTAS - deClaras),
-      ];
-      if (escogidas.length < CUANTAS) {
-        escogidas.push(...claras.slice(deClaras, deClaras + CUANTAS - escogidas.length));
-      }
-
-      // Sin repeticiones: una licitación puede aparecer en los dos
-      // conjuntos si el vecindario se completó con el conjunto suelto,
-      // y ver el mismo contrato dos veces desconcierta.
-      const vistas = new Set<string>();
-      const finales = escogidas.filter((f) => {
-        const id = String(f.id_licitacion);
-        if (vistas.has(id)) return false;
-        vistas.add(id);
-        return true;
-      }).slice(0, CUANTAS);
-
-      barajar(finales);
-      console.log(`Material: ${claras.length} claras, ${dudosas.length} frontera, ` +
-                  `${finales.length} enviadas`);
+      const criterio = await generarCriterio(perfil.descripcion, []);
 
       await comoUsuario.from("perfiles").update({
-        cpv_prefijos: lista.join(","), paso_alta: "entrenando",
-      }).eq("id", perfil.id);
-
-      return responder({
-        ok: true,
-        total_disponibles: claras.length + dudosas.length,
-        licitaciones: finales.map((f) => ({
-          id_licitacion: f.id_licitacion,
-          titulo: f.titulo,
-          organo: f.organo ?? "",
-          presupuesto: f.presupuesto ? Number(f.presupuesto) : null,
-          cpvs: (f.cpvs ?? []) as string[],
-          adjudicatario: "",
-          importe_adjudicacion: null,
-        })),
-      });
-    }
-
-    // --- Guardar respuestas y generar el criterio ---
-    if (accion === "guardar") {
-      if (!Array.isArray(respuestas) || respuestas.length < 5) {
-        return responder({ error: "pocas_respuestas" }, 400);
-      }
-
-      await comoUsuario.from("ejemplos_entrenamiento").insert(
-        respuestas.map((r: Record<string, unknown>) => ({
-          perfil_id: perfil.id,
-          id_licitacion: String(r.id_licitacion),
-          titulo: String(r.titulo),
-          organo: String(r.organo ?? ""),
-          cpvs: String(r.cpvs ?? ""),
-          presupuesto: r.presupuesto ?? null,
-          interesa: Boolean(r.interesa),
-        })),
-      );
-
-      // Los contratos que ganó son ejemplos positivos seguros: no hay
-      // opinión más fiable que un contrato adjudicado. Se suman a lo que
-      // haya marcado, de forma que el criterio tenga base sólida aunque
-      // en las tarjetas diga que sí a pocas.
-      let ejemplos = respuestas;
-      if (perfil.cif) {
-        const { data: ganados } = await admin.rpc("ultimos_ganados",
-          { cif_buscado: perfil.cif, tope: 25 });
-        const positivos = ((ganados ?? []) as Record<string, unknown>[]).map((g) => ({
-          titulo: String(g.titulo ?? ""),
-          organo: String(g.organo ?? ""),
-          cpvs: "",
-          interesa: true,
-        }));
-        ejemplos = [...positivos, ...respuestas];
-        console.log(`Criterio con ${positivos.length} contratos ganados ` +
-                    `y ${respuestas.length} respuestas`);
-      }
-
-      const criterio = await generarCriterio(
-        perfil.descripcion || `Empresa: ${perfil.empresa ?? ""}`, ejemplos);
-
-      // No hace falta traer nada: el procesado del histórico ya volcó a
-      // la base todas las licitaciones abiertas, de cualquier sector.
-      // Por eso el alta de un cliente nuevo es instantánea.
-
-      await comoUsuario.from("perfiles").update({
+        cpv_prefijos: lista.join(","),
         criterio: criterio.criterio,
         criterio_version: (perfil.criterio_version ?? 0) + 1,
         criterio_fecha: new Date().toISOString(),
