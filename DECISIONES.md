@@ -934,6 +934,35 @@ cuenta por los contratos derivados. Ver
 
 ---
 
+## 37. Fuera las tarjetas del alta sin NIF
+
+**Contexto.** Quien entraba sin NIF describía su negocio, confirmaba unas
+familias CPV y deslizaba treinta tarjetas. Se simuló ese camino con los
+perfiles que sí tienen NIF, contestando como lo haría cada empresa, y se
+comparó el filtro resultante con el suyo real (`scripts/simular_sin_nif.ts`,
+rama `simulacion-sin-nif`). Dos fallos: el vecindario que debía escoger las
+tarjetas buscaba por `prefijo_principal` (4 dígitos) con divisiones de 2 y
+nunca encontraba nada, así que salían contratos al azar de la división y se
+les decía que no a casi todos; y `proponer` recibe las divisiones sin
+nombre, solo número y volumen, y con "prefiere las de volumen alto" propone
+las más grandes (obras, servicios a empresas) aunque no tengan que ver.
+
+**Decisión** (23/09/2026). Sin tarjetas. Tras confirmar las familias, el
+criterio sale de la descripción (`confirmar_familias`) y el cliente lo
+afina desde la lista con "no me interesa". Quien se quedó a medias en las
+tarjetas vuelve a su descripción.
+
+**Motivo.** En la simulación, el criterio de las tarjetas no mejoraba al de
+la descripción sola (F1 mediana 0,36 frente a 0,43, esta ya con el catálogo
+con nombres), y costaba cinco minutos al cliente.
+
+**Pendiente.** Nombres de las divisiones en el catálogo de `proponer` (es lo
+que más movió el resultado), y decidir si entran los referentes: empresas
+que ganan lo que describe, de su tamaño, cuyos contratos sirven de ejemplo
+al criterio. Empataron con la descripción sola en precisión.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
