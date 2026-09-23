@@ -14,7 +14,10 @@
 //                        de 2, no encuentra nada y las tarjetas salen del
 //                        relleno sin ordenar de `licitaciones_por_prefijo`.
 //   tarjetas_arregladas  Lo mismo, con el vecindario buscando en los
-//                        prefijos de 4 dígitos que cuelgan de cada familia.
+//                        prefijos de 4 dígitos que cuelgan de cada familia
+//                        y el catálogo de familias con nombre (ver
+//                        DIVISIONES). Las variantes de referentes también
+//                        parten de esas familias.
 //   referentes           Empresas que ganan lo que describe, de su tamaño
 //                        primero. Con las que marca se arma un historial
 //                        prestado y se lee con `leerHistorial`, como si
@@ -266,13 +269,69 @@ async function describirComoCliente(actividad: string): Promise<string> {
   return String(r.descripcion ?? actividad).trim();
 }
 
+// Nombres de las divisiones CPV (vocabulario común de 2008). El
+// catálogo de `proponer` en producción solo lleva número y volumen, y
+// con "prefiere divisiones con volumen alto" el modelo, que no sabe de
+// memoria qué es la 18 o la 35, escoge las más grandes: para una
+// descripción de ropa y equipo propuso obras, servicios a empresas,
+// material médico y mantenimiento. Con `conNombres` se mide la corrección.
+const DIVISIONES: Record<string, string> = {
+  "03": "Productos de la agricultura, ganadería, pesca y silvicultura",
+  "09": "Derivados del petróleo, combustibles, electricidad y otras fuentes de energía",
+  "14": "Productos de la minería, metales de base y productos conexos",
+  "15": "Alimentos, bebidas, tabaco y productos afines",
+  "16": "Maquinaria agrícola",
+  "18": "Prendas de vestir, calzado, artículos de viaje y accesorios",
+  "19": "Piel, textiles, plástico y caucho",
+  "22": "Impresos y productos relacionados",
+  "24": "Productos químicos",
+  "30": "Máquinas, equipo y artículos de oficina y de informática",
+  "31": "Máquinas, aparatos, equipo y productos consumibles eléctricos; iluminación",
+  "32": "Equipos de radio, televisión, comunicaciones y telecomunicaciones",
+  "33": "Equipamiento y artículos médicos, farmacéuticos y de higiene personal",
+  "34": "Equipos de transporte y productos auxiliares",
+  "35": "Equipo de seguridad, extinción de incendios, policía y defensa",
+  "37": "Instrumentos musicales, artículos deportivos, juegos, juguetes, artesanía y material artístico",
+  "38": "Equipo de laboratorio, óptico y de precisión",
+  "39": "Mobiliario, enseres domésticos, aparatos electrodomésticos y productos de limpieza",
+  "41": "Agua recogida y depurada",
+  "42": "Maquinaria industrial",
+  "43": "Maquinaria para la minería y la construcción",
+  "44": "Estructuras y materiales de construcción; productos auxiliares",
+  "45": "Trabajos de construcción (obras)",
+  "48": "Paquetes de software y sistemas de información",
+  "50": "Servicios de reparación y mantenimiento",
+  "51": "Servicios de instalación (excepto software)",
+  "55": "Servicios comerciales al por menor de hostelería y restauración",
+  "60": "Servicios de transporte (excluido el transporte de residuos)",
+  "63": "Servicios de transporte complementarios y auxiliares; agencias de viajes",
+  "64": "Servicios de correos y telecomunicaciones",
+  "65": "Servicios públicos (agua, gas, electricidad)",
+  "66": "Servicios financieros y de seguros",
+  "70": "Servicios inmobiliarios",
+  "71": "Servicios de arquitectura, construcción, ingeniería e inspección",
+  "72": "Servicios TI: consultoría, desarrollo de software, Internet y apoyo",
+  "73": "Servicios de investigación y desarrollo y servicios de consultoría conexos",
+  "75": "Administración pública, defensa y servicios de seguridad social",
+  "76": "Servicios relacionados con la industria del gas y del petróleo",
+  "77": "Servicios agrícolas, forestales, hortícolas, acuícolas y apícolas",
+  "79": "Servicios a empresas: legislación, mercadotecnia, asesoría, selección, impresión y seguridad",
+  "80": "Servicios de enseñanza y formación",
+  "85": "Servicios de salud y asistencia social",
+  "90": "Servicios de alcantarillado, basura, limpieza y medio ambiente",
+  "92": "Servicios de esparcimiento, culturales y deportivos",
+  "98": "Otros servicios comunitarios, sociales o personales",
+};
+
 // Réplica de `proponer` en alta/index.ts.
-async function proponer(descripcion: string) {
+async function proponer(descripcion: string, conNombres: boolean) {
   const { data: divisiones } = await leer(() => db.from("resumen_cpv_total")
     .select("prefijo, licitaciones").gt("licitaciones", 50)
     .order("licitaciones", { ascending: false }).limit(400));
   const catalogo = (divisiones ?? []).filter((d) => d.prefijo.length === 2)
-    .map((d) => `${d.prefijo}: ${d.licitaciones}`).join("\n");
+    .map((d) => conNombres && DIVISIONES[d.prefijo]
+      ? `${d.prefijo} (${DIVISIONES[d.prefijo]}): ${d.licitaciones}`
+      : `${d.prefijo}: ${d.licitaciones}`).join("\n");
 
   const salida = await modelo([
     { role: "system", content: INSTRUCCIONES_CPV },
@@ -601,13 +660,18 @@ for (const { codigo, p } of casos) {
 
   try {
     const descripcion = await describirComoCliente(String(p.descripcion ?? ""));
-    const prop = await proponer(descripcion);
-
     // Desmarca las familias que no tienen nada que ver con lo suyo. Si
     // las desmarcara todas no podría seguir: se quedan todas.
-    const deLoSuyo = prop.prefijos.filter((f) =>
-      real.prefijos.some((q) => q.startsWith(f) || f.startsWith(q)));
-    const familias = deLoSuyo.length ? deLoSuyo : prop.prefijos;
+    const marcar = (prefijos: string[]) => {
+      const deLoSuyo = prefijos.filter((f) =>
+        real.prefijos.some((q) => q.startsWith(f) || f.startsWith(q)));
+      return { familias: deLoSuyo.length ? deLoSuyo : prefijos, acierta: deLoSuyo.length > 0 };
+    };
+    // El camino de hoy con el catálogo de hoy; los demás, con nombres.
+    const propHoy = await proponer(descripcion, false);
+    const prop = await proponer(descripcion, true);
+    const hoy = marcar(propHoy.prefijos);
+    const { familias, acierta } = marcar(prop.prefijos);
 
     // Sus franjas: las que suman al menos el 15 % de lo que ha ganado.
     const { data: suyos } = await leer(() => db.from("licitaciones")
@@ -625,7 +689,7 @@ for (const { codigo, p } of casos) {
     }
 
     const variantes: Record<string, Resultado | null> = {};
-    variantes.tarjetas_hoy = await tarjetasHoy(descripcion, prop, familias, real.criterio, r);
+    variantes.tarjetas_hoy = await tarjetasHoy(descripcion, propHoy, hoy.familias, real.criterio, r);
     variantes.tarjetas_arregladas = await tarjetasArregladas(descripcion, prop, familias, real.criterio, r);
     variantes.referentes = await porReferentes(prop, familias, franjas, cif, real.prefijos, false);
     variantes.referentes_menores = await porReferentes(prop, familias, franjas, cif, real.prefijos, true);
@@ -649,7 +713,8 @@ for (const { codigo, p } of casos) {
       codigo,
       contratos: Number(p.contratos_ganados ?? 0) >= 20 ? "20+" : Number(p.contratos_ganados ?? 0) >= 5 ? "5-19" : "1-4",
       franjas: franjas.join(" "),
-      familias: familias.length,
+      familias_hoy_aciertan: hoy.acierta,
+      familias_con_nombres_aciertan: acierta,
       tarjetas_hoy_del_vecindario: variantes.tarjetas_hoy?.detalle.del_vecindario,
       tarjetas_arregladas_del_vecindario: variantes.tarjetas_arregladas?.detalle.del_vecindario,
       referentes_elegidos: (variantes.referentes?.detalle.elegidas as string[] | undefined)?.length ?? 0,
@@ -662,7 +727,7 @@ for (const { codigo, p } of casos) {
     };
     resumen.push(filaResumen);
     detalle.push({
-      ...filaResumen, empresa_cif: cif, descripcion_simulada: descripcion, propuesta: prop,
+      ...filaResumen, empresa_cif: cif, descripcion_simulada: descripcion, propuesta_hoy: propHoy, propuesta: prop,
       prefijos_reales: real.prefijos,
       variantes: Object.fromEntries(Object.entries(variantes).map(([k, v]) =>
         [k, v && { criterio: v.criterio, prefijos: v.prefijos, detalle: v.detalle }])),
@@ -701,11 +766,11 @@ const lineas = [
   "",
   "F1 frente al filtro real (sí + quizás). Precisión / cobertura entre paréntesis.",
   "",
-  `| Perfil | Contratos | ${VARIANTES.join(" | ")} | Sin referentes |`,
-  `|---|---|${VARIANTES.map(() => "---").join("|")}|---|`,
+  `| Perfil | Contratos | Familias hoy / con nombres | ${VARIANTES.join(" | ")} | Sin referentes |`,
+  `|---|---|---|${VARIANTES.map(() => "---").join("|")}|---|`,
   ...resumen.map((f) => f.fallo
-    ? `| ${f.codigo} | — | ${VARIANTES.map(() => "falló").join(" | ")} | |`
-    : `| ${f.codigo} | ${f.contratos} | ${VARIANTES.map((v) =>
+    ? `| ${f.codigo} | — | — | ${VARIANTES.map(() => "falló").join(" | ")} | |`
+    : `| ${f.codigo} | ${f.contratos} | ${f.familias_hoy_aciertan ? "✓" : "✗"} / ${f.familias_con_nombres_aciertan ? "✓" : "✗"} | ${VARIANTES.map((v) =>
         `${celda(f, v, "f1")} (${celda(f, v, "precision")} / ${celda(f, v, "cobertura")})`).join(" | ")} | ${f.sin_referentes || ""} |`),
   "",
   `Lectura por prefijo: mediana ${mediana(tiempos) ?? "—"} ms, máximo ${tiempos.length ? Math.max(...tiempos) : "—"} ms ` +
