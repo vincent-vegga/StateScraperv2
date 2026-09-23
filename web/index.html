@@ -5553,13 +5553,16 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
           <div><dt>Importe total</dt><dd>${
             Number(r.importe) ? euros(Number(r.importe)) : '—'}</dd></div>
           <div><dt>Empresas distintas</dt><dd>${r.empresas ?? 0}</dd></div>
-          ${Number(r.importe_medio) ? `<div><dt>Importe medio</dt>
-            <dd>${euros(Number(r.importe_medio))}</dd></div>` : ''}
+          ${Number(r.importe_mediano) ? `<div><dt>Importe mediano</dt>
+            <dd>${euros(Number(r.importe_mediano))}</dd></div>` : ''}
           ${r.mias ? `<div><dt>Las has ganado tú</dt>
             <dd>${r.mias}</dd></div>` : ''}
           <p class="destacado">Cada contrato cuenta una vez aunque tenga
-          varios lotes o varias empresas ganadoras, y el importe medio es por
-          contrato. En «Quién más ha facturado», cada empresa suma solo su
+          varios lotes o varias empresas ganadoras. El importe mediano es el
+          del contrato de en medio: la mitad se adjudicó por menos y la
+          mitad por más, y unos pocos contratos enormes no lo mueven. Cada
+          contrato cuenta en el año en que se formalizó, y los contratos
+          menores no entran. En «Quién más ha facturado», cada empresa suma solo su
           parte.</p>
         </dl>
       </div>

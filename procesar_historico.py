@@ -79,7 +79,7 @@ CAMPOS = [
     "adjudicaciones", "adjudicatarios",
     "presupuesto_base", "valor_estimado", "importe_sin_iva",
     "oferta_baja", "oferta_alta", "motivo_adjudicacion",
-    "fecha_adjudicacion", "gano_pyme", "sistema",
+    "fecha_adjudicacion", "fecha_formalizacion", "gano_pyme", "sistema",
     "fecha_actualizacion", "fecha_publicacion", "fecha_limite",
 ]
 
@@ -226,6 +226,7 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
         "oferta_alta": principal.get("oferta_alta"),
         "motivo_adjudicacion": principal.get("motivo", ""),
         "fecha_adjudicacion": principal.get("fecha", ""),
+        "fecha_formalizacion": lector.fecha_formalizacion(adjudicaciones, principal),
         "gano_pyme": principal.get("pyme"),
         "sistema": lector.extraer_sistema(entrada),
         "procedimiento": lector.extraer_procedimiento(entrada)[1],
@@ -514,6 +515,7 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
                       else None),
             "motivo_adjudicacion": f.get("motivo_adjudicacion") or None,
             "fecha_adjudicacion": f.get("fecha_adjudicacion") or None,
+            "fecha_formalizacion": f.get("fecha_formalizacion") or None,
             "gano_pyme": (f.get("gano_pyme") == "True"
                           if f.get("gano_pyme") not in ("", None) else None),
             "sistema": f.get("sistema") or None,
@@ -549,8 +551,9 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
     # descartaban todos.
     #
     # Esta segunda pasada completa solo esos tres campos, y solo donde
-    # faltan: no pisa el estado ni el plazo, que pueden venir de una
-    # captura más reciente del scraper.
+    # faltan. El estado y la fecha solo avanzan si esta versión es más
+    # reciente que la guardada: pueden venir de una captura más nueva del
+    # scraper. El plazo no se toca.
     # Se completa TODO lo que el upsert se salta, no solo el
     # adjudicatario: cada vez que se añade una columna hay que volver a
     # pasar por aquí, porque `ignore_duplicates` descarta la fila entera.
@@ -592,6 +595,7 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
                     "oferta_alta": str(f.get("oferta_alta") or ""),
                     "motivo_adjudicacion": f.get("motivo_adjudicacion") or "",
                     "fecha_adjudicacion": f.get("fecha_adjudicacion") or "",
+                    "fecha_formalizacion": f.get("fecha_formalizacion") or "",
                     "gano_pyme": str(f.get("gano_pyme") or ""),
                     "sistema": f.get("sistema") or "",
                     # El territorio también: el agregado autonómico no
@@ -601,6 +605,15 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
                     "peso_objetivo": str(f.get("peso_objetivo") or ""),
                     "peso_subjetivo": str(f.get("peso_subjetivo") or ""),
                     "criterios": f.get("criterios") or "",
+                    # La fecha y el estado de ESTA versión. Si es igual
+                    # de reciente o más que la guardada, la base avanza
+                    # fecha, estado y lotes; si está formalizada, su fecha
+                    # estima la de formalización cuando el XML no la trae.
+                    # Sin esto, la primera versión vista se quedaba para
+                    # siempre y un contrato contaba en el año en que se
+                    # licitó (ver 20260923100000_anio_de_formalizacion_1_base).
+                    "fecha_actualizacion": f.get("fecha_actualizacion") or "",
+                    "estado": f.get("estado_licitacion") or "",
                 }
                 for f in completables[i:i + 250]
             ]

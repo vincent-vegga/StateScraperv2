@@ -538,6 +538,18 @@ def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
             if sin_iva is not None or con_iva is not None:
                 break
 
+        # La fecha de formalización del lote: <cac:Contract><cbc:IssueDate>.
+        # Es cuando el contrato se firma y el dinero pasa a estar
+        # comprometido; las pantallas de mercado cuentan cada lote en el
+        # año de su formalización. El 1044 no publica AwardDate, pero sí
+        # esta (comprobado el 23/09/2026 en Badalona 2024/48275K: lotes 1
+        # y 2 formalizados el 17/02/2026, el 3 el 15/07/2025).
+        formalizacion = ""
+        for contrato in buscar_todos(resultado, "Contract"):
+            formalizacion = primer_texto(contrato, "IssueDate")
+            if formalizacion:
+                break
+
         licitadores = None
         bruto = primer_texto(resultado, "ReceivedTenderQuantity")
         if bruto.isdigit():
@@ -554,6 +566,7 @@ def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
             "oferta_alta": a_numero(primer_texto(resultado, "HigherTenderAmount")),
             "motivo": primer_texto(resultado, "Description")[:400],
             "fecha": primer_texto(resultado, "AwardDate"),
+            "formalizacion": formalizacion,
             "pyme": primer_texto(resultado, "SMEAwardedIndicator") == "true",
         })
 
@@ -611,8 +624,26 @@ def resumir_adjudicaciones(adjudicaciones: list[dict[str, Any]],
         "oferta_alta": principal.get("oferta_alta"),
         "motivo_adjudicacion": principal.get("motivo") or "",
         "fecha_adjudicacion": principal.get("fecha") or "",
+        "fecha_formalizacion": fecha_formalizacion(adjudicaciones, principal),
         "gano_pyme": principal.get("pyme"),
     }
+
+
+def fecha_formalizacion(adjudicaciones: list[dict[str, Any]],
+                        principal: dict[str, Any]) -> str:
+    """
+    La fecha de formalización del expediente: la del lote principal (el
+    de más dinero), o si ese no la tiene, la primera de los demás.
+
+    Cada empresa cuenta además con la de SUS lotes (la base la saca de
+    `adjudicaciones`); esta es la del expediente entero, la que ordena
+    Movimientos.
+    """
+    if principal.get("formalizacion"):
+        return principal["formalizacion"]
+    otras = sorted(a["formalizacion"] for a in adjudicaciones
+                   if a.get("formalizacion"))
+    return otras[0] if otras else ""
 
 
 # Lo que delata un criterio de juicio de valor en su nombre. Es una
@@ -2137,6 +2168,7 @@ def cambios_de_refresco(item: dict[str, Any]) -> dict[str, Any]:
         "oferta_alta": item.get("oferta_alta"),
         "motivo_adjudicacion": item.get("motivo_adjudicacion") or None,
         "fecha_adjudicacion": item.get("fecha_adjudicacion") or None,
+        "fecha_formalizacion": item.get("fecha_formalizacion") or None,
         "gano_pyme": item.get("gano_pyme"),
         # Verlo en el feed es la confirmación de que sigue como dice.
         # Sin esta marca no se puede distinguir "está publicada" de
@@ -2355,6 +2387,7 @@ def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
             "oferta_alta": item.get("oferta_alta"),
             "motivo_adjudicacion": item.get("motivo_adjudicacion") or None,
             "fecha_adjudicacion": item.get("fecha_adjudicacion") or None,
+            "fecha_formalizacion": item.get("fecha_formalizacion") or None,
             "gano_pyme": item.get("gano_pyme"),
             # Se normaliza a ISO: el feed catalán puede traerla en formato
             # RSS ("Mon, 17 Aug 2026 08:00:00 +0200"), que PostgreSQL no
