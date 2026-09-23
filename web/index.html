@@ -5927,7 +5927,11 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
             ${organos.map(o => `<tr style="cursor:default">
               <td class="quien">${esc(o.organo)}</td>
               <td class="num">${o.contratos}</td>
-              <td class="num">${o.importe ? euros(Number(o.importe)) : '—'}</td>
+              <td class="num">${o.importe ? euros(Number(o.importe))
+                : `<span style="color:var(--tenue);font-size:.86rem" title="El organismo no publica qué parte
+                   le corresponde a esta empresa: pasa en acuerdos marco cuyos
+                   lotes no llevan importe o repiten el total, y en lotes
+                   compartidos entre varias empresas">sin importe publicado</span>`}</td>
             </tr>`).join('')}
           </tbody></table>` : ''}
 
