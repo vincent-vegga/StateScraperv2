@@ -3943,6 +3943,15 @@ async function pantallaCribando(perfil, session, lectura, volviendo = false) {
       return;
     }
     if (r.terminado) break;
+    // Empresas con historial: su lista la calcula el puntuador fuera de
+    // aquí (un par de minutos) y `cribar` responde `esperando` mientras
+    // tanto. Esperar no es «no avanzar».
+    if (r.esperando) {
+      document.getElementById('progreso').textContent =
+        'Comparando con los contratos que has ganado. Un par de minutos...';
+      document.getElementById('relleno').style.width = `${Math.min(95, 10 + vuelta * 8)}%`;
+      continue;
+    }
     hechas += r.hechas || 0;
     sinAvance = r.hechas ? 0 : sinAvance + 1;
     if (sinAvance >= MAX_VUELTAS_SIN_AVANCE) break;
@@ -6866,6 +6875,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       while (vueltas++ < 200) {
         const c = await llamar('cribar');
         if (c.terminado) break;
+        if (c.esperando) continue;   // el puntuador rehace su lista
         sinAvance = c.hechas ? 0 : sinAvance + 1;
         if (sinAvance >= 2) break;
       }
