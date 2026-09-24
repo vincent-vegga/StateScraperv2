@@ -6,9 +6,11 @@
 //
 //   proponer            -> lee su descripción, propone prefijos CPV y
 //                          cuenta cuántas licitaciones trae cada uno
+//   ejemplos            -> los contratos adjudicados más parecidos a su
+//                          descripción, por familia, para enseñárselos
 //   confirmar_familias  -> guarda las familias que deja marcadas, genera
-//                          su criterio a partir de la descripción y lo
-//                          activa
+//                          su criterio con la descripción y los contratos
+//                          más parecidos como ejemplos, y lo activa
 //
 // Con NIF, `buscar_empresa` y `confirmar_empresa` (ver más abajo).
 //
@@ -28,6 +30,10 @@ import {
   MODELO, MODELO_HISTORIAL, llamarModelo, leerHistorial, regenerarCriterio,
   prefijosDeLectura,
 } from "./modelo.ts";
+import {
+  DIVISIONES, FRANJAS, buscarParecidos, codigosDelVecindario, ejemplosPorFamilia,
+  type Adjudicada, type Parecidos,
+} from "./vecinos.ts";
 
 
 
@@ -384,6 +390,23 @@ async function clasificar(criterio: string, licitacion: {
 // Punto de entrada
 // ------------------------------------------------------------
 
+// Los contratos adjudicados de sus familias más parecidos a su
+// descripción. Null si la muestra no tiene con qué (vacía hasta la
+// primera pasada de refrescar_muestra_adjudicada, o familias sin
+// contratos).
+async function parecidosDe(
+  // deno-lint-ignore no-explicit-any
+  admin: { rpc: (f: string, a: Record<string, unknown>) => PromiseLike<{ data: any; error: any }> },
+  perfil: Record<string, unknown>, familias: string[],
+): Promise<Parecidos | null> {
+  const { data, error } = await admin.rpc("muestra_de_familias", { familias });
+  if (error) throw error;
+  const filas = ((data ?? []) as Adjudicada[]).filter((l) => l.titulo);
+  if (filas.length < 50) return null;
+  const franjas = Array.isArray(perfil.franjas) ? perfil.franjas as string[] : [];
+  return await buscarParecidos(String(perfil.descripcion), filas, franjas);
+}
+
 Deno.serve(async (peticion) => {
   const origen = peticion.headers.get("origin");
   if (peticion.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origen) });
@@ -393,7 +416,7 @@ Deno.serve(async (peticion) => {
     if (!autorizacion) return responder({ error: "sin_sesion" }, 401);
 
     const { accion, descripcion, prefijos, cif, empresa, dias,
-            perfil_id } = await peticion.json();
+            perfil_id, franjas } = await peticion.json();
 
     // Con varias empresas por cuenta, la web dice cuál está mirando. Se
     // reenvía a la base como `x-perfil` para que las funciones que buscan
@@ -609,7 +632,11 @@ Deno.serve(async (peticion) => {
 
       const catalogoDivisiones = (divisiones ?? [])
         .filter((d) => d.prefijo.length === 2)
-        .map((d) => `${d.prefijo}: ${d.licitaciones}`)
+        // Con su nombre: con el número solo, el modelo escogía las más
+        // grandes (ver DIVISIONES en vecinos.ts).
+        .map((d) => DIVISIONES[d.prefijo]
+          ? `${d.prefijo} (${DIVISIONES[d.prefijo]}): ${d.licitaciones}`
+          : `${d.prefijo}: ${d.licitaciones}`)
         .join("\n");
 
       const propuesta = await proponerCpv(descripcion, catalogoDivisiones);
@@ -670,6 +697,9 @@ Deno.serve(async (peticion) => {
         descripcion,
         palabras_producto: propuesta.producto,
         palabras_destinatario: propuesta.destinatario,
+        // Los tamaños que ha marcado; ninguno es "no lo sé".
+        franjas: (Array.isArray(franjas) ? franjas : [])
+          .map((f: unknown) => String(f)).filter((f: string) => FRANJAS.includes(f)),
         paso_alta: "describiendo",
       }).eq("id", perfil.id);
 
@@ -686,26 +716,59 @@ Deno.serve(async (peticion) => {
     // nunca encontraba nada: salían contratos al azar de la división y el
     // cliente les decía que no a casi todos.
     //
-    // El criterio sale de su descripción; lo que no encaje lo corrige él
-    // desde la lista ("no me interesa"), que regenera el criterio con
-    // `ajustar`.
+    // El criterio sale de su descripción y de los contratos adjudicados
+    // más parecidos a ella, como ejemplos de lo que le interesa: lo que
+    // hace la entrada por NIF con lo que la empresa ha ganado (decisión
+    // 38). Lo que no encaje lo corrige él desde la lista ("no me
+    // interesa"), que regenera el criterio con `ajustar`.
+    //
+    // Si no hay con qué (la muestra aún vacía, o sus familias sin apenas
+    // contratos), como antes: la descripción sola y las familias enteras.
     if (accion === "confirmar_familias") {
       const lista = (prefijos ?? []).map((p: string) => String(p).replace(/\D/g, ""))
         .filter((p: string) => p.length >= 2 && p.length <= 6);
       if (!lista.length) return responder({ error: "sin_prefijos" }, 400);
       if (!perfil.descripcion) return responder({ error: "descripcion_corta" }, 400);
 
-      const criterio = await generarCriterio(perfil.descripcion, []);
+      let parecidos: Parecidos | null = null;
+      try {
+        parecidos = await parecidosDe(admin, perfil, lista);
+      } catch (fallo) {
+        console.error("Sin contratos parecidos, se sigue con la descripción:", fallo);
+      }
+      const conEjemplos = parecidos && parecidos.vecinos.length >= 10;
+
+      const criterio = await generarCriterio(perfil.descripcion, conEjemplos
+        ? parecidos!.vecinos.map((l) => ({
+            titulo: l.titulo, organo: l.organo ?? "",
+            cpvs: (l.cpvs ?? []).join(","), interesa: true,
+          }))
+        : []);
+      const codigos = conEjemplos ? codigosDelVecindario(parecidos!) : [];
 
       await comoUsuario.from("perfiles").update({
-        cpv_prefijos: lista.join(","),
+        cpv_prefijos: (codigos.length ? codigos : lista).join(","),
         criterio: criterio.criterio,
         criterio_version: (perfil.criterio_version ?? 0) + 1,
         criterio_fecha: new Date().toISOString(),
         paso_alta: "cribando",
       }).eq("id", perfil.id);
 
+      console.log(`Alta sin NIF: ${conEjemplos ? parecidos!.vecinos.length : 0} ejemplos, ` +
+                  `${codigos.length || lista.length} códigos`);
       return responder({ ok: true, resumen: criterio.resumen });
+    }
+
+    // --- Contratos parecidos a su descripción, para enseñárselos ---
+    //
+    // En la pantalla de familias, bajo cada una. Solo para verlos: en la
+    // simulación, pedirle que los revisara no mejoraba el filtro.
+    if (accion === "ejemplos") {
+      const lista = (prefijos ?? []).map((p: string) => String(p).replace(/\D/g, ""))
+        .filter((p: string) => p.length >= 2 && p.length <= 6);
+      if (!lista.length || !perfil.descripcion) return responder({ ok: true, ejemplos: {} });
+      const parecidos = await parecidosDe(admin, perfil, lista);
+      return responder({ ok: true, ejemplos: parecidos ? ejemplosPorFamilia(parecidos, lista) : {} });
     }
 
     // --- Regenerar el criterio con las correcciones ---
