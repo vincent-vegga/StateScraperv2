@@ -1810,6 +1810,15 @@ select:focus{
   font-size:.78rem;
 }
 
+/* Pasa claramente del tamaño que marcó al darse de alta. No se esconde:
+   las empresas también ganan contratos algo mayores de lo habitual. */
+.por-encima{
+  display:inline-block;
+  margin-top:8px;
+  color:var(--tenue);
+  font-size:.78rem;
+}
+
 /* ---------- Bienvenida ----------
    Centrada y a gran tamaño. Un bloque estrecho alineado a la izquierda,
    flotando en medio de una pantalla vacía, no se lee como un momento
@@ -6380,8 +6389,28 @@ function pantallaBienvenida(perfil, session) {
 // 9 · Sus oportunidades
 // ============================================================
 
+// El tamaño que marcó al darse de alta (perfiles.franjas) ordena la
+// lista: primero lo de su tamaño, luego lo que pasa claramente de él,
+// cada parte por plazo. Nada se esconde: en la simulación, esconder lo
+// grande empeoraba siempre (las empresas también ganan contratos algo
+// mayores de lo habitual). El techo lleva margen, y nunca baja de
+// 100.000 €: por debajo de 15.000 € casi todo son menores, que no se
+// licitan, y la lista se quedaría vacía.
+function techoDeTamano(franjas) {
+  if (!franjas?.length || franjas.includes('>1M')) return Infinity;
+  const tope = franjas.includes('100k-1M') ? 1e6 : franjas.includes('15-100k') ? 1e5 : 15e3;
+  return Math.max(tope * 1.5, 1e5);
+}
+const porEncima = (o, techo) => Number(o.presupuesto) > techo;
+function ordenarContratos(xs, techo) {
+  return xs.map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
+    .sort((a, b) => (porEncima(a, techo) - porEncima(b, techo))
+                    || ((a.dias ?? 9e9) - (b.dias ?? 9e9)));
+}
+
 async function pantallaOportunidades(perfil, session, volviendo = false,
                                      pestanaInicial = 'todo') {
+  const techo = techoDeTamano(perfil.franjas);
   if (!volviendo) irA('contratos', { pestana: 'todo' }, true);
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando tus contratos...</p></div>`;
@@ -6391,9 +6420,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     // Si algo cambió por detrás, se repinta sin que el cliente
     // haya tenido que esperar.
     DATOS.length = 0;
-    (nuevos ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
-      .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9))
-      .forEach(o => DATOS.push(o));
+    ordenarContratos(nuevos ?? [], techo).forEach(o => DATOS.push(o));
     if (document.getElementById('lista')) pintar();
   });
   if (error) {
@@ -6402,8 +6429,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     return;
   }
 
-  const DATOS = (data ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
-    .sort((a,b) => (a.dias ?? 9e9) - (b.dias ?? 9e9));
+  const DATOS = ordenarContratos(data ?? [], techo);
 
   // Para el cribado de fondo del arranque: cuando termina, pide la lista
   // de nuevo y la repinta aquí mismo, conservando pestaña y filtros.
@@ -6412,9 +6438,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const { data: nuevos, error: fallo } = await pedirContratos(perfil.id);
     if (fallo || !document.getElementById('lista')) return;
     DATOS.length = 0;
-    (nuevos ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
-      .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9))
-      .forEach(o => DATOS.push(o));
+    ordenarContratos(nuevos ?? [], techo).forEach(o => DATOS.push(o));
     const cuenta = document.getElementById('c-todo');
     if (cuenta) cuenta.textContent = DATOS.length;
     pintar();
@@ -6660,6 +6684,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           ${o.dias_sin_verificar > 90
             ? `<span class="sin-verificar">Sin movimiento desde hace
                ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
+          ${porEncima(o, techo) ? `<span class="por-encima">Por encima de tu tamaño</span>` : ''}
           ${o.correccion
             ? `<span class="confirmado">Confirmado como tuyo</span>`
             : `<span class="acciones">

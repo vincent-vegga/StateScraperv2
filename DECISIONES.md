@@ -1004,6 +1004,32 @@ el NIF de ese competidor.
 
 ---
 
+## 39. El tamaño ordena y marca; no esconde
+
+**Contexto.** Desde la decisión 38, quien entra sin NIF puede marcar los
+tamaños de contrato que le interesan (`perfiles.franjas`), pero solo
+servían para elegir los contratos de ejemplo. En la simulación, esconder lo
+que pasa de su tamaño empeoraba siempre el filtro (de -0,03 a -0,05 de F1):
+las empresas también ganan contratos algo mayores de lo habitual.
+
+**Decisión** (24/09/2026). En la lista y en el correo diario, primero lo de
+su tamaño y después lo que pasa claramente de él, cada parte por plazo, con
+la marca "Por encima de tu tamaño". Nada se quita. El techo lleva un 50 % de
+margen y nunca baja de 100.000 € (por debajo de 15.000 € casi todo son
+menores, que no se licitan). Sin franjas marcadas —todas las altas por NIF—
+nada cambia. Misma regla en `techoDeTamano` (web) y `techo_de_tamano`
+(`alertador.py`).
+
+Y en la pantalla de familias, los contratos de ejemplo sin repetir y solo
+de entre los 200 más parecidos: con una descripción vaga, lo "más parecido"
+de una familia que no era la suya podía no parecerse en nada.
+
+**Descartado.** Buscar los ejemplos con títulos típicos que escribe el
+modelo, en vez de con la descripción: mejor con descripciones vagas, peor
+en el resto (F1 media 0,50 frente a 0,54; pierde en 10 de 16 perfiles).
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
