@@ -70,7 +70,7 @@ import huellas
 AQUI = Path(__file__).resolve().parent
 PESOS = json.loads((AQUI / "puntuacion_pesos.json").read_text())
 MODELO_JUEZ = os.environ.get("MODELO_JUEZ", "gpt-4o-mini")
-VERSION = "puntuacion-v1"
+VERSION = "puntuacion-v2"   # v2: destinatario y reglas del cliente (24/09/2026)
 M_VECINOS = 50          # vecinos pasados por licitación viva
 M_PARES = 20            # vecinos por contrato propio para hallar pares
 MAX_PROPIOS = 400       # contratos propios usados para hallar pares
@@ -89,36 +89,52 @@ Son hechos: describen a qué se dedica. Decide si el contrato nuevo encaja \
 con lo que hace, con esta prueba: ¿podría esta empresa ser el proveedor \
 principal del contrato nuevo?
 
-- "si": el objeto principal es el mismo tipo de producto o servicio que \
-alguno de sus contratos ganados, aunque cambien el organismo, el \
-territorio, el tamaño o el colectivo destinatario.
-- "quizas": es un producto o servicio vecino que plausiblemente podría \
-prestar, o el título es demasiado genérico para saberlo (por ejemplo, un \
-sistema dinámico de adquisición o un acuerdo marco amplio).
-- "no": el objeto principal es otro producto o servicio, aunque comparta \
-palabras, destinatario u organismo con sus contratos.
+Mira dos cosas: QUÉ se contrata y PARA QUIÉN.
+- El destinatario cuenta cuando cambia lo que se suministra en la \
+práctica: uniformidad policial no es ropa de trabajo genérica; un comedor \
+escolar no es un catering de eventos. Si sus contratos parecidos son todos \
+para un mismo tipo de destinatario (por ejemplo, policía local), un \
+contrato del mismo producto para otro distinto (Guardia Civil, Policía \
+Nacional, personal de limpieza, conductores) NO es lo suyo.
+- El destinatario no cuenta cuando el producto es el mismo se destine a \
+quien se destine: el mantenimiento de ascensores de un hospital o de un \
+colegio es el mismo trabajo.
 
-No decidas por el territorio ni por el organismo: solo por lo que se \
-contrata. Ante duda razonable entre "quizas" y "no", elige "quizas".
+- "si": el mismo tipo de producto o servicio que sus contratos ganados, \
+para el mismo tipo de destinatario (o uno para el que da igual).
+- "quizas": un producto vecino para su mismo tipo de destinatario, o un \
+título demasiado genérico para saberlo (por ejemplo, un sistema dinámico \
+de adquisición o un acuerdo marco amplio).
+- "no": otro producto o servicio, o el mismo para un destinatario que sus \
+contratos no incluyen y con el que cambia lo que se suministra.
+
+No decidas por el territorio ni por el organismo convocante en sí: un \
+ayuntamiento puede contratar para su policía local o para su personal de \
+limpieza, y lo que cuenta es para quién es. Y ojo con los nombres: la \
+policía local se llama Policía Municipal en Madrid y Guardia Urbana \
+(Guàrdia Urbana, GUB) en Barcelona y otros municipios catalanes; Mossos \
+d'Esquadra y Ertzaintza son policías autonómicas, no locales.
 
 Devuelve EXCLUSIVAMENTE JSON:
 {"veredicto": "si|quizas|no", "motivo": "una frase breve que cite el \
 contrato ganado que más se parece, o por qué ninguno encaja"}"""
 
-# Lo que el cliente ha corregido pesa más que lo que dedujo el modelo:
-# se le enseña al juez como hechos, con su motivo si lo escribió.
+# Lo que el cliente ha dicho al corregir su lista. Los motivos escritos son
+# reglas suyas y se le enseñan todos al juez, en cada contrato: "no trabajo
+# con la Guardia Civil" vale para cualquier contrato de la Guardia Civil,
+# no solo para los parecidos al que corrigió.
 AVISO_CORRECCIONES = """
 
-Además, el cliente ha corregido a mano contratos parecidos. Úsalas con \
-estas reglas, que son las mismas con las que se corrige su filtro:
-- Si el MOTIVO habla de un organismo o cuerpo ("no trabajamos con la \
-Guardia Civil"), solo vale para ese organismo: si el contrato nuevo es de \
-otro organismo, ignora esa corrección.
-- Si el motivo habla de un producto concreto ("no fabricamos EPI contra \
-el fuego"), solo vale para ese producto, no para todo lo que se le parezca.
-- Una corrección sin motivo, o un rechazo suelto, NO cierra una categoría: \
-como mucho mueve un "si" a "quizas".
-- Un "SÍ le interesa" es un hecho tan fuerte como un contrato ganado."""
+El cliente ha corregido su lista y te damos lo que ha dicho. Sus reglas \
+mandan sobre lo que deduzcas de sus contratos:
+- Una regla sobre un organismo, cuerpo o colectivo ("no trabajamos con la \
+Guardia Civil", "solo policía local") vale para cualquier contrato de ese \
+organismo, cuerpo o colectivo, lo convoque quien lo convoque.
+- Una regla sobre un producto concreto ("no fabricamos EPI contra el \
+fuego") vale solo para ese producto.
+- Un descarte sin motivo no es una regla: solo dice que ese contrato \
+concreto no le interesa.
+- Lo que marcó como "SÍ le interesa" es tan fuerte como un contrato ganado."""
 
 
 # ==============================================================
@@ -503,14 +519,23 @@ def ficha(l: dict) -> str:
     return "\n".join(partes)
 
 
-def mensajes_juez(f: dict, ejemplos: list[str], correcciones: list[dict]) -> list:
-    sistema = INSTRUCCIONES_JUEZ + (AVISO_CORRECCIONES if correcciones else "")
+def mensajes_juez(f: dict, ejemplos: list[str], cercanas: list[dict],
+                  reglas: list[dict] | None = None) -> list:
+    """`reglas`: todas sus correcciones con motivo; `cercanas`: las
+    correcciones más parecidas a este contrato (con o sin motivo)."""
+    reglas = reglas or []
+    sistema = INSTRUCCIONES_JUEZ + (AVISO_CORRECCIONES if (reglas or cercanas) else "")
     texto = "CONTRATOS GANADOS MÁS PARECIDOS:\n" + "\n".join(ejemplos)
-    if correcciones:
-        texto += "\n\nCORRECCIONES DEL CLIENTE EN CONTRATOS PARECIDOS:\n" + "\n".join(
+    if reglas:
+        texto += "\n\nLO QUE EL CLIENTE NOS HA DICHO:\n" + "\n".join(
+            f"- {'Le interesa' if x['interesa'] else 'No le interesa'} "
+            f"«{x['titulo']}»" + (f" ({x['organo']})" if x.get("organo") else "")
+            + f": {x['motivo']}" for x in reglas)
+    otras = [x for x in cercanas if x not in reglas]
+    if otras:
+        texto += "\n\nCONTRATOS PARECIDOS QUE HA CORREGIDO SIN EXPLICAR:\n" + "\n".join(
             f"- {x['titulo']}" + (f" ({x['organo']})" if x.get("organo") else "")
-            + f" → {'SÍ le interesa' if x['interesa'] else 'NO le interesa'}"
-            + (f" (motivo: {x['motivo']})" if x.get("motivo") else "") for x in correcciones)
+            + f" → {'SÍ le interesa' if x['interesa'] else 'NO le interesa'}" for x in otras)
     texto += f"\n\nCONTRATO NUEVO:\n{ficha(f)}"
     return [{"role": "system", "content": sistema}, {"role": "user", "content": texto}]
 
@@ -558,6 +583,14 @@ def procesar_perfil(c: Contexto, perfil: dict, ganados: list[dict], previos: dic
     C = np.asarray(c.emb[[c.fila_de_titulo(x["titulo"]) for x in corr]], np.float32) \
         if corr else np.zeros((0, E.shape[1]), np.float32)
 
+    # Todas las correcciones con motivo, sin repetir el mismo motivo.
+    reglas, vistos = [], set()
+    for x in correcciones:
+        clave = (x.get("motivo") or "").strip().lower()
+        if clave and clave not in vistos:
+            vistos.add(clave)
+            reglas.append(x)
+
     tareas = []
     for idl, _ in grupo:
         if idl in previos:
@@ -570,7 +603,7 @@ def procesar_perfil(c: Contexto, perfil: dict, ganados: list[dict], previos: dic
         if len(C):
             sc = C @ v
             cerca = [corr[j] for j in np.argsort(-sc)[:CORRECCIONES] if sc[j] >= SIM_CORRECCION]
-        tareas.append((idl, mensajes_juez(f, ejemplos, cerca)))
+        tareas.append((idl, mensajes_juez(f, ejemplos, cerca, reglas)))
 
     nuevos = {}
     if not ensayo and tareas:
@@ -636,6 +669,18 @@ def guardar_real(perfil: dict, grupo: list, veredictos: dict, vivas: list[str]) 
                                                "id_licitacion": f"in.{filtro}"})
         logging.info("%s: pasa al sistema nuevo (%d veredictos antiguos de lo vivo retirados)",
                      perfil["id"][:8], len(quitar))
+    # Versiones anteriores de este mismo sistema: lo vivo se retira, porque
+    # el grupo se acaba de juzgar entero con la versión en vigor.
+    anteriores = [f["id_licitacion"] for f in leer("veredictos", {
+        "select": "id_licitacion", "perfil_id": f"eq.{perfil['id']}",
+        "and": f"(modelo.like.puntuacion-*,modelo.neq.{VERSION})"})]
+    vivas_s, juzgadas = set(vivas), set(en_grupo)
+    quitar = [i for i in anteriores if i in vivas_s and i not in juzgadas]
+    for a in range(0, len(quitar), 100):
+        filtro = "(" + ",".join(_q(i) for i in quitar[a:a + 100]) + ")"
+        _escribir("DELETE", "veredictos", {"perfil_id": f"eq.{perfil['id']}",
+                                           "and": f"(modelo.like.puntuacion-*,modelo.neq.{VERSION})",
+                                           "id_licitacion": f"in.{filtro}"})
     _escribir("PATCH", "perfiles", {"id": f"eq.{perfil['id']}"},
               {"sistema": "huellas", "puntuado_en": datetime.now(timezone.utc).isoformat()})
     return len(filas)

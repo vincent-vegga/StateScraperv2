@@ -80,3 +80,22 @@ Total: **4.53 $** en 25198 llamadas (tope del banco: 10 $).
 - embeddings: 0.97 $
 - juez_actual: 0.54 $
 - juez_ejemplos: 2.54 $
+
+## Juez v2: destinatario y reglas del cliente (24/09/2026, tarde)
+
+Tras probar el alta de una empresa de uniformidad policial, el juez v1
+aceptaba el mismo producto para cualquier destinatario (Guardia Civil,
+Policía Nacional, ropa de trabajo genérica). El v2 mira también para quién
+es, cuando eso cambia lo que se suministra, y aplica a toda la lista lo
+que el cliente explica al descartar. Medido en el banco rejuzgando lo que
+v1 aceptó (lo que v1 rechazó se da por rechazado; `banco/p9_juez_v2.py`):
+
+| Grupo 100/1.000 | Volumen/1.000 (media · mediana) | Recall (media · p10) |
+|---|---|---|
+| v1 · sí+quizás | 54,8 · 54,8 | 94,9 % · 83,0 % |
+| **v2 · sí+quizás** | **45,5 · 39,9** | **94,7 % · 80,0 %** |
+| v1 · solo sí | 28,8 · 26,0 | 89,4 % · 71,1 % |
+| **v2 · solo sí** | **33,9 · 28,9** | **92,1 % · 79,5 %** |
+
+Un 17 % menos de volumen sin perder recall, y «Para mí» más fiable. Coste
+de la medida: 1,68 $. Gasto total del banco y la puesta en marcha: 7,53 $.
