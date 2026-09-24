@@ -25,7 +25,7 @@
 --                           Como mucho unas 128.000 filas.
 --   refrescar_muestra_adjudicada()
 --                           la rehace. Por pg_cron, dentro de la base:
---                           tarda minutos y PostgREST corta a los 8 s.
+--                           ~47 s, y PostgREST corta a los 8 s.
 --   muestra_de_familias(familias, por_prefijo)
 --                           lo que lee el alta.
 --
@@ -145,6 +145,6 @@ grant execute on function public.muestra_de_familias(text[], integer) to service
 
 
 -- De noche, fuera de las horas del scraper y de los demás agregados
--- (14:00-14:30 UTC). La primera pasada puebla la tabla.
+-- (14:00-14:30 UTC).
 select cron.schedule('refrescar-muestra-adjudicada', '30 3 * * *',
                      $$select public.refrescar_muestra_adjudicada()$$);
