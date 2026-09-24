@@ -668,8 +668,16 @@ def main() -> int:
         if not args.ensayo:
             c.guardar()
 
-    perfiles = leer("perfiles", {"select": "id,cif,sistema,criterio_version",
-                                 "activo": "is.true", "cif": "not.is.null"})
+    try:
+        perfiles = leer("perfiles", {"select": "id,cif,sistema,criterio_version",
+                                     "activo": "is.true", "cif": "not.is.null"})
+    except RuntimeError as error:
+        # Sin la migración 20260924200000 no hay columna `sistema`: solo
+        # vale para la sombra, que no la necesita.
+        if "sistema" not in str(error) or not args.sombra:
+            raise
+        perfiles = leer("perfiles", {"select": "id,cif,criterio_version",
+                                     "activo": "is.true", "cif": "not.is.null"})
     if args.perfil:
         elegidos = [x.strip() for x in args.perfil.split(",") if x.strip()]
         perfiles = [p for p in perfiles if any(p["id"].startswith(x) for x in elegidos)]
