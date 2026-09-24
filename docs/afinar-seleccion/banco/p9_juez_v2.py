@@ -36,7 +36,7 @@ def main(modo: str) -> None:
     fila = {t: i for i, t in enumerate(ts)}
     emb = np.load(DATOS / "emb.npy", mmap_mode="r")
     v1 = json.load(open(DATOS / "veredictos_ejemplos.json"))["veredictos"]
-    cache = Cache("juez_v2")
+    cache = Cache("juez_v2")  # la clave incluye las instrucciones: v3 no reutiliza v2
 
     tareas = []
     for emp in muestra["empresas"]:
@@ -84,7 +84,7 @@ def main(modo: str) -> None:
         for idl, ver in d.items():
             if ver not in ("si", "quizas"):
                 v2[et][idl] = ver
-    json.dump({"volumen": 100.0, "veredictos": v2}, open(DATOS / "veredictos_v2.json", "w"))
+    json.dump({"volumen": 100.0, "veredictos": v2}, open(DATOS / f"veredictos_{puntuador.VERSION.split('-')[-1]}.json", "w"))
     log(f"hecho: {Counter(x for d in v2.values() for x in d.values())} · gasto {gasto_total():.3f} $")
 
 

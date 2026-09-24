@@ -99,3 +99,23 @@ v1 aceptó (lo que v1 rechazó se da por rechazado; `banco/p9_juez_v2.py`):
 
 Un 17 % menos de volumen sin perder recall, y «Para mí» más fiable. Coste
 de la medida: 1,68 $. Gasto total del banco y la puesta en marcha: 7,53 $.
+
+## Juez v3: las mismas reglas, sin nada de ningún sector (24/09/2026, tarde)
+
+El v2 llevaba ejemplos y una frase sobre cuerpos policiales. Las
+instrucciones son comunes a todos los clientes: un ejemplo sacado de uno
+empuja a los demás (a quien vende justo a esos cuerpos lo pondría del
+revés). El v3 dice lo mismo en abstracto, con ejemplos de forma de otros
+sectores. Medido igual que v2:
+
+| Grupo 100/1.000 | Volumen/1.000 | Recall (media · p10) |
+|---|---|---|
+| v1 · sí+quizás | 54,8 | 94,9 % · 83,0 % |
+| v2 · sí+quizás | 45,5 | 94,7 % · 80,0 % |
+| **v3 · sí+quizás** | **40,8** | **94,0 % · 80,0 %** |
+| **v3 · solo sí** | 32,8 | 91,4 % · 79,6 % |
+
+Empresa por empresa (`p10_por_empresa.py`): frente a v1, 7 empresas
+pierden 9 contratos (ninguna más de 2; casos sueltos, sin un patrón de
+destinatario); frente a v2, 7 pierden uno cada una. Ruido −30 % frente a
+v1. Coste de la medida: 1,86 $. Gasto total del banco: 9,28 $ (tope 10 $).

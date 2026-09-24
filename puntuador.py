@@ -70,7 +70,7 @@ import huellas
 AQUI = Path(__file__).resolve().parent
 PESOS = json.loads((AQUI / "puntuacion_pesos.json").read_text())
 MODELO_JUEZ = os.environ.get("MODELO_JUEZ", "gpt-4o-mini")
-VERSION = "puntuacion-v2"   # v2: destinatario y reglas del cliente (24/09/2026)
+VERSION = "puntuacion-v3"   # v3: como v2, con instrucciones sin nada de ningún sector (24/09/2026)
 M_VECINOS = 50          # vecinos pasados por licitación viva
 M_PARES = 20            # vecinos por contrato propio para hallar pares
 MAX_PROPIOS = 400       # contratos propios usados para hallar pares
@@ -91,14 +91,20 @@ principal del contrato nuevo?
 
 Mira dos cosas: QUÉ se contrata y PARA QUIÉN.
 - El destinatario cuenta cuando cambia lo que se suministra en la \
-práctica: uniformidad policial no es ropa de trabajo genérica; un comedor \
-escolar no es un catering de eventos. Si sus contratos parecidos son todos \
-para un mismo tipo de destinatario (por ejemplo, policía local), un \
-contrato del mismo producto para otro distinto (Guardia Civil, Policía \
-Nacional, personal de limpieza, conductores) NO es lo suyo.
-- El destinatario no cuenta cuando el producto es el mismo se destine a \
-quien se destine: el mantenimiento de ascensores de un hospital o de un \
-colegio es el mismo trabajo.
+práctica. Si sus contratos parecidos son todos para un mismo tipo de \
+destinatario, un contrato del mismo producto para un destinatario \
+distinto, con el que cambia lo que se suministra, NO es lo suyo, salvo \
+que alguno de sus contratos ganados sea para ese otro destinatario.
+- El destinatario no cuenta cuando el trabajo es el mismo se destine a \
+quien se destine.
+- Un mismo destinatario puede llamarse de formas distintas según el lugar \
+o el idioma: compara lo que es, no cómo se llama.
+
+Ejemplos DE FORMA, de sectores que no tienen nada que ver con esta empresa \
+(no juzgues por parecido con ellos): en restauración, un comedor escolar \
+diario y un catering para un acto puntual son comida los dos, pero no el \
+mismo servicio: ahí el destinatario cuenta. El mantenimiento de ascensores \
+de un hospital y el de un colegio son el mismo trabajo: ahí no cuenta.
 
 - "si": el mismo tipo de producto o servicio que sus contratos ganados, \
 para el mismo tipo de destinatario (o uno para el que da igual).
@@ -109,32 +115,37 @@ de adquisición o un acuerdo marco amplio).
 contratos no incluyen y con el que cambia lo que se suministra.
 
 No decidas por el territorio ni por el organismo convocante en sí: un \
-ayuntamiento puede contratar para su policía local o para su personal de \
-limpieza, y lo que cuenta es para quién es. Y ojo con los nombres: la \
-policía local se llama Policía Municipal en Madrid y Guardia Urbana \
-(Guàrdia Urbana, GUB) en Barcelona y otros municipios catalanes; Mossos \
-d'Esquadra y Ertzaintza son policías autonómicas, no locales.
+mismo organismo contrata para destinatarios muy distintos, y lo que \
+cuenta es para quién es.
 
 Devuelve EXCLUSIVAMENTE JSON:
 {"veredicto": "si|quizas|no", "motivo": "una frase breve que cite el \
 contrato ganado que más se parece, o por qué ninguno encaja"}"""
 
 # Lo que el cliente ha dicho al corregir su lista. Los motivos escritos son
-# reglas suyas y se le enseñan todos al juez, en cada contrato: "no trabajo
-# con la Guardia Civil" vale para cualquier contrato de la Guardia Civil,
-# no solo para los parecidos al que corrigió.
+# reglas suyas y se le enseñan todos al juez, en cada contrato: una regla
+# sobre un organismo vale para cualquier contrato de ese organismo, no solo
+# para los parecidos al que corrigió.
+#
+# NINGÚN ejemplo de estas instrucciones puede ser del sector de un cliente:
+# son comunes a todos, y un ejemplo sacado de uno empuja a los demás (un
+# ejemplo sobre ciertos cuerpos policiales pondría del revés a quien vende
+# justo a esos cuerpos). Se usan ejemplos de otros sectores, marcados como
+# ejemplos de forma.
 AVISO_CORRECCIONES = """
 
 El cliente ha corregido su lista y te damos lo que ha dicho. Sus reglas \
 mandan sobre lo que deduzcas de sus contratos:
-- Una regla sobre un organismo, cuerpo o colectivo ("no trabajamos con la \
-Guardia Civil", "solo policía local") vale para cualquier contrato de ese \
-organismo, cuerpo o colectivo, lo convoque quien lo convoque.
-- Una regla sobre un producto concreto ("no fabricamos EPI contra el \
-fuego") vale solo para ese producto.
+- Una regla sobre un organismo, colectivo o tipo de destinatario vale para \
+cualquier contrato de ese organismo, colectivo o destinatario, lo convoque \
+quien lo convoque.
+- Una regla sobre un producto concreto vale solo para ese producto.
 - Un descarte sin motivo no es una regla: solo dice que ese contrato \
 concreto no le interesa.
-- Lo que marcó como "SÍ le interesa" es tan fuerte como un contrato ganado."""
+- Lo que marcó como "SÍ le interesa" es tan fuerte como un contrato ganado.
+(Ejemplos de forma, de otro sector: "no trabajamos con hospitales \
+privados" vale para todo hospital privado; "no hacemos cocina sin gluten" \
+vale solo para eso.)"""
 
 
 # ==============================================================
@@ -261,15 +272,18 @@ class Contexto:
         self.titulos, self.emb = huellas.cargar(cache)
         self.fila = {t: k for k, t in enumerate(self.titulos)}
 
-    def completar_huellas(self, textos: set[str]) -> None:
-        """Títulos sin huella (licitaciones nuevas): se calculan y se
-        guardan en Storage para las pasadas siguientes."""
+    def completar_huellas(self, textos: set[str], guardar: bool = True) -> None:
+        """Títulos sin huella (licitaciones nuevas): se calculan y, en la
+        pasada diaria, se guardan en Storage para las siguientes. Las
+        pasadas de un perfil no guardan: si coincidieran con la diaria, las
+        dos escribirían la misma parte y el mismo manifiesto."""
         faltan = sorted({huellas.normal(t) for t in textos} - set(self.fila) - {""})
         if not faltan:
             return
         logging.info("Huellas nuevas: %d títulos", len(faltan))
         v = huellas.calcular(faltan, os.environ["OPENAI_API_KEY"])
-        huellas.anadir(faltan, v)
+        if guardar:
+            huellas.anadir(faltan, v)
         base = len(self.titulos)
         self.titulos += faltan
         self.emb = np.concatenate([self.emb, v])
@@ -294,16 +308,21 @@ class Contexto:
         t0 = time.time()
         lic = {d["id_licitacion"]: d for d in leer_tabla(
             "licitaciones", "id_licitacion,titulo,cpvs,organo,presupuesto,"
-            "estado_licitacion,fecha_limite,sustituida", "id_licitacion")}
+            "estado_licitacion,fecha_limite,fecha_actualizacion,sustituida", "id_licitacion")}
         adj = leer_tabla("adjudicaciones_empresa", "id_licitacion,cif", "id_licitacion,cif")
         logging.info("Base: %d licitaciones, %d adjudicaciones (%.0f s)",
                      len(lic), len(adj), time.time() - t0)
         ahora = datetime.now(timezone.utc).isoformat()
-        # Lo vivo, con la misma regla que pendientes_de_perfil.
+        hace_14 = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+        # Lo vivo, con la misma regla que la lista de la web
+        # (mis_oportunidades): sin fecha límite, solo si se ha movido en los
+        # últimos 14 días. Contarlas todas metía ~600 licitaciones que la web
+        # no enseña nunca en el grupo de cada cliente (hasta un 10 %).
         c.vivas = sorted(i for i, l in lic.items()
                          if (l["estado_licitacion"] or "") == "PUB"
-                         and (l["fecha_limite"] is None or l["fecha_limite"] >= ahora)
-                         and not l["sustituida"])
+                         and not l["sustituida"]
+                         and (l["fecha_limite"] >= ahora if l["fecha_limite"]
+                              else (l["fecha_actualizacion"] or "") >= hace_14))
         c.ficha_viva = {i: {k: lic[i][k] for k in ("titulo", "organo", "presupuesto", "cpvs")}
                         for i in c.vivas}
         ganadores = defaultdict(set)
@@ -645,7 +664,8 @@ def previos_reales(perfil_id: str) -> dict:
     return previos
 
 
-def guardar_real(perfil: dict, grupo: list, veredictos: dict, vivas: list[str]) -> int:
+def guardar_real(perfil: dict, grupo: list, veredictos: dict, vivas: list[str],
+                 completo: bool = True) -> int:
     """Escribe los veredictos del grupo y, la primera vez, retira los del
     sistema anterior para lo vivo (lo vencido se queda como estaba)."""
     en_grupo = [i for i, _ in grupo if i in veredictos]
@@ -670,8 +690,10 @@ def guardar_real(perfil: dict, grupo: list, veredictos: dict, vivas: list[str]) 
         logging.info("%s: pasa al sistema nuevo (%d veredictos antiguos de lo vivo retirados)",
                      perfil["id"][:8], len(quitar))
     # Versiones anteriores de este mismo sistema: lo vivo se retira, porque
-    # el grupo se acaba de juzgar entero con la versión en vigor.
-    anteriores = [f["id_licitacion"] for f in leer("veredictos", {
+    # el grupo se acaba de juzgar entero con la versión en vigor. Si NO se ha
+    # juzgado entero (tope de gasto), no se toca: retirarlo vaciaría la lista
+    # del cliente de lo que aún no se ha vuelto a juzgar.
+    anteriores = [] if not completo else [f["id_licitacion"] for f in leer("veredictos", {
         "select": "id_licitacion", "perfil_id": f"eq.{perfil['id']}",
         "and": f"(modelo.like.puntuacion-*,modelo.neq.{VERSION})"})]
     vivas_s, juzgadas = set(vivas), set(en_grupo)
@@ -714,7 +736,7 @@ def main() -> int:
             c.guardar()
 
     try:
-        perfiles = leer("perfiles", {"select": "id,cif,sistema,criterio_version",
+        perfiles = leer("perfiles", {"select": "id,cif,sistema,criterio_version,puntuado_en",
                                      "activo": "is.true", "cif": "not.is.null"})
     except RuntimeError as error:
         # Sin la migración 20260924200000 no hay columna `sistema`: solo
@@ -727,7 +749,7 @@ def main() -> int:
         elegidos = [x.strip() for x in args.perfil.split(",") if x.strip()]
         perfiles = [p for p in perfiles if any(p["id"].startswith(x) for x in elegidos)]
     correcciones = defaultdict(list)
-    for x in leer("correcciones", {"select": "perfil_id,titulo,organo,interesa,motivo"}):
+    for x in leer("correcciones", {"select": "perfil_id,titulo,organo,interesa,motivo,fecha"}):
         correcciones[x["perfil_id"]].append(x)
 
     hechos = 0
@@ -747,14 +769,19 @@ def main() -> int:
                 logging.info("%s: menos de %d contratos, vuelve al criterio", et,
                              PESOS["minimo_ganados"])
             continue
-        if args.rehacer:
+        # Un motivo escrito es una regla para toda su lista: si ha llegado
+        # alguno desde la última pasada, se rejuzga su grupo entero (~0,09 $).
+        nuevas_reglas = any(x.get("motivo") and p.get("puntuado_en")
+                            and x["fecha"] > p["puntuado_en"] for x in correcciones[p["id"]])
+        if args.rehacer or (args.real and nuevas_reglas):
             previos = {}
         elif args.sombra:
             previos = sombra_leer(p["id"])["veredictos"]
         else:
             previos = previos_reales(p["id"])
         c.completar_huellas({g["titulo"] for g in ganados} |
-                            {x["titulo"] for x in correcciones[p["id"]]})
+                            {x["titulo"] for x in correcciones[p["id"]]},
+                            guardar=not args.instantanea)
         res = procesar_perfil(c, p, ganados, previos, correcciones[p["id"]], gasto, args.ensayo)
         veredictos = {**previos, **res["nuevos"]}
         en_grupo = {i for i, _ in res["grupo"]}
@@ -775,7 +802,7 @@ def main() -> int:
             logging.warning("%s: grupo sin completar; sigue con el sistema anterior", et)
             continue
         else:
-            guardar_real(p, res["grupo"], veredictos, c.vivas)
+            guardar_real(p, res["grupo"], veredictos, c.vivas, completo=not res["pendientes"])
         hechos += 1
         if gasto.agotado():
             logging.warning("Tope de gasto de la pasada alcanzado (%.2f $): se sigue mañana.",
