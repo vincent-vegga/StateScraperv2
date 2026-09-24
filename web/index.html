@@ -3222,6 +3222,12 @@ async function arrancar(volviendo = false) {
 // Así el cribado de fondo puede actualizarla al terminar sin repintar la
 // pantalla entera, que borraría los filtros que el cliente haya puesto.
 let refrescarListaAbierta = null;
+// Cuál es la lista de contratos que se está viendo. Si la pantalla se
+// monta dos veces a la vez (arranque y cribado, atrás del navegador...),
+// la copia vieja seguía viva: repintaba encima con sus datos —devolviendo
+// a la lista el contrato que se acababa de descartar— y añadía otra vez
+// los sectores al filtro. Solo pinta la última.
+let listaVigente = 0;
 let cribandoDeFondo = false;
 
 async function cribarPendientesDeFondo(perfil) {
@@ -6420,6 +6426,8 @@ function ordenarContratos(xs, techo) {
 async function pantallaOportunidades(perfil, session, volviendo = false,
                                      pestanaInicial = 'todo') {
   const techo = techoDeTamano(perfil.franjas);
+  const miLista = ++listaVigente;
+  const vigente = () => miLista === listaVigente;
   if (!volviendo) irA('contratos', { pestana: 'todo' }, true);
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando tus contratos...</p></div>`;
@@ -6428,10 +6436,13 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const { data, error } = await pedirContratos(perfil.id, nuevos => {
     // Si algo cambió por detrás, se repinta sin que el cliente
     // haya tenido que esperar.
+    if (!vigente()) return;
     DATOS.length = 0;
     ordenarContratos(nuevos ?? [], techo).forEach(o => DATOS.push(o));
     if (document.getElementById('lista')) pintar();
   });
+  // Mientras llegaban los datos se ha abierto otra lista: esa manda.
+  if (!vigente()) return;
   if (error) {
     raiz.innerHTML = `<div class="centro"><div class="aviso mal">
       No hemos podido cargar tus contratos.</div></div>`;
@@ -6660,6 +6671,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   let SECTORES = [];
 
   function pintar() {
+    if (!vigente() || !document.getElementById('lista')) return;
     guardarFiltros();
     document.getElementById('quitar-filtros').hidden = !hayFiltros();
     const ver = document.getElementById('f-veredicto').value;
@@ -7185,8 +7197,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   cargarSectores(perfil).then(sectores => {
     const campo = document.getElementById('f-sector');
     // Si ya se ha ido a otra pantalla o a otra empresa, no hay dónde pintar.
-    if (!campo || perfil.id !== perfilActivoId || sectores.length < 2) return;
+    if (!campo || !vigente() || perfil.id !== perfilActivoId || sectores.length < 2) return;
     SECTORES = sectores;
+    // Se vacía antes de rellenar: así nunca salen repetidos.
+    campo.querySelectorAll('option:not([value=""])').forEach(op => op.remove());
     campo.insertAdjacentHTML('beforeend', sectores.map((x, i) =>
       `<option value="${i}">${esc(x.nombre)}</option>`).join(''));
     // Por su id y no por su posición: si los sectores se rehacen, el
