@@ -28,9 +28,13 @@ Aprobado por el dueño y encendido (PR #5). Resumen:
   versión vigente y la nueva. La media no basta: ninguna empresa debe
   perder más de un contrato sin explicación. El juez v2 lo pasó: 38 de 40
   igual, 2 pierden un contrato cada una (casos sueltos), ruido −19 %.
-- **Juez en vigor:** `puntuacion-v2` (destinatario y reglas del cliente).
-  Después de medirlo se añadió una frase sobre los nombres de la policía
-  local (Policía Municipal, Guardia Urbana), sin volver a medir.
+- **Juez en vigor:** `puntuacion-v3` (destinatario y reglas del cliente,
+  con instrucciones sin nada de ningún sector). REGLA: las instrucciones
+  del juez son comunes a todos; nunca un ejemplo ni una frase sacada del
+  sector de un cliente (el v2 los tenía y se quitaron).
+- **Presupuesto del banco agotado:** 9,28 $ de 10 $. Otra medida completa
+  del juez cuesta ~1,8 $: hace falta más saldo en el proyecto del banco o
+  usar la clave de producción.
 - **Pendiente:**
   1. Medir en el banco empresas con 3-14 contratos (<1 $) y, si sale bien,
      bajar `minimo_ganados`.

@@ -988,17 +988,16 @@ Deno.serve(async (peticion) => {
         if (actual.sistema !== "huellas") break;
       }
       if (actual.sistema === "huellas" && !hecha(actual)) {
-        // Si la pasada pedida no ha llegado en 20 minutos (Actions caído,
-        // cola larga), se pide otra; si ni eso, al criterio de siempre.
+        // Si la pasada pedida no ha llegado en 20 minutos (Actions caído o
+        // la pasada ha fallado), no se vuelve a pedir: se pasa al criterio
+        // de siempre para que el cliente tenga su lista ya. Pedirla otra vez
+        // podía repetirse sin fin si la pasada fallaba siempre. La pasada
+        // diaria lo devuelve a este sistema cuando funcione.
         const pedida = actual.puntuacion_pedida
           ? Date.parse(String(actual.puntuacion_pedida)) : 0;
         if (Date.now() - pedida > 20 * 60 * 1000) {
-          if (await pedirPuntuacion(perfil.id, false)) {
-            await admin.from("perfiles").update({ puntuacion_pedida: new Date().toISOString() })
-              .eq("id", perfil.id);
-          } else {
-            await admin.from("perfiles").update({ sistema: "criterio" }).eq("id", perfil.id);
-          }
+          console.error(`Perfil ${perfil.id}: la puntuación pedida no llegó; vuelve al criterio`);
+          await admin.from("perfiles").update({ sistema: "criterio" }).eq("id", perfil.id);
         }
         return responder({ ok: true, terminado: false, hechas: 0, quedan: 0, esperando: true });
       }
