@@ -6,26 +6,27 @@
 // perfil con NIF, se hace como si hubiera entrado describiendo su
 // negocio, y se compara el filtro que saldría con el suyo real.
 //
-// Variantes, todas desde la misma descripción:
+// Variantes, todas desde la misma descripción (y con las familias que el
+// cliente deja marcadas):
 //
-//   tarjetas_hoy       El camino actual, tal cual, solo como vara de
-//                      medir: familias CPV y treinta tarjetas. El
-//                      vecindario busca por `prefijo_principal` (4
-//                      dígitos) con divisiones de 2, no encuentra nada y
-//                      las tarjetas salen del relleno sin ordenar.
-//   solo_descripcion   Sin tarjetas ni referentes: criterio de la
-//                      descripción y captura por familias. El suelo.
-//   referentes_medio   El camino nuevo, sin tarjetas: descripción →
-//                      referentes → franjas. El criterio sale de la
-//                      descripción, con los contratos de sus referentes
-//                      como ejemplos de lo que le interesa.
-//                      Captura: sus prefijos y el vecindario en 4 dígitos.
-//   referentes_amplio  El mismo criterio, capturando por sus prefijos y
-//                      las familias enteras.
+//   hoy                Lo que hay en producción desde el 23/09/2026:
+//                      criterio de la descripción, catálogo de familias
+//                      sin nombres.
+//   solo_descripcion   Lo mismo con el catálogo con nombres (DIVISIONES).
+//   vecinos            Historial sintético: los 40 contratos adjudicados
+//                      más parecidos a la descripción (embeddings), en su
+//                      tamaño, hacen de historial como en la entrada por
+//                      NIF: de ellos salen el criterio y los códigos.
+//   vecinos_revisados  Igual, enseñando bajo cada familia sus tres
+//                      contratos más parecidos para que desmarque los que
+//                      no son suyos.
+//   referentes         Lo mejor de la vuelta anterior, como vara de medir:
+//                      empresas que ganan lo que describe, de su tamaño,
+//                      cuyos contratos sirven de ejemplo al criterio.
+//   ...+tope           Una variante con el tope por franjas aplicado a la
+//                      lista (se calcula sin llamadas nuevas).
 //
-// Los tres últimos parten del catálogo de familias con nombre (ver
-// DIVISIONES). Sin contratos menores: la primera vuelta no dio una
-// señal clara con ellos.
+// Sin contratos menores.
 //
 // Las respuestas del "cliente" (familias, tarjetas, franjas, referentes,
 // la empresa que conoce por su nombre)
@@ -607,6 +608,131 @@ async function porReferentes(descripcion: string, prop: Awaited<ReturnType<typeo
 }
 
 // ------------------------------------------------------------
+// Historial sintético: los contratos más parecidos a su descripción
+// ------------------------------------------------------------
+//
+// Lo que tiene la entrada por NIF y no tiene la descripción son
+// EJEMPLOS: contratos concretos de los que sacar el criterio y los
+// códigos. Aquí se buscan: de lo adjudicado en sus familias, los que más
+// se parecen en significado a lo que ha escrito (embeddings, no palabras
+// sueltas), dentro de su tamaño. Hacen de historial, como si fueran
+// suyos, y quienes los ganaron son sus competidores.
+
+const EMBEDDINGS = "https://api.openai.com/v1/embeddings";
+const incrustados = new Map<string, number[]>();
+let tokensEmbedding = 0;
+
+async function incrustar(textos: string[]): Promise<number[][]> {
+  const salida: number[][] = [];
+  for (let i = 0; i < textos.length; i += 1000) {
+    const tanda = textos.slice(i, i + 1000).map((t) => t.slice(0, 500) || "-");
+    for (let intento = 0; ; intento++) {
+      const r = await fetch(EMBEDDINGS, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${Deno.env.get("OPENAI_API_KEY")}`,
+                   "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "text-embedding-3-small", input: tanda, dimensions: 256 }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        tokensEmbedding += d.usage?.total_tokens ?? 0;
+        for (const e of d.data) salida.push(e.embedding);
+        break;
+      }
+      await r.body?.cancel();
+      if (intento >= 4) throw new Error(`embeddings ${r.status}`);
+      await new Promise((ok) => setTimeout(ok, 2000 * (intento + 1)));
+    }
+  }
+  return salida;
+}
+
+// Vienen normalizados: el producto escalar es el coseno.
+const coseno = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0);
+
+async function vectoresDe(ls: Lic[]) {
+  const faltan = ls.filter((l) => !incrustados.has(l.id_licitacion));
+  const vs = await incrustar(faltan.map((l) => l.titulo ?? ""));
+  faltan.forEach((l, i) => incrustados.set(l.id_licitacion, vs[i]));
+  return ls.map((l) => incrustados.get(l.id_licitacion)!);
+}
+
+const techoDe = (franjas: string[]) =>
+  franjas.includes(">1M") ? Infinity : franjas.includes("100k-1M") ? 1_000_000
+    : franjas.includes("15-100k") ? 100_000 : 15_000;
+// Lo que se licita, no lo adjudicado: es lo que verá en sus alertas.
+const presupuestoDe = (l: Lic) =>
+  l.presupuesto_base != null ? Number(l.presupuesto_base)
+    : l.presupuesto != null ? Number(l.presupuesto) : importeDe(l);
+
+async function buscarVecinos(descripcion: string, familias: string[], franjas: string[],
+                             cifPropio: string) {
+  const pool = (await deLosPrefijos(desplegar(familias)))
+    .filter((l) => !esMenor(l) && l.adjudicatario_cif !== cifPropio && l.titulo);
+  const vistos = new Set<string>();
+  const unicos = pool.filter((l) => !vistos.has(l.id_licitacion) && !!vistos.add(l.id_licitacion));
+  const [consulta] = await incrustar([descripcion]);
+  const vs = await vectoresDe(unicos);
+  const ordenados = unicos.map((l, i) => ({ l, s: coseno(consulta, vs[i]) }))
+    .sort((a, b) => b.s - a.s);
+
+  // Dentro de su tamaño si hay con qué: de los 200 más parecidos, los
+  // de sus franjas; si son menos de 15, los más parecidos sin más.
+  const top = ordenados.slice(0, 200);
+  const enFranjas = top.filter(({ l }) => franjas.includes(franja(importeDe(l)) ?? ""));
+  const vecinos = (enFranjas.length >= 15 ? enFranjas : top).slice(0, 40);
+  return { ordenados, vecinos, en_franjas: enFranjas.length >= 15, pool: unicos.length };
+}
+
+// Criterio y códigos a partir de un historial (sintético): lo mismo que
+// hace el alta con NIF, con la descripción como base.
+async function desdeHistorial(descripcion: string, familias: string[],
+                              si: Lic[], no: Lic[]): Promise<Resultado> {
+  const ejemplo = (l: Lic, interesa: boolean) => ({
+    titulo: l.titulo, organo: l.organo ?? "", cpvs: (l.cpvs ?? []).join(","), interesa });
+  const criterio = await generarCriterio(descripcion,
+    [...si.map((l) => ejemplo(l, true)), ...no.map((l) => ejemplo(l, false))]);
+  const cuenta = new Map<string, number>();
+  for (const l of si) cuenta.set(l.prefijo_principal, (cuenta.get(l.prefijo_principal) ?? 0) + 1);
+  const prefijos = [...cuenta.entries()].filter(([, n]) => n >= 2).map(([p]) => p);
+  return {
+    criterio, prefijos: prefijos.length ? prefijos : familias,
+    usadas: [...si, ...no].map((l) => l.id_licitacion),
+    detalle: {
+      positivos: si.length, negativos: no.length,
+      // Los referentes que salen solos: quién ganó lo que se le parece.
+      competidores: [...new Set(si.map((l) => l.adjudicatario).filter(Boolean))].slice(0, 12),
+    },
+  };
+}
+
+// La pantalla de familias con ejemplos: bajo cada familia, los tres
+// contratos más parecidos a lo que ha escrito, marcados. El oráculo
+// desmarca los que su filtro real no daría por buenos.
+async function vecinosRevisados(descripcion: string, familias: string[],
+                                v: Awaited<ReturnType<typeof buscarVecinos>>, criterioReal: string) {
+  const enseñados = familias.flatMap((f) =>
+    v.ordenados.filter(({ l }) => l.prefijo_principal.startsWith(f.slice(0, 4)))
+      .slice(0, 3).map(({ l }) => l));
+  const juicios = await enParalelo(enseñados, 5, (l) => veredicto(criterioReal, l));
+  const desmarcados = enseñados.filter((_, i) => juicios[i] === "no");
+  const fuera = new Set(desmarcados.map((l) => l.id_licitacion));
+  // Un código cuyos ejemplos desmarcó todos, y ninguno marcó, no se
+  // captura: es la familia que "no era suya" vista contrato a contrato.
+  const marcadosP = new Set(enseñados.filter((l) => !fuera.has(l.id_licitacion)).map((l) => l.prefijo_principal));
+  const vetados = new Set(desmarcados.map((l) => l.prefijo_principal).filter((p) => !marcadosP.has(p)));
+  const si = [...enseñados.filter((l) => !fuera.has(l.id_licitacion)),
+              ...v.vecinos.filter((l) => !fuera.has(l.l.id_licitacion) && !vetados.has(l.l.prefijo_principal))
+                .map(({ l }) => l)];
+  const vistos = new Set<string>();
+  const unicos = si.filter((l) => !vistos.has(l.id_licitacion) && !!vistos.add(l.id_licitacion)).slice(0, 45);
+  const res = await desdeHistorial(descripcion, familias, unicos, desmarcados);
+  res.detalle = { ...res.detalle, enseñados: enseñados.length, desmarcados: desmarcados.length,
+                  titulos_enseñados: enseñados.map((l, i) => `${juicios[i]} · ${l.titulo}`) };
+  return res;
+}
+
+// ------------------------------------------------------------
 // Evaluación
 // ------------------------------------------------------------
 //
@@ -619,7 +745,8 @@ const POSITIVOS = { si: ["si"], si_quizas: ["si", "quizas"] };
 
 async function evaluar(real: { criterio: string; prefijos: string[] },
                        variantes: Record<string, Resultado | null>,
-                       usadas: Set<string>, r: () => number) {
+                       usadas: Set<string>, r: () => number, franjas: string[],
+                       conTope: string[]) {
   const p4Reales = new Set(desplegar(real.prefijos));
   const p4Todos = new Set(p4Reales);
   for (const v of Object.values(variantes)) for (const p of desplegar(v?.prefijos ?? [])) p4Todos.add(p);
@@ -652,11 +779,23 @@ async function evaluar(real: { criterio: string; prefijos: string[] },
     for (const [nombre, v] of Object.entries(variantes)) {
       fila[nombre] = v && v.criterio && pasa(l, v.prefijos) ? await veredicto(v.criterio, l) : "fuera";
     }
-    return { id: l.id_licitacion, titulo: l.titulo, w, fila };
+    return { id: l.id_licitacion, titulo: l.titulo, w, fila, presupuesto: presupuestoDe(l) };
   });
 
+  // El tope no cambia el criterio: esconde lo que pasa de su techo (con
+  // margen: lo que se pasa poco se enseña igual). Se mide sin llamadas
+  // nuevas, como una variante más: lo que tiene precio por encima cuenta
+  // como "no". El filtro real no sabe de tamaños, así que esto mide
+  // cuánto relevante se pierde, y `volumen` cuánto adelgaza la lista.
+  const techo = techoDe(franjas) * 1.5;
+  for (const nombre of conTope) {
+    for (const v of veredictos) {
+      v.fila[`${nombre}+tope`] = v.fila[nombre] && v.fila[nombre] !== "fuera" &&
+        (v.presupuesto ?? 0) > techo ? "tope" : v.fila[nombre];
+    }
+  }
   const metricas: Record<string, Record<string, unknown>> = {};
-  for (const nombre of Object.keys(variantes)) {
+  for (const nombre of [...Object.keys(variantes), ...conTope.map((n) => `${n}+tope`)]) {
     metricas[nombre] = {};
     for (const [def, pos] of Object.entries(POSITIVOS)) {
       let vp = 0, fp = 0, fn = 0, nReal = 0, nVar = 0;
@@ -673,7 +812,9 @@ async function evaluar(real: { criterio: string; prefijos: string[] },
       const precision = vp + fp ? vp / (vp + fp) : null;
       const cobertura = vp + fn ? vp / (vp + fn) : null;
       const f1 = precision && cobertura ? 2 * precision * cobertura / (precision + cobertura) : 0;
-      metricas[nombre][def] = { precision, cobertura, f1, positivos_reales_muestra: nReal,
+      // Volumen estimado de la lista (pesado), para ver lo que adelgaza.
+      const volumen = vp + fp;
+      metricas[nombre][def] = { precision, cobertura, f1, volumen, positivos_reales_muestra: nReal,
                                 positivos_variante_muestra: nVar };
     }
   }
@@ -752,17 +893,24 @@ for (const { codigo, p } of casos) {
     }
 
     const variantes: Record<string, Resultado | null> = {};
-    // Lo de hoy, solo como vara de medir.
-    variantes.tarjetas_hoy = await tarjetasHoy(descripcion, propHoy, hoy.familias, real.criterio, r);
+    // Lo que hay hoy en producción: solo la descripción, con el catálogo
+    // sin nombres. Y lo mismo con nombres.
+    variantes.hoy = await soloDescripcion(descripcion, hoy.familias);
     variantes.solo_descripcion = await soloDescripcion(descripcion, familias);
+    const v = await buscarVecinos(descripcion, familias, franjas, cif);
+    variantes.vecinos = await desdeHistorial(descripcion, familias, v.vecinos.map(({ l }) => l), []);
+    variantes.vecinos.detalle = { ...variantes.vecinos.detalle, pool: v.pool, en_franjas: v.en_franjas,
+                                  similitud_min: v.vecinos.at(-1)?.s, titulos: v.vecinos.slice(0, 10).map(({ l }) => l.titulo) };
+    variantes.vecinos_revisados = await vecinosRevisados(descripcion, familias, v, real.criterio);
+    // Vara de medir: lo mejor de ayer.
     const ref = await porReferentes(descripcion, prop, familias, franjas, cif, real.prefijos, real.criterio,
                                     variantes.solo_descripcion);
-    variantes.referentes_medio = ref.medio;
-    variantes.referentes_amplio = ref.amplio;
+    variantes.referentes = ref.medio;
     const salida = String(ref.medio.detalle.salida);
 
     const usadas = new Set(Object.values(variantes).flatMap((v) => v?.usadas ?? []));
-    const ev = await evaluar(real, variantes, usadas, r);
+    const ev = await evaluar(real, variantes, usadas, r, franjas,
+                             ["solo_descripcion", "vecinos", "vecinos_revisados"]);
 
     const segundos = Math.round((Date.now() - inicio) / 1000);
     const filaResumen = {
@@ -792,10 +940,9 @@ for (const { codigo, p } of casos) {
       const m = (ev.metricas[n]?.si_quizas as Record<string, number | null>) ?? {};
       return m.f1 == null ? "—" : m.f1.toFixed(2);
     };
-    console.log(`${codigo}: F1 tarjetas hoy ${f1("tarjetas_hoy")} · solo descripción ` +
-                `${f1("solo_descripcion")} · referentes medio ${f1("referentes_medio")} · ` +
-                `amplio ${f1("referentes_amplio")} [${salida}] ` +
-                `(${segundos} s, ${filaResumen.llamadas} llamadas)`);
+    console.log(`${codigo}: F1 hoy ${f1("hoy")} · descripción ${f1("solo_descripcion")} · ` +
+                `vecinos ${f1("vecinos")} · revisados ${f1("vecinos_revisados")} · ` +
+                `referentes ${f1("referentes")} (${segundos} s, ${filaResumen.llamadas} llamadas)`);
   } catch (e) {
     // Solo el tipo de fallo: el mensaje podría llevar datos del cliente.
     console.log(`${codigo}: falló (${(e as Error).name})`);
@@ -811,7 +958,8 @@ for (const { codigo, p } of casos) {
 // Resumen público: solo cifras
 // ------------------------------------------------------------
 
-const VARIANTES = ["tarjetas_hoy", "solo_descripcion", "referentes_medio", "referentes_amplio"];
+const VARIANTES = ["hoy", "solo_descripcion", "vecinos", "vecinos_revisados", "referentes",
+                   "vecinos_revisados+tope"];
 const celda = (fila: Record<string, unknown>, v: string, campo: string) => {
   const m = ((fila.metricas as Record<string, Record<string, Record<string, number | null>>>)?.[v]?.si_quizas) ?? {};
   return m[campo] == null ? "—" : (m[campo] as number).toFixed(2);
@@ -829,7 +977,8 @@ const lineas = [
         `${celda(f, v, "f1")} (${celda(f, v, "precision")} / ${celda(f, v, "cobertura")})`).join(" | ")} | ${f.salida} |`),
   "",
   `Lectura por prefijo: mediana ${mediana(tiempos) ?? "—"} ms, máximo ${tiempos.length ? Math.max(...tiempos) : "—"} ms ` +
-  `(${tiempos.length} consultas). Llamadas al modelo: ${llamadas}.`,
+  `(${tiempos.length} consultas). Llamadas al modelo: ${llamadas}. ` +
+  `Tokens de embeddings: ${tokensEmbedding}.`,
 ];
 const informe = lineas.join("\n");
 console.log("\n" + informe);
