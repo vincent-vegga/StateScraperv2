@@ -17,12 +17,15 @@
 //                      más parecidos a la descripción (embeddings), en su
 //                      tamaño, hacen de historial como en la entrada por
 //                      NIF: de ellos salen el criterio y los códigos.
-//   vecinos_revisados  Igual, enseñando bajo cada familia sus tres
-//                      contratos más parecidos para que desmarque los que
-//                      no son suyos.
-//   referentes         Lo mejor de la vuelta anterior, como vara de medir:
-//                      empresas que ganan lo que describe, de su tamaño,
-//                      cuyos contratos sirven de ejemplo al criterio.
+//   vecinos_familias   El criterio de los vecinos, capturando además las
+//                      familias enteras: los vecinos aciertan en el
+//                      criterio y se quedan cortos en lo que capturan.
+//   vecinos_vecindario El mismo criterio, capturando los códigos donde
+//                      caen al menos tres de los 200 más parecidos.
+//
+// Medidas en vueltas anteriores y retiradas: que el cliente revise los
+// ejemplos (no mejoraba a los vecinos sin revisar) y los referentes
+// (empataban con los vecinos, con un paso más para el cliente).
 //   ...+tope           Una variante con el tope por franjas aplicado a la
 //                      lista (se calcula sin llamadas nuevas).
 //
@@ -920,16 +923,24 @@ for (const { codigo, p } of casos) {
     variantes.vecinos = await desdeHistorial(descripcion, familias, v.vecinos.map(({ l }) => l), []);
     variantes.vecinos.detalle = { ...variantes.vecinos.detalle, pool: v.pool, en_franjas: v.en_franjas,
                                   similitud_min: v.vecinos.at(-1)?.s, titulos: v.vecinos.slice(0, 10).map(({ l }) => l.titulo) };
-    variantes.vecinos_revisados = await vecinosRevisados(descripcion, familias, v, real.criterio);
-    // Vara de medir: lo mejor de ayer.
-    const ref = await porReferentes(descripcion, prop, familias, franjas, cif, real.prefijos, real.criterio,
-                                    variantes.solo_descripcion);
-    variantes.referentes = ref.medio;
-    const salida = String(ref.medio.detalle.salida);
+    // Los vecinos aciertan en el criterio y se quedan cortos en lo que
+    // capturan (sus códigos son los de los 40 más parecidos); la
+    // descripción, al revés. Mismo criterio de vecinos, captura más ancha:
+    //   vecinos_familias   las familias enteras que dejó marcadas;
+    //   vecinos_vecindario los códigos donde caen al menos tres de los 200
+    //                      contratos más parecidos.
+    const base = variantes.vecinos;
+    variantes.vecinos_familias = { ...base, prefijos: [...new Set([...base.prefijos, ...familias])] };
+    const cuenta200 = new Map<string, number>();
+    for (const { l } of v.ordenados.slice(0, 200)) {
+      cuenta200.set(l.prefijo_principal, (cuenta200.get(l.prefijo_principal) ?? 0) + 1);
+    }
+    variantes.vecinos_vecindario = { ...base, prefijos: [...new Set([...base.prefijos,
+      ...[...cuenta200.entries()].filter(([, n]) => n >= 3).map(([p]) => p)])] };
+    const salida = "—";
 
     const usadas = new Set(Object.values(variantes).flatMap((v) => v?.usadas ?? []));
-    const ev = await evaluar(real, variantes, usadas, r, franjas,
-                             ["solo_descripcion", "vecinos", "vecinos_revisados"]);
+    const ev = await evaluar(real, variantes, usadas, r, franjas, ["vecinos_familias"]);
 
     const segundos = Math.round((Date.now() - inicio) / 1000);
     const filaResumen = {
@@ -938,7 +949,6 @@ for (const { codigo, p } of casos) {
       franjas: franjas.join(" "),
       familias_hoy_aciertan: hoy.acierta,
       familias_con_nombres_aciertan: acierta,
-      referentes_elegidos: (ref.medio.detalle.elegidas as string[] | undefined)?.length ?? 0,
       salida,
       prefijos: Object.fromEntries(Object.entries(variantes).map(([k, v]) => [k, v?.prefijos.length ?? 0])),
       muestra: ev.muestra,
@@ -960,8 +970,8 @@ for (const { codigo, p } of casos) {
       return m.f1 == null ? "—" : m.f1.toFixed(2);
     };
     console.log(`${codigo}: F1 hoy ${f1("hoy")} · descripción ${f1("solo_descripcion")} · ` +
-                `vecinos ${f1("vecinos")} · revisados ${f1("vecinos_revisados")} · ` +
-                `referentes ${f1("referentes")} (${segundos} s, ${filaResumen.llamadas} llamadas)`);
+                `vecinos ${f1("vecinos")} · +familias ${f1("vecinos_familias")} · ` +
+                `+vecindario ${f1("vecinos_vecindario")} (${segundos} s, ${filaResumen.llamadas} llamadas)`);
   } catch (e) {
     // Solo el tipo de fallo: el mensaje podría llevar datos del cliente.
     console.log(`${codigo}: falló (${(e as Error).name})`);
@@ -977,8 +987,8 @@ for (const { codigo, p } of casos) {
 // Resumen público: solo cifras
 // ------------------------------------------------------------
 
-const VARIANTES = ["hoy", "solo_descripcion", "vecinos", "vecinos_revisados", "referentes",
-                   "vecinos_revisados+tope"];
+const VARIANTES = ["hoy", "solo_descripcion", "vecinos", "vecinos_familias", "vecinos_vecindario",
+                   "vecinos_familias+tope"];
 const celda = (fila: Record<string, unknown>, v: string, campo: string) => {
   const m = ((fila.metricas as Record<string, Record<string, Record<string, number | null>>>)?.[v]?.si_quizas) ?? {};
   return m[campo] == null ? "—" : (m[campo] as number).toFixed(2);
