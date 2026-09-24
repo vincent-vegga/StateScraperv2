@@ -148,17 +148,31 @@ export function codigosDelVecindario(p: Parecidos): string[] {
   return [...new Set([...deVecinos, ...deVecindario])];
 }
 
-/** Los más parecidos de cada familia, para enseñárselos. */
+/**
+ * Los más parecidos de cada familia, para enseñárselos. Solo los que
+ * están entre los 200 más parecidos de toda la búsqueda (el vecindario):
+ * con una descripción vaga, lo "más parecido" de una familia que no es
+ * la suya puede no parecerse en nada (a un suministrador de centros
+ * educativos le salían hemoderivados bajo material sanitario), y es
+ * mejor que esa familia se quede sin ejemplos.
+ */
 export function ejemplosPorFamilia(p: Parecidos, familias: string[], cuantos = 3) {
-  return Object.fromEntries(familias.map((f) => [f,
-    p.ordenados.filter(({ l }) => l.prefijo_principal.startsWith(f) ||
-                                  f.startsWith(l.prefijo_principal))
+  const vecindario = p.ordenados.slice(0, 200);
+  return Object.fromEntries(familias.map((f) => {
+    const vistos = new Set<string>();
+    return [f, vecindario
+      .filter(({ l }) => l.prefijo_principal.startsWith(f) || f.startsWith(l.prefijo_principal))
+      // Sin repetir título: hay expedientes con varios lotes iguales.
+      .filter(({ l }) => {
+        const t = l.titulo.trim().toLowerCase();
+        return !vistos.has(t) && !!vistos.add(t);
+      })
       .slice(0, cuantos)
       .map(({ l }) => ({
         titulo: l.titulo, organo: l.organo ?? "", importe: l.importe ?? l.presupuesto,
         adjudicatario: l.adjudicatario ?? "",
-      })),
-  ]));
+      }))];
+  }));
 }
 
 // Nombres de las divisiones CPV (vocabulario común de 2008), para el
