@@ -3,22 +3,34 @@
 Estado al 24/09/2026. Rama de trabajo: `claude/optimistic-dijkstra-myr851`.
 Quien retome esto: lee este fichero entero antes de hacer nada.
 
-## Estado (actualizado 24/09/2026, segunda sesión)
+## Estado (24/09/2026, 13:20 UTC): EN PRODUCCIÓN
 
-- Pasos 0-4 del plan **hechos**. Código en `banco/`, números en
-  `RESULTADOS.md`, propuesta en `PROPUESTA.md`.
-- **Paso 5 pendiente de aprobación del dueño.** Producción sigue intacta.
-- Gasto de OpenAI del banco: **4,53 $** (lecturas 0,48 · embeddings 0,97 ·
-  juez actual 0,54 · juez con ejemplos 2,54). Quedan ~5,5 $ bajo el tope.
-- Los datos (`banco/datos/`, con NIF) solo existen en el contenedor de esa
-  sesión. Para rehacer: `p1_descargar.py` → `p2_muestra.py` →
-  `p3_actual.py lecturas` / `juez` → `p4_embeddings.py hacer` →
-  `p5_puntuacion.py` → `p6_juez_ejemplos.py hacer 100` → `p7_informe.py`.
-  Sin la caché, rehacerlo todo cuesta otra vez ~4,5 $.
-- Tropiezos del entorno: `tiktoken` no puede descargar su diccionario (red
-  no permitida), se estima a 3 caracteres por token; los embeddings tienen
-  límite de 1 M tokens/min (el paso 4 tarda ~1 h).
+Aprobado por el dueño y encendido (PR #5). Resumen:
 
+- **Qué hay:** `puntuador.py` + `huellas.py` + `puntuacion_pesos.json` en la
+  raíz. Huellas (256 dim) en Storage, bucket privado `huellas` (`v1/`);
+  instantánea diaria en `estado/`; la sombra de la prueba en `sombra/`
+  (ya no se usa).
+- **Quién va por huellas:** perfiles con NIF y ≥15 contratos
+  (`perfiles.sistema = 'huellas'`). 11 perfiles al encenderlo. El resto
+  (sin NIF o con poco historial) sigue con criterio + puerta CPV.
+- **Cuándo corre:** cada mañana dentro del robot (`scraper.yml`, antes del
+  correo, `--real`: ~8 min) y a demanda con `puntuador.yml` (alta y
+  correcciones: `--real --instantanea --perfil X`, ~3 min). La función
+  del alta lo lanza con el secret `GITHUB_DISPATCH_TOKEN`.
+- **Volver atrás un perfil:** `update perfiles set sistema = 'criterio'
+  where id = ...` (el cribado de siempre rellena lo que falte).
+- **Gasto de OpenAI del banco y la puesta en marcha:** 5,77 $ (clave del
+  banco). En producción: ~0,1 $ al día para todos los perfiles.
+- **Pendiente:**
+  1. Medir en el banco empresas con 3-14 contratos (<1 $) y, si sale bien,
+     bajar `minimo_ganados`.
+  2. Historial sintético para el alta sin NIF (idea del otro agente):
+     40 contratos parecidos a la descripción como «ganados» y medirlo con
+     el banco.
+  3. Repetir el informe del banco cuando acabe el reprocesado del 643
+     (cambian fechas de adjudicación de 2025-2026). Gratis: todo en caché.
+  4. Decisiones de producto abiertas (abajo).
 
 ## Reglas de la tarea (las puso el dueño del proyecto)
 
