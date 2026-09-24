@@ -1,0 +1,38 @@
+# ============================================================
+# PROBAR LOS CONTRATOS PARECIDOS DEL ALTA SIN NIF
+# ============================================================
+# Pasa tres descripciones inventadas por supabase/functions/alta/vecinos.ts
+# con embeddings reales (scripts/probar_vecinos.ts). Solo lee. Unos
+# céntimos de embeddings por ejecución.
+# ============================================================
+
+name: Probar alta sin NIF
+
+on:
+  push:
+    branches: [alta-vecinos]
+    paths:
+      - 'supabase/functions/alta/vecinos.ts'
+      - 'scripts/probar_vecinos.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Comprobar tipos
+        run: deno check scripts/probar_vecinos.ts supabase/functions/alta/index.ts
+      - name: Probar
+        run: deno run -A scripts/probar_vecinos.ts

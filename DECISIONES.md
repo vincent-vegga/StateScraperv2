@@ -963,6 +963,47 @@ al criterio. Empataron con la descripción sola en precisión.
 
 ---
 
+## 38. Alta sin NIF: contratos parecidos a la descripción como ejemplos
+
+**Contexto.** Por NIF, el filtro se construye con ejemplos: lo que la
+empresa ha ganado. Sin NIF, desde la decisión 37, solo con la descripción,
+y una frase como "material eléctrico e instrumentación" deja pasar mucho
+ruido. Simulado con los perfiles que tienen NIF (rama `simulacion-sin-nif`,
+F1 media frente a su filtro real): lo que había, 0,33; la descripción con
+el catálogo de familias con nombre, 0,43; referentes (el cliente elige
+empresas que compiten con él), 0,52 en otra vuelta; y contratos parecidos:
+
+- los 40 adjudicados más parecidos en significado a la descripción
+  (embeddings), variados y de su tamaño, como ejemplos del criterio,
+  capturando solo sus códigos: 0,49. Muy precisos, pero se quedan cortos
+  con las empresas más amplias que su descripción;
+- lo mismo capturando además los códigos donde caen muchos de los 200 más
+  parecidos: **0,52**, y mejor que la descripción sola en 13 de 16.
+
+Pedir al cliente que revise los ejemplos no mejoraba el filtro. Esconder lo
+que pasa de su tamaño lo empeoraba (las empresas también ganan contratos
+algo mayores de lo habitual).
+
+**Decisión** (24/09/2026).
+- `proponer` recibe las divisiones CPV con su nombre (con el número solo
+  escogía las más grandes: obras para una empresa de uniformes).
+- Al describir su negocio marca, si quiere, los tamaños de contrato que le
+  interesan (`perfiles.franjas`).
+- Bajo cada familia ve dos o tres contratos adjudicados parecidos a lo
+  suyo, con quién los ganó. Solo para verlos.
+- Su filtro sale de la descripción y de los contratos parecidos como
+  ejemplos, y captura por vecindario (`supabase/functions/alta/vecinos.ts`).
+- Los contratos salen de `muestra_adjudicada`, que rehace pg_cron cada
+  noche: leerlos de `licitaciones` en el momento pasaba de 7 s. Si
+  estuviera vacía, el alta sigue como en la decisión 37.
+
+**Pendiente.** Que el tamaño ordene y marque la lista ("por encima de tu
+tamaño") sin esconder nada. Y medir la idea de partida: que el cliente
+nombre a su competidor directo y el filtro se construya como si entrara con
+el NIF de ese competidor.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
