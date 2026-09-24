@@ -27,10 +27,18 @@ Cómo decide, para cada perfil y cada licitación viva:
      ser para mí»). Sin criterio en prosa.
 
 Modos:
-    python puntuador.py --sombra             # calcula y juzga, guarda en
-                                             # Storage (sombra/), NO toca la base
-    python puntuador.py --sombra --perfil X  # solo un perfil
-    python puntuador.py --ensayo             # puntúa sin llamar al juez
+    python puntuador.py --real               # pasada diaria: lee toda la base,
+                                             # guarda la instantánea y escribe
+                                             # en `veredictos`
+    python puntuador.py --real --instantanea --perfil X [--rehacer]
+                                             # un perfil (alta, correcciones),
+                                             # con la instantánea del día: ~3 min
+    python puntuador.py --sombra             # igual, pero a Storage (sombra/)
+    ... --ensayo                             # puntúa sin llamar al juez
+
+Un perfil pasa a este sistema (perfiles.sistema = 'huellas') la primera
+vez que se juzga entero su grupo. Desde entonces el cribado antiguo lo
+deja en paz: `pendientes_de_perfil` no le devuelve nada.
 
 Variables: SUPABASE_URL, SUPABASE_KEY, OPENAI_API_KEY,
     CACHE_HUELLAS (carpeta; por defecto ~/.cache/huellas),
@@ -39,6 +47,8 @@ Variables: SUPABASE_URL, SUPABASE_KEY, OPENAI_API_KEY,
 from __future__ import annotations
 
 import argparse
+import gzip
+import io
 import json
 import logging
 import math
@@ -49,7 +59,7 @@ import time
 import unicodedata
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -99,10 +109,16 @@ contrato ganado que más se parece, o por qué ninguno encaja"}"""
 # se le enseña al juez como hechos, con su motivo si lo escribió.
 AVISO_CORRECCIONES = """
 
-Además, el cliente ha corregido a mano contratos parecidos. Sus \
-correcciones mandan: si el contrato nuevo es del mismo tipo que uno que \
-marcó como "no me interesa", responde "no" salvo que el motivo que dio no \
-se aplique a este."""
+Además, el cliente ha corregido a mano contratos parecidos. Úsalas con \
+estas reglas, que son las mismas con las que se corrige su filtro:
+- Si el MOTIVO habla de un organismo o cuerpo ("no trabajamos con la \
+Guardia Civil"), solo vale para ese organismo: si el contrato nuevo es de \
+otro organismo, ignora esa corrección.
+- Si el motivo habla de un producto concreto ("no fabricamos EPI contra \
+el fuego"), solo vale para ese producto, no para todo lo que se le parezca.
+- Una corrección sin motivo, o un rechazo suelto, NO cierra una categoría: \
+como mucho mueve un "si" a "quizas".
+- Un "SÍ le interesa" es un hecho tan fuerte como un contrato ganado."""
 
 
 # ==============================================================
@@ -179,44 +195,60 @@ def leer_tabla(tabla: str, campos: str, orden: str) -> list[dict]:
 
 
 # ==============================================================
-# Datos
+# Escritura (solo en modo real)
 # ==============================================================
-class Datos:
-    def __init__(self, cache: Path):
-        t0 = time.time()
-        lic = leer_tabla("licitaciones",
-                         "id_licitacion,titulo,cpvs,organo,presupuesto,"
-                         "estado_licitacion,fecha_limite,sustituida", "id_licitacion")
-        self.lic = {d["id_licitacion"]: d for d in lic}
-        adj = leer_tabla("adjudicaciones_empresa", "id_licitacion,cif", "id_licitacion,cif")
-        self.por_cif = defaultdict(set)
-        self.ganadores = defaultdict(set)
-        for a in adj:
-            if a["cif"] and a["id_licitacion"] in self.lic:
-                self.por_cif[a["cif"]].add(a["id_licitacion"])
-                self.ganadores[a["id_licitacion"]].add(a["cif"])
-        logging.info("Base: %d licitaciones, %d adjudicaciones (%.0f s)",
-                     len(self.lic), len(adj), time.time() - t0)
+def _escribir(metodo: str, tabla: str, params: dict | None = None, cuerpo=None,
+              prefer: str = "return=minimal") -> None:
+    url, cab = _rest()
+    err = ""
+    for intento in range(6):
+        try:
+            r = requests.request(metodo, f"{url}/{tabla}", params=params, json=cuerpo,
+                                 timeout=120, headers={**cab, "Prefer": prefer})
+            if r.status_code in (200, 201, 204):
+                return
+            err = f"{r.status_code} {r.text[:300]}"
+            if 400 <= r.status_code < 500 and r.status_code != 429:
+                break
+        except requests.RequestException as e:
+            err = str(e)
+        time.sleep(2 ** intento)
+    raise RuntimeError(f"PostgREST {metodo} {tabla}: {err}")
 
-        ahora = datetime.now(timezone.utc).isoformat()
-        # Lo vivo, con la misma regla que pendientes_de_perfil.
-        self.vivas = sorted(
-            i for i, l in self.lic.items()
-            if (l["estado_licitacion"] or "") == "PUB"
-            and (l["fecha_limite"] is None or l["fecha_limite"] >= ahora)
-            and not l["sustituida"])
 
+# ==============================================================
+# Contexto: lo vivo, lo pasado y sus vecinos
+# ==============================================================
+# Se calcula entero una vez al día (modo diario, tras el scraper: ~7 min)
+# y se guarda en Storage como «instantánea». Las pasadas de un solo perfil
+# (alta nueva, correcciones) la reutilizan y tardan ~3 min en lugar de ~8.
+ESTADO = "estado"
+
+
+class Contexto:
+    titulos: list[str]
+    emb: np.ndarray
+    fila: dict[str, int]
+    vivas: list[str]                 # ids
+    ficha_viva: dict[str, dict]      # id -> titulo, organo, presupuesto, cpvs
+    pasado_filas: np.ndarray         # filas de huella de lo adjudicado
+    gan_ptr: np.ndarray              # ganadores de cada título pasado (CSR)
+    gan_cif: np.ndarray
+    gan_n: np.ndarray
+    cifs: list[str]
+    vi: np.ndarray                   # vecinos pasados de cada viva
+    vs: np.ndarray
+    fecha: str
+
+    # ---------- huellas ----------
+    def _huellas(self, cache: Path) -> None:
         self.titulos, self.emb = huellas.cargar(cache)
         self.fila = {t: k for k, t in enumerate(self.titulos)}
-        self._completar_huellas()
-        logging.info("Huellas: %d; vivas: %d", len(self.titulos), len(self.vivas))
 
-    def _completar_huellas(self) -> None:
-        """Las licitaciones nuevas traen títulos sin huella: se calculan y
-        se guardan en Storage para las pasadas siguientes."""
-        necesarias = set(self.vivas) | set(self.ganadores)
-        faltan = sorted({huellas.normal(self.lic[i]["titulo"]) for i in necesarias}
-                        - set(self.fila) - {""})
+    def completar_huellas(self, textos: set[str]) -> None:
+        """Títulos sin huella (licitaciones nuevas): se calculan y se
+        guardan en Storage para las pasadas siguientes."""
+        faltan = sorted({huellas.normal(t) for t in textos} - set(self.fila) - {""})
         if not faltan:
             return
         logging.info("Huellas nuevas: %d títulos", len(faltan))
@@ -227,13 +259,117 @@ class Datos:
         self.emb = np.concatenate([self.emb, v])
         self.fila.update({t: base + k for k, t in enumerate(faltan)})
 
-    def fila_de(self, idl: str):
-        return self.fila.get(huellas.normal(self.lic[idl]["titulo"]))
+    def fila_de_titulo(self, titulo: str | None):
+        return self.fila.get(huellas.normal(titulo))
+
+    def P(self) -> np.ndarray:
+        if not hasattr(self, "_P"):
+            self._P = np.asarray(self.emb[self.pasado_filas], np.float32)
+        return self._P
+
+    def ganadores(self, j: int) -> dict[str, int]:
+        a, b = self.gan_ptr[j], self.gan_ptr[j + 1]
+        return {self.cifs[c]: int(n) for c, n in zip(self.gan_cif[a:b], self.gan_n[a:b])}
+
+    # ---------- construcción completa (una vez al día) ----------
+    @classmethod
+    def completo(cls, cache: Path) -> "Contexto":
+        c = cls()
+        t0 = time.time()
+        lic = {d["id_licitacion"]: d for d in leer_tabla(
+            "licitaciones", "id_licitacion,titulo,cpvs,organo,presupuesto,"
+            "estado_licitacion,fecha_limite,sustituida", "id_licitacion")}
+        adj = leer_tabla("adjudicaciones_empresa", "id_licitacion,cif", "id_licitacion,cif")
+        logging.info("Base: %d licitaciones, %d adjudicaciones (%.0f s)",
+                     len(lic), len(adj), time.time() - t0)
+        ahora = datetime.now(timezone.utc).isoformat()
+        # Lo vivo, con la misma regla que pendientes_de_perfil.
+        c.vivas = sorted(i for i, l in lic.items()
+                         if (l["estado_licitacion"] or "") == "PUB"
+                         and (l["fecha_limite"] is None or l["fecha_limite"] >= ahora)
+                         and not l["sustituida"])
+        c.ficha_viva = {i: {k: lic[i][k] for k in ("titulo", "organo", "presupuesto", "cpvs")}
+                        for i in c.vivas}
+        ganadores = defaultdict(set)
+        for a in adj:
+            if a["cif"] and a["id_licitacion"] in lic:
+                ganadores[a["id_licitacion"]].add(a["cif"])
+
+        c._huellas(cache)
+        c.completar_huellas({lic[i]["titulo"] for i in set(c.vivas) | set(ganadores)})
+
+        # Pasado: títulos adjudicados (sin las vivas) -> quién los ganó.
+        vivas = set(c.vivas)
+        por_fila = defaultdict(Counter)
+        for idl, cifs in ganadores.items():
+            if idl in vivas:
+                continue
+            r = c.fila_de_titulo(lic[idl]["titulo"])
+            if r is not None:
+                for x in cifs:
+                    por_fila[r][x] += 1
+        c.pasado_filas = np.array(sorted(por_fila), np.int64)
+        c.cifs = sorted({x for g in por_fila.values() for x in g})
+        indice = {x: k for k, x in enumerate(c.cifs)}
+        ptr, cc, nn = [0], [], []
+        for r in c.pasado_filas:
+            for x, n in por_fila[r].items():
+                cc.append(indice[x])
+                nn.append(n)
+            ptr.append(len(cc))
+        c.gan_ptr = np.array(ptr, np.int64)
+        c.gan_cif = np.array(cc, np.int32)
+        c.gan_n = np.array(nn, np.int32)
+        logging.info("Pasado: %d títulos adjudicados", len(c.pasado_filas))
+        c._vecinos()
+        c.fecha = ahora
+        return c
+
+    def _vecinos(self) -> None:
+        filas_v = [self.fila_de_titulo(self.ficha_viva[i]["titulo"]) for i in self.vivas]
+        Q = np.asarray(self.emb[[r if r is not None else 0 for r in filas_v]], np.float32)
+        self.vi, self.vs = top_m(Q, self.P(), M_VECINOS)
+        self.vi[[k for k, r in enumerate(filas_v) if r is None]] = -1
+
+    # ---------- instantánea en Storage ----------
+    def guardar(self) -> None:
+        buf = io.BytesIO()
+        np.savez_compressed(buf, pasado_filas=self.pasado_filas, gan_ptr=self.gan_ptr,
+                            gan_cif=self.gan_cif, gan_n=self.gan_n,
+                            vi=self.vi.astype(np.int32), vs=self.vs.astype(np.float16))
+        huellas._put(f"{ESTADO}/pasado.npz", buf.getvalue(), "application/octet-stream")
+        huellas._put(f"{ESTADO}/cifs.json.gz", gzip.compress(json.dumps(self.cifs).encode()),
+                     "application/gzip")
+        huellas._put(f"{ESTADO}/vivas.json.gz", gzip.compress(json.dumps(
+            {"vivas": self.vivas, "fichas": self.ficha_viva}, ensure_ascii=False).encode()),
+            "application/gzip")
+        # El índice de huellas cambia al añadir partes: se guarda cuántas
+        # había, para saber que la instantánea encaja con ellas.
+        huellas._put(f"{ESTADO}/meta.json", json.dumps(
+            {"fecha": self.fecha, "huellas": len(self.titulos)}).encode(), "application/json")
+
+    @classmethod
+    def desde_instantanea(cls, cache: Path) -> "Contexto":
+        c = cls()
+        meta = json.loads(huellas._get(f"{ESTADO}/meta.json") or b"null")
+        if not meta:
+            raise RuntimeError("No hay instantánea: hace falta una pasada diaria antes.")
+        c._huellas(cache)
+        if len(c.titulos) < meta["huellas"]:
+            raise RuntimeError("Las huellas bajadas son más viejas que la instantánea.")
+        z = np.load(io.BytesIO(huellas._get(f"{ESTADO}/pasado.npz")))
+        for k in ("pasado_filas", "gan_ptr", "gan_cif", "gan_n", "vi", "vs"):
+            setattr(c, k, z[k])
+        c.vi = c.vi.astype(np.int64)
+        c.cifs = json.loads(gzip.decompress(huellas._get(f"{ESTADO}/cifs.json.gz")))
+        v = json.loads(gzip.decompress(huellas._get(f"{ESTADO}/vivas.json.gz")))
+        c.vivas, c.ficha_viva = v["vivas"], v["fichas"]
+        c.fecha = meta["fecha"]
+        logging.info("Instantánea del %s: %d vivas, %d títulos pasados",
+                     c.fecha[:16], len(c.vivas), len(c.pasado_filas))
+        return c
 
 
-# ==============================================================
-# Puntuación
-# ==============================================================
 def top_m(q: np.ndarray, P: np.ndarray, m: int, bloque: int = 256):
     idx = np.empty((len(q), m), np.int64)
     sim = np.empty((len(q), m), np.float32)
@@ -247,77 +383,75 @@ def top_m(q: np.ndarray, P: np.ndarray, m: int, bloque: int = 256):
     return idx, sim
 
 
-class Pasado:
-    """Títulos adjudicados (sin las vivas) y quién los ganó."""
-
-    def __init__(self, d: Datos):
-        vivas = set(d.vivas)
-        self.ganadores = defaultdict(Counter)
-        for idl, cifs in d.ganadores.items():
-            if idl in vivas:
-                continue
-            r = d.fila_de(idl)
-            if r is not None:
-                for c in cifs:
-                    self.ganadores[r][c] += 1
-        self.filas = np.array(sorted(self.ganadores), np.int64)
-        self.P = np.asarray(d.emb[self.filas], np.float32)
-        logging.info("Pasado: %d títulos adjudicados", len(self.filas))
-        filas_v = [d.fila_de(i) for i in d.vivas]
-        Q = np.asarray(d.emb[[r if r is not None else 0 for r in filas_v]], np.float32)
-        self.vi, self.vs = top_m(Q, self.P, M_VECINOS)
-        self.sin_huella = {i for i, r in zip(d.vivas, filas_v) if r is None}
-        self.pos = {i: k for k, i in enumerate(d.vivas)}
+# ==============================================================
+# Puntuación
+# ==============================================================
+def ganados_de(cif: str) -> list[dict]:
+    """Lo que ha ganado la empresa: título y CPV de cada licitación."""
+    ids = sorted({f["id_licitacion"] for f in leer(
+        "adjudicaciones_empresa", {"select": "id_licitacion", "cif": f"eq.{cif}"})})
+    out = []
+    for a in range(0, len(ids), 100):
+        filtro = "(" + ",".join(_q(i) for i in ids[a:a + 100]) + ")"
+        out += leer("licitaciones", {"select": "id_licitacion,titulo,cpvs",
+                                     "id_licitacion": f"in.{filtro}"})
+    return out
 
 
-def rasgos_perfil(d: Datos, pasado: Pasado, cif: str) -> tuple[np.ndarray, list[int]]:
-    """Los siete rasgos de cada licitación viva para esta empresa."""
-    propias = sorted(d.por_cif[cif])
-    filas_propias = sorted({d.fila_de(i) for i in propias} - {None})
-    E = np.asarray(d.emb[filas_propias], np.float32)
+def _cpvs(x) -> list[str]:
+    return [str(c) for c in x] if isinstance(x, list) else []
+
+
+def rasgos_perfil(c: Contexto, cif: str, ganados: list[dict]) -> tuple[np.ndarray, list[int]]:
+    """Los siete rasgos de cada licitación viva para esta empresa (los
+    mismos que se midieron en el banco, docs/afinar-seleccion/banco/p5)."""
+    filas_propias = sorted({c.fila_de_titulo(g["titulo"]) for g in ganados} - {None})
+    E = np.asarray(c.emb[filas_propias], np.float32)
 
     c4, c2 = Counter(), Counter()
-    for i in propias:
-        cp = [str(c) for c in (d.lic[i]["cpvs"] or [])] if isinstance(d.lic[i]["cpvs"], list) else []
-        for p in {c[:4] for c in cp if len(c) >= 4}:
+    for g in ganados:
+        cp = _cpvs(g["cpvs"])
+        for p in {x[:4] for x in cp if len(x) >= 4}:
             c4[p] += 1
-        for p in {c[:2] for c in cp if len(c) >= 2}:
+        for p in {x[:2] for x in cp if len(x) >= 2}:
             c2[p] += 1
-    n = max(len(propias), 1)
+    n = max(len(ganados), 1)
 
+    # Pares: quién gana lo parecido a lo que ella ganó.
     recientes = filas_propias if len(filas_propias) <= MAX_PROPIOS else \
         list(np.random.default_rng(0).choice(filas_propias, MAX_PROPIOS, replace=False))
-    pi, ps = top_m(np.asarray(d.emb[recientes], np.float32), pasado.P, M_PARES + 1)
     pares = Counter()
-    for q, fi, fs in zip(recientes, pi, ps):
-        for j, s in zip(fi, fs):
-            if pasado.filas[j] == q:
-                continue
-            for otro in pasado.ganadores[pasado.filas[j]]:
-                if otro != cif:
-                    pares[otro] += float(s)
+    if recientes:
+        pi, ps = top_m(np.asarray(c.emb[recientes], np.float32), c.P(), M_PARES + 1)
+        for q, fi, fs in zip(recientes, pi, ps):
+            for j, s in zip(fi, fs):
+                if c.pasado_filas[j] == q:
+                    continue           # su propio título
+                for otro in c.ganadores(j):
+                    if otro != cif:
+                        pares[otro] += float(s)
     tot = sum(pares.values()) or 1.0
     peso_par = {o: v / tot for o, v in pares.most_common(200)}
 
-    X = np.zeros((len(d.vivas), 7))
-    for k, idl in enumerate(d.vivas):
-        l = d.lic[idl]
-        r = d.fila_de(idl)
+    X = np.zeros((len(c.vivas), 7))
+    for k, idl in enumerate(c.vivas):
+        f = c.ficha_viva[idl]
+        r = c.fila_de_titulo(f["titulo"])
         if r is not None and len(E):
-            s = np.sort(E @ np.asarray(d.emb[r], np.float32))
+            s = np.sort(E @ np.asarray(c.emb[r], np.float32))
             X[k, 0], X[k, 1] = s[-1], s[-5:].mean()
-        cp = [str(c) for c in l["cpvs"]] if isinstance(l["cpvs"], list) else []
-        p4 = {c[:4] for c in cp if len(c) >= 4}
-        p2 = {c[:2] for c in cp if len(c) >= 2}
+        cp = _cpvs(f["cpvs"])
+        p4 = {x[:4] for x in cp if len(x) >= 4}
+        p2 = {x[:2] for x in cp if len(x) >= 2}
         X[k, 2] = max((c4[p] / n for p in p4), default=0.0)
         X[k, 3] = max((c2[p] / n for p in p2), default=0.0)
         X[k, 4] = float(not p4)
-        if idl not in pasado.sin_huella:
-            w = np.maximum(pasado.vs[k], 0) ** 4
+        if c.vi[k, 0] >= 0:
+            w = np.maximum(c.vs[k].astype(np.float32), 0) ** 4
             ws = float(w.sum()) or 1.0
             propio = par = 0.0
-            for j, wj in zip(pasado.vi[k], w):
-                g = pasado.ganadores[pasado.filas[j]]
+            for j, wj in zip(c.vi[k], w):
+                g = c.ganadores(j)
                 tg = sum(g.values())
                 if cif in g:
                     propio += wj * g[cif] / tg
@@ -363,20 +497,21 @@ def ficha(l: dict) -> str:
         partes.append(f"Órgano: {l['organo']}")
     if l.get("presupuesto") is not None:
         partes.append(f"Presupuesto: {float(l['presupuesto']):,.0f} EUR".replace(",", "."))
-    cp = l["cpvs"] if isinstance(l.get("cpvs"), list) else []
+    cp = _cpvs(l.get("cpvs"))
     if cp:
-        partes.append(f"CPV: {', '.join(str(c) for c in cp[:8])}")
+        partes.append(f"CPV: {', '.join(cp[:8])}")
     return "\n".join(partes)
 
 
-def mensajes_juez(d: Datos, idl: str, ejemplos: list[str], correcciones: list[dict]) -> list:
+def mensajes_juez(f: dict, ejemplos: list[str], correcciones: list[dict]) -> list:
     sistema = INSTRUCCIONES_JUEZ + (AVISO_CORRECCIONES if correcciones else "")
     texto = "CONTRATOS GANADOS MÁS PARECIDOS:\n" + "\n".join(ejemplos)
     if correcciones:
         texto += "\n\nCORRECCIONES DEL CLIENTE EN CONTRATOS PARECIDOS:\n" + "\n".join(
-            f"- {c['titulo']} → {'SÍ le interesa' if c['interesa'] else 'NO le interesa'}"
-            + (f" (motivo: {c['motivo']})" if c.get("motivo") else "") for c in correcciones)
-    texto += f"\n\nCONTRATO NUEVO:\n{ficha(d.lic[idl])}"
+            f"- {x['titulo']}" + (f" ({x['organo']})" if x.get("organo") else "")
+            + f" → {'SÍ le interesa' if x['interesa'] else 'NO le interesa'}"
+            + (f" (motivo: {x['motivo']})" if x.get("motivo") else "") for x in correcciones)
+    texto += f"\n\nCONTRATO NUEVO:\n{ficha(f)}"
     return [{"role": "system", "content": sistema}, {"role": "user", "content": texto}]
 
 
@@ -411,37 +546,31 @@ def juzgar(mensajes: list, gasto: Gasto) -> dict | None:
 # ==============================================================
 # Por perfil
 # ==============================================================
-def procesar_perfil(d: Datos, pasado: Pasado, perfil: dict, previos: dict,
+def procesar_perfil(c: Contexto, perfil: dict, ganados: list[dict], previos: dict,
                     correcciones: list[dict], gasto: Gasto, ensayo: bool) -> dict:
-    X, filas_propias = rasgos_perfil(d, pasado, perfil["cif"])
+    X, filas_propias = rasgos_perfil(c, perfil["cif"], ganados)
     punt = combinar(X)
-    k = math.ceil(PESOS["grupo_por_mil"] / 1000 * len(d.vivas))
-    orden = np.argsort(-punt)[:k]
-    grupo = [(d.vivas[j], float(punt[j])) for j in orden]
+    k = math.ceil(PESOS["grupo_por_mil"] / 1000 * len(c.vivas))
+    grupo = [(c.vivas[j], float(punt[j])) for j in np.argsort(-punt)[:k]]
 
-    # Ejemplos: un contrato ganado por título, los más parecidos.
-    E = np.asarray(d.emb[filas_propias], np.float32)
-    # Correcciones con huella (su título está en el almacén si la
-    # licitación existe; si no, se busca por texto normalizado).
-    corr = [c for c in correcciones if huellas.normal(c["titulo"]) in d.fila]
-    C = np.asarray(d.emb[[d.fila[huellas.normal(c["titulo"])] for c in corr]], np.float32) \
+    E = np.asarray(c.emb[filas_propias], np.float32)
+    corr = [x for x in correcciones if c.fila_de_titulo(x["titulo"]) is not None]
+    C = np.asarray(c.emb[[c.fila_de_titulo(x["titulo"]) for x in corr]], np.float32) \
         if corr else np.zeros((0, E.shape[1]), np.float32)
 
     tareas = []
-    for idl, p in grupo:
+    for idl, _ in grupo:
         if idl in previos:
             continue
-        r = d.fila_de(idl)
-        v = np.asarray(d.emb[r], np.float32) if r is not None else np.zeros(E.shape[1], np.float32)
-        ejemplos = []
-        for j in np.argsort(-(E @ v))[:EJEMPLOS]:
-            t = d.titulos[filas_propias[j]]
-            ejemplos.append(f"- {t}")
+        f = c.ficha_viva[idl]
+        r = c.fila_de_titulo(f["titulo"])
+        v = np.asarray(c.emb[r], np.float32) if r is not None else np.zeros(E.shape[1], np.float32)
+        ejemplos = [f"- {c.titulos[filas_propias[j]]}" for j in np.argsort(-(E @ v))[:EJEMPLOS]]
         cerca = []
         if len(C):
             sc = C @ v
             cerca = [corr[j] for j in np.argsort(-sc)[:CORRECCIONES] if sc[j] >= SIM_CORRECCION]
-        tareas.append((idl, mensajes_juez(d, idl, ejemplos, cerca)))
+        tareas.append((idl, mensajes_juez(f, ejemplos, cerca)))
 
     nuevos = {}
     if not ensayo and tareas:
@@ -453,7 +582,7 @@ def procesar_perfil(d: Datos, pasado: Pasado, perfil: dict, previos: dict,
 
 
 # ==============================================================
-# Sombra: todo a Storage, nada a la base
+# Sombra (Storage) y real (tabla veredictos)
 # ==============================================================
 def sombra_leer(perfil_id: str) -> dict:
     crudo = huellas._get(f"sombra/{perfil_id}.json")
@@ -465,56 +594,141 @@ def sombra_guardar(perfil_id: str, datos: dict) -> None:
                  json.dumps(datos, ensure_ascii=False).encode(), "application/json")
 
 
+def previos_reales(perfil_id: str) -> dict:
+    """Lo ya juzgado por este sistema. Al pasar un perfil por primera vez,
+    se aprovecha lo juzgado en sombra en los dos últimos días (mismas
+    instrucciones, no se paga dos veces)."""
+    filas = leer("veredictos", {"select": "id_licitacion,veredicto,motivo",
+                                "perfil_id": f"eq.{perfil_id}", "modelo": f"eq.{VERSION}"})
+    previos = {f["id_licitacion"]: {"veredicto": f["veredicto"], "motivo": f["motivo"]}
+               for f in filas}
+    if not previos:
+        s = sombra_leer(perfil_id)
+        fecha = s.get("fecha")
+        if fecha and datetime.now(timezone.utc) - datetime.fromisoformat(fecha) < \
+                timedelta(days=2) and s.get("version") == VERSION:
+            previos = s["veredictos"]
+            logging.info("%s: se reutilizan %d veredictos de la sombra", perfil_id[:8], len(previos))
+    return previos
+
+
+def guardar_real(perfil: dict, grupo: list, veredictos: dict, vivas: list[str]) -> int:
+    """Escribe los veredictos del grupo y, la primera vez, retira los del
+    sistema anterior para lo vivo (lo vencido se queda como estaba)."""
+    en_grupo = [i for i, _ in grupo if i in veredictos]
+    filas = [{"id_licitacion": i, "perfil_id": perfil["id"],
+              "veredicto": veredictos[i]["veredicto"], "motivo": veredictos[i]["motivo"],
+              "criterio_version": perfil.get("criterio_version"), "modelo": VERSION}
+             for i in en_grupo]
+    for a in range(0, len(filas), 500):
+        _escribir("POST", "veredictos", {"on_conflict": "id_licitacion,perfil_id"},
+                  filas[a:a + 500], prefer="resolution=merge-duplicates,return=minimal")
+    if perfil.get("sistema") != "huellas":
+        viejos = [f["id_licitacion"] for f in leer("veredictos", {
+            "select": "id_licitacion", "perfil_id": f"eq.{perfil['id']}",
+            "modelo": f"neq.{VERSION}"})]
+        vivas_s = set(vivas)
+        quitar = [i for i in viejos if i in vivas_s]
+        for a in range(0, len(quitar), 100):
+            filtro = "(" + ",".join(_q(i) for i in quitar[a:a + 100]) + ")"
+            _escribir("DELETE", "veredictos", {"perfil_id": f"eq.{perfil['id']}",
+                                               "modelo": f"neq.{VERSION}",
+                                               "id_licitacion": f"in.{filtro}"})
+        logging.info("%s: pasa al sistema nuevo (%d veredictos antiguos de lo vivo retirados)",
+                     perfil["id"][:8], len(quitar))
+    _escribir("PATCH", "perfiles", {"id": f"eq.{perfil['id']}"},
+              {"sistema": "huellas", "puntuado_en": datetime.now(timezone.utc).isoformat()})
+    return len(filas)
+
+
+# ==============================================================
+# Principal
+# ==============================================================
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
                         datefmt="%H:%M:%S")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sombra", action="store_true", help="guardar en Storage, no en la base")
+    modo = ap.add_mutually_exclusive_group(required=True)
+    modo.add_argument("--sombra", action="store_true", help="guardar en Storage, no en la base")
+    modo.add_argument("--real", action="store_true", help="escribir en la tabla veredictos")
     ap.add_argument("--ensayo", action="store_true", help="puntuar sin llamar al juez")
-    ap.add_argument("--perfil", help="uuid (o sus primeras cifras) de un perfil")
+    ap.add_argument("--perfil", help="uuid (o sus primeras cifras) de un perfil; varios, con comas")
+    ap.add_argument("--rehacer", action="store_true",
+                    help="volver a juzgar todo el grupo, sin reutilizar veredictos")
+    ap.add_argument("--instantanea", action="store_true",
+                    help="usar la instantánea del día en vez de leer toda la base")
     args = ap.parse_args()
-    if not args.sombra:
-        logging.error("Solo está permitido --sombra hasta que se apruebe el cambio.")
-        return 2
 
     gasto = Gasto(float(os.environ.get("MAX_GASTO_PASADA", "3")))
     cache = Path(os.environ.get("CACHE_HUELLAS", Path.home() / ".cache" / "huellas"))
-    d = Datos(cache)
-    pasado = Pasado(d)
+    if args.instantanea:
+        c = Contexto.desde_instantanea(cache)
+    else:
+        c = Contexto.completo(cache)
+        if not args.ensayo:
+            c.guardar()
 
-    perfiles = leer("perfiles", {"select": "id,cif", "activo": "is.true",
-                                 "cif": "not.is.null"})
-    perfiles = [p for p in perfiles if p["cif"]
-                and len(d.por_cif[p["cif"]]) >= PESOS["minimo_ganados"]]
+    perfiles = leer("perfiles", {"select": "id,cif,sistema,criterio_version",
+                                 "activo": "is.true", "cif": "not.is.null"})
     if args.perfil:
-        perfiles = [p for p in perfiles if p["id"].startswith(args.perfil)]
+        elegidos = [x.strip() for x in args.perfil.split(",") if x.strip()]
+        perfiles = [p for p in perfiles if any(p["id"].startswith(x) for x in elegidos)]
     correcciones = defaultdict(list)
-    for c in leer("correcciones", {"select": "perfil_id,titulo,interesa,motivo"}):
-        correcciones[c["perfil_id"]].append(c)
-    logging.info("Perfiles con historial suficiente: %d", len(perfiles))
+    for x in leer("correcciones", {"select": "perfil_id,titulo,organo,interesa,motivo"}):
+        correcciones[x["perfil_id"]].append(x)
 
+    hechos = 0
     for p in perfiles:
         et = p["id"][:8]
-        previo = sombra_leer(p["id"])
-        res = procesar_perfil(d, pasado, p, previo["veredictos"],
-                              correcciones[p["id"]], gasto, args.ensayo)
-        veredictos = {**previo["veredictos"], **res["nuevos"]}
+        if not p["cif"]:
+            continue
+        ganados = ganados_de(p["cif"])
+        if len(ganados) < PESOS["minimo_ganados"]:
+            # Poco historial: sigue con el criterio en prosa. Si se le había
+            # marcado para este sistema, se le devuelve (y se da por hecha la
+            # pasada, para que la web no se quede esperando).
+            if p.get("sistema") == "huellas" and args.real and not args.ensayo:
+                _escribir("PATCH", "perfiles", {"id": f"eq.{p['id']}"},
+                          {"sistema": "criterio",
+                           "puntuado_en": datetime.now(timezone.utc).isoformat()})
+                logging.info("%s: menos de %d contratos, vuelve al criterio", et,
+                             PESOS["minimo_ganados"])
+            continue
+        if args.rehacer:
+            previos = {}
+        elif args.sombra:
+            previos = sombra_leer(p["id"])["veredictos"]
+        else:
+            previos = previos_reales(p["id"])
+        c.completar_huellas({g["titulo"] for g in ganados} |
+                            {x["titulo"] for x in correcciones[p["id"]]})
+        res = procesar_perfil(c, p, ganados, previos, correcciones[p["id"]], gasto, args.ensayo)
+        veredictos = {**previos, **res["nuevos"]}
         en_grupo = {i for i, _ in res["grupo"]}
         cuenta = Counter(v["veredicto"] for i, v in veredictos.items() if i in en_grupo)
         logging.info("%s: grupo %d · juzgadas hoy %d · si %d · quizas %d · no %d%s",
                      et, len(en_grupo), len(res["nuevos"]), cuenta["si"], cuenta["quizas"],
                      cuenta["no"], f" · SIN JUZGAR {res['pendientes']}" if res["pendientes"] else "")
-        if not args.ensayo:
+        if args.ensayo:
+            continue
+        if args.sombra:
             sombra_guardar(p["id"], {
                 "version": VERSION, "fecha": datetime.now(timezone.utc).isoformat(),
-                "vivas": len(d.vivas),
-                "grupo": [[i, round(s, 4)] for i, s in res["grupo"]],
+                "vivas": len(c.vivas), "grupo": [[i, round(s, 4)] for i, s in res["grupo"]],
                 "veredictos": veredictos})
+        elif res["pendientes"] and p.get("sistema") != "huellas":
+            # Sin juzgar entero (tope de gasto, caída de OpenAI) no se
+            # cambia de sistema: se queda con lo que tenía y sigue mañana.
+            logging.warning("%s: grupo sin completar; sigue con el sistema anterior", et)
+            continue
+        else:
+            guardar_real(p, res["grupo"], veredictos, c.vivas)
+        hechos += 1
         if gasto.agotado():
             logging.warning("Tope de gasto de la pasada alcanzado (%.2f $): se sigue mañana.",
                             gasto.total)
             break
-    logging.info("Gasto de la pasada: %.3f $", gasto.total)
+    logging.info("Perfiles hechos: %d · gasto de la pasada: %.3f $", hechos, gasto.total)
     return 0
 
 

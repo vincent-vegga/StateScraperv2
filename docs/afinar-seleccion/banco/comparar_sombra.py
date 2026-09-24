@@ -28,20 +28,21 @@ def vivas_con_veredicto(perfil_id: str) -> dict[str, str]:
     return {f["id_licitacion"]: f["veredicto"] for f in filas}
 
 
-def vivas_ahora() -> set[str]:
-    """Misma regla que pendientes_de_perfil: PUB, plazo no vencido, no sustituida."""
+def vivas_de(ids: list[str]) -> set[str]:
+    """De estas, las vivas (regla de pendientes_de_perfil). Por clave
+    primaria: los índices de vivas son parciales y PostgREST no los usa."""
     from datetime import datetime, timezone
     ahora = datetime.now(timezone.utc).isoformat()
-    out, desde = set(), 0
-    while True:
-        filas = puntuador.leer("licitaciones", {
-            "select": "id_licitacion", "estado_licitacion": "eq.PUB",
-            "sustituida": "is.false", "or": f"(fecha_limite.is.null,fecha_limite.gte.{ahora})",
-            "order": "id_licitacion", "offset": str(desde), "limit": "1000"})
-        out |= {f["id_licitacion"] for f in filas}
-        if len(filas) < 1000:
-            return out
-        desde += 1000
+    out = set()
+    for a in range(0, len(ids), 100):
+        filtro = "(" + ",".join(puntuador._q(i) for i in ids[a:a + 100]) + ")"
+        for f in puntuador.leer("licitaciones", {
+                "select": "id_licitacion,estado_licitacion,fecha_limite,sustituida",
+                "id_licitacion": f"in.{filtro}"}):
+            if (f["estado_licitacion"] or "") == "PUB" and not f["sustituida"] and \
+                    (f["fecha_limite"] is None or f["fecha_limite"] >= ahora):
+                out.add(f["id_licitacion"])
+    return out
 
 
 def titulos(ids: list[str]) -> dict[str, dict]:
@@ -59,7 +60,6 @@ def main() -> None:
     carpeta = Path(sys.argv[1]) if len(sys.argv) > 1 else None
     perfiles = puntuador.leer("perfiles", {"select": "id,empresa,cif", "activo": "is.true",
                                            "cif": "not.is.null"})
-    vivas_hoy = vivas_ahora()
     informe = ["# Sombra frente a lo actual (PRIVADO: datos de clientes)", ""]
     print(f"{'perfil':9s} {'vivas':>5s} {'hoy':>5s} {'nuevo':>5s} {'ambos':>5s} "
           f"{'solo hoy':>8s} {'solo nuevo':>10s} {'P.mí':>5s} {'Puede':>5s}")
@@ -76,7 +76,9 @@ def main() -> None:
         actuales = vivas_con_veredicto(p["id"])
         # Lo que hoy se enseña de lo vivo: se cruza con el conjunto de
         # vivas de la pasada (grupo ⊂ vivas; para el resto, se pregunta).
-        hoy_ids = [i for i, x in actuales.items() if x in ("si", "quizas") and i in vivas_hoy]
+        mostradas = [i for i, x in actuales.items() if x in ("si", "quizas")]
+        vivas_hoy = vivas_de(mostradas)
+        hoy_ids = [i for i in mostradas if i in vivas_hoy]
         info = titulos(hoy_ids + sorted(nuevo - set(hoy_ids)))
         hoy = set(hoy_ids)
         ambos, solo_hoy, solo_nuevo = hoy & nuevo, hoy - nuevo, nuevo - hoy
