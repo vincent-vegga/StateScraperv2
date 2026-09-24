@@ -28,6 +28,12 @@ DATOS = AQUI / "datos"
 DATOS.mkdir(exist_ok=True)
 RAIZ = AQUI.parents[2]
 
+# Qué muestra de empresas se usa: "muestra" (las 40 con >=15 contratos) o,
+# con MUESTRA=muestra_pocos, las de poco historial. Los resultados de una
+# muestra que no sea la principal llevan su nombre como sufijo.
+MUESTRA = os.environ.get("MUESTRA", "muestra")
+SUFIJO = "" if MUESTRA == "muestra" else "_" + MUESTRA.removeprefix("muestra_")
+
 CORTE = "2026-01-01"          # T: el perfil solo ve lo ganado antes
 HOY = "2026-09-25"            # fechas de adjudicación posteriores son ruido
 
@@ -40,7 +46,7 @@ PRECIOS = {
     "gpt-4o-mini":            (0.15, 0.60),
     "text-embedding-3-small": (0.02, 0.0),
 }
-TOPE = float(os.environ.get("TOPE_GASTO", "10.0"))   # parada automática
+TOPE = float(os.environ.get("TOPE_GASTO", "16.0"))   # parada automática (límite del proyecto: 17 $)
 FICHERO_GASTO = DATOS / "gasto.json"
 _hilos = threading.Lock()
 

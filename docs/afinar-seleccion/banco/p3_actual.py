@@ -19,7 +19,7 @@ import sys
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
-from comun import (CORTE, DATOS, RAIZ, Cache, ParadaPresupuesto, chat, coste,
+from comun import (CORTE, DATOS, MUESTRA, RAIZ, SUFIJO, Cache, ParadaPresupuesto, chat, coste,
                    gasto_total, log, tokens_aprox)
 from p2_muestra import cargar_base, prefijos
 
@@ -82,7 +82,7 @@ def preparar():
     for fila in base["adj"]:
         por_cif[fila[1]].append(fila)
     base["por_cif"] = por_cif
-    muestra = json.load(open(DATOS / "muestra.json"))
+    muestra = json.load(open(DATOS / f"{MUESTRA}.json"))
     return base, muestra
 
 
@@ -98,7 +98,7 @@ def main(modo: str) -> None:
     cache_lect = Cache("lecturas")
     cache_juez = Cache("juez_actual")
     resultados = {}
-    ruta_res = DATOS / "actual.json"
+    ruta_res = DATOS / f"actual{SUFIJO}.json"
     if ruta_res.exists():
         resultados = json.load(open(ruta_res))
 
@@ -175,7 +175,7 @@ def main(modo: str) -> None:
                 veredictos[et][i] = v
                 if n % 1000 == 0:
                     log(f"{n}/{len(tareas)} · gasto {gasto_total():.3f} $")
-        json.dump(veredictos, open(DATOS / "veredictos_actual.json", "w"))
+        json.dump(veredictos, open(DATOS / f"veredictos_actual{SUFIJO}.json", "w"))
         log(f"juez hecho. Gasto acumulado: {gasto_total():.4f} $")
 
     json.dump(resultados, open(ruta_res, "w"), ensure_ascii=False, indent=1)

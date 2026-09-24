@@ -119,3 +119,38 @@ Empresa por empresa (`p10_por_empresa.py`): frente a v1, 7 empresas
 pierden 9 contratos (ninguna más de 2; casos sueltos, sin un patrón de
 destinatario); frente a v2, 7 pierden uno cada una. Ruido −30 % frente a
 v1. Coste de la medida: 1,86 $. Gasto total del banco: 9,28 $ (tope 10 $).
+
+## Mejoras de la auditoría (24/09/2026, noche)
+
+Todo medido antes de decidir; se adopta solo lo que mejora sin que
+ninguna empresa pierda más de la cuenta.
+
+**Puntuación (sin juez, gratis).** Recall de la puntuación sola, 256 dim:
+
+| Variante | a 30/1.000 | a 50/1.000 | a 100/1.000 |
+|---|---|---|---|
+| En vigor | 89,8 % | 91,9 % | 96,7 % |
+| Sin homologaciones en lo ganado | 90,0 % | 91,9 % | 96,7 % |
+| Solo los últimos 5 años | 89,8 % | 91,9 % | 96,4 % |
+
+Ninguna mejora de verdad: **no se adopta ninguna**.
+
+**Juez v4: ejemplos con quién convocó cada contrato ganado.** Peor:
+recall 92,9 % (v3: 94,0 %), «solo sí» 89,3 % (v3: 91,4 %); frente a v3,
+6 empresas pierden 7 contratos. El organismo le hace más estricto aunque
+se le diga que no decida por él. **No se adopta: sigue v3.**
+
+**Empresas con poco historial (5-14 contratos, 20 empresas, `p11`-`p13`),
+con el juez v3 y los pesos de producción:**
+
+| | Recall (media · p10) | Volumen/1.000 |
+|---|---|---|
+| Sistema anterior (criterio + puerta) | 79,2 % · 63,3 % | 20,2 |
+| **Puntuación por huellas** | **95,4 % · 74,2 %** | 29,1 |
+
+Ninguna empresa pierde; 9 ganan. **Se baja `minimo_ganados` de 15 a 5.**
+
+**Duplicados en la lista:** en lo vivo solo hay 2 casos de mismo título y
+órgano, y son expedientes distintos: no se toca.
+
+Gasto de estas medidas: 5,09 $. Gasto total del banco: 14,37 $ (tope 16 $).
