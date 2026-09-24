@@ -197,6 +197,41 @@ def novedades(cliente, perfil_id: str) -> list[dict]:
         return []
 
 
+def techo_de_tamano(franjas: list[str] | None) -> float:
+    """
+    El techo del tamaño que marcó al darse de alta (perfiles.franjas).
+
+    Lo que pasa de él no se quita del correo: va al final y marcado. Las
+    empresas también ganan contratos algo mayores de lo habitual. Lleva
+    margen, y nunca baja de 100.000 €: por debajo de 15.000 € casi todo
+    son menores, que no se licitan. Misma regla que techoDeTamano en la
+    web.
+    """
+    if not franjas or ">1M" in franjas:
+        return float("inf")
+    tope = (1_000_000 if "100k-1M" in franjas
+            else 100_000 if "15-100k" in franjas else 15_000)
+    return max(tope * 1.5, 100_000)
+
+
+def por_encima(item: dict, techo: float) -> bool:
+    try:
+        return float(item.get("presupuesto") or 0) > techo
+    except (TypeError, ValueError):
+        return False
+
+
+def franjas_de(cliente, perfil_id: str) -> list[str]:
+    try:
+        fila = (cliente.table("perfiles").select("franjas")
+                .eq("id", perfil_id).limit(1).execute().data)
+        return (fila[0].get("franjas") if fila else None) or []
+    except Exception as error:
+        # Sin franjas, el correo sale como siempre.
+        logging.warning("No se pudo leer el tamaño del perfil: %s", error)
+        return []
+
+
 # ==============================================================
 # 3. EL CORREO
 # ==============================================================
@@ -296,7 +331,7 @@ def provincia_de(codigo_postal: str | None) -> str:
 
 
 def componer(items: list[dict], seguidas: list[dict] | None = None,
-             empresa: str = "") -> tuple[str, str, str]:
+             empresa: str = "", techo: float = float("inf")) -> tuple[str, str, str]:
     """
     Devuelve (asunto, cuerpo HTML, cuerpo en texto plano).
 
@@ -308,6 +343,8 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
     del mismo remitente se convierten en uno que se ignora.
     """
     seguidas = seguidas or []
+    # Primero lo de su tamaño; lo que pasa de él, al final y marcado.
+    items = sorted(items, key=lambda it: por_encima(it, techo))
     n = len(items)
 
     if n and seguidas:
@@ -332,6 +369,7 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
         importe = euros(it.get("presupuesto"))
         enlace = it.get("enlace") or URL_INTERFAZ
         contexto = " · ".join(x for x in (organo, prov) if x)
+        grande = por_encima(it, techo)
 
         filas_html.append(f"""
         <tr><td style="padding:20px 0;border-bottom:1px solid #E4E2DD;">
@@ -342,14 +380,16 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
           <div style="color:#17171A;font-size:14px;margin-top:8px;">
             <strong>{importe}</strong>
             <span style="color:#6E6E75;">· {plazo}</span>
-          </div>
+          </div>{"""
+          <div style="color:#6E6E75;font-size:13px;margin-top:6px;">Por encima de tu tamaño</div>"""
+                 if grande else ""}
         </td></tr>""")
 
         # La versión en texto NO se escapa: no es HTML.
         filas_texto.append(
             f"- {titulo}\n"
             f"  {contexto}\n"
-            f"  {importe} · {plazo}\n"
+            f"  {importe} · {plazo}{' · por encima de tu tamaño' if grande else ''}\n"
             f"  {enlace}\n"
         )
 
@@ -589,7 +629,8 @@ def main() -> int:
             continue
 
         logging.info("[%s] %d novedades.", etiqueta, len(items))
-        asunto, cuerpo_html, cuerpo_texto = componer(items, seguidas, nombre)
+        techo = techo_de_tamano(franjas_de(cliente, perfil["id"]))
+        asunto, cuerpo_html, cuerpo_texto = componer(items, seguidas, nombre, techo)
 
         if opciones.simulacro:
             logging.info("  Asunto: %s", asunto)

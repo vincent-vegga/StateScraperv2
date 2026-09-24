@@ -421,6 +421,13 @@ textarea:focus-visible{
   background:var(--superficie);
   text-align:left;
   box-shadow:var(--sombra-baja);
+  /* Es un <label> y la regla general de label (mayúsculas pequeñas,
+     tenue) no va aquí: esto se lee como una frase. */
+  color:var(--texto);
+  font-size:1rem;
+  font-weight:400;
+  letter-spacing:normal;
+  text-transform:none;
 }
 
 .familia input{
@@ -456,7 +463,49 @@ textarea:focus-visible{
   white-space:nowrap;
 }
 
-/* Baraja de entrenamiento */
+/* Bajo cada familia, contratos ya adjudicados parecidos a lo que ha
+   descrito. Solo para verlos: van fuera de la etiqueta para que tocarlos
+   no desmarque la familia. */
+.familia-bloque{margin-bottom:9px}
+.familia-bloque .familia{margin-bottom:0}
+.ejemplos{
+  margin:0;
+  padding:6px 18px 2px 49px;
+  list-style:none;
+  color:var(--tenue);
+  font-size:.86rem;
+  line-height:1.4;
+}
+.ejemplos:empty{display:none}
+.ejemplos li{padding:5px 0}
+.ejemplos li + li{border-top:1px solid var(--linea)}
+.ejemplos .titulo-ejemplo{color:var(--texto)}
+.ejemplos .cargando{font-style:italic}
+
+/* Tamaños de contrato: se pueden marcar varios, o ninguno. */
+.franjas{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:6px 0 22px;
+}
+.franjas button{
+  min-height:40px;
+  padding:8px 14px;
+  border:1px solid var(--fuerte);
+  border-radius:8px;
+  background:var(--superficie);
+  color:var(--texto);
+  font-size:.92rem;
+}
+.franjas button[aria-pressed="true"]{
+  border-color:var(--texto);
+  background:var(--texto);
+  color:var(--superficie);
+}
+.etiqueta-campo{margin:0 0 4px;color:var(--texto);font-size:.95rem;font-weight:600}
+
+/* Progreso del cribado */
 
 .avance{
   margin:24px 0 0;
@@ -1291,6 +1340,11 @@ select:focus{
   /* En el panel hay un botón más —«Mis contratos»— y con la campana y
      el menú no caben los tres. Ese sobra: el menú ya lleva a todo. */
   .cabecera-app .enlace{display:none}
+
+  /* El menú de la flechita se alinea con el borde derecho del grupo
+     campana + «Mi cuenta», no con la campana: desde ahí, en un móvil de
+     320 px, sus 200 px se salían de la pantalla por la izquierda. */
+  .cabecera-app .campana-grupo{position:static}
 }
 
 @media(max-width:720px){
@@ -1753,6 +1807,15 @@ select:focus{
   display:inline-block;
   margin-top:8px;
   color:var(--no);
+  font-size:.78rem;
+}
+
+/* Pasa claramente del tamaño que marcó al darse de alta. No se esconde:
+   las empresas también ganan contratos algo mayores de lo habitual. */
+.por-encima{
+  display:inline-block;
+  margin-top:8px;
+  color:var(--tenue);
   font-size:.78rem;
 }
 
@@ -2474,6 +2537,10 @@ select:focus{
 
   .familia .volumen{
     display:none;
+  }
+
+  .ejemplos{
+    padding-left:18px;
   }
 
   .dialogo{
@@ -3710,13 +3777,29 @@ function pantallaDescribir(perfil, session) {
       <div class="campo">
         <textarea id="descripcion" placeholder="Por ejemplo: vendemos equipamiento para policías locales. Uniformidad, calzado, chalecos, material de defensa, linternas y accesorios.">${esc(perfil.descripcion ?? '')}</textarea>
       </div>
+      <p class="etiqueta-campo" id="franjas-titulo">¿De qué tamaño son los contratos que te interesan?</p>
+      <p class="guia" style="margin:0 0 6px;font-size:.88rem">Marca los que quieras. Si no
+      lo tienes claro, déjalo en blanco.</p>
+      <div class="franjas" role="group" aria-labelledby="franjas-titulo">
+        ${[['<15k', 'Hasta 15.000 €'], ['15-100k', '15.000 – 100.000 €'],
+           ['100k-1M', '100.000 € – 1 M€'], ['>1M', 'Más de 1 M€']].map(([f, texto]) => `
+          <button type="button" data-franja="${f}"
+            aria-pressed="${(perfil.franjas ?? []).includes(f)}">${texto}</button>`).join('')}
+      </div>
       <button class="principal" id="analizar">Continuar</button>
       <div id="resultado"></div>
     </div>`;
 
+  raiz.querySelectorAll('.franjas button').forEach(b => {
+    b.onclick = () => b.setAttribute('aria-pressed',
+      String(b.getAttribute('aria-pressed') !== 'true'));
+  });
+
   const boton = document.getElementById('analizar');
   boton.onclick = async () => {
     const descripcion = document.getElementById('descripcion').value.trim();
+    const franjas = [...raiz.querySelectorAll('.franjas button[aria-pressed="true"]')]
+      .map(b => b.dataset.franja);
     if (descripcion.length < 15) {
       document.getElementById('resultado').innerHTML =
         `<div class="aviso mal">Cuéntanos un poco más, con una frase basta.</div>`;
@@ -3725,8 +3808,8 @@ function pantallaDescribir(perfil, session) {
     boton.disabled = true;
     boton.textContent = 'Analizando...';
     try {
-      const r = await llamar('proponer', { descripcion });
-      pantallaFamilias(perfil, r, session);
+      const r = await llamar('proponer', { descripcion, franjas });
+      pantallaFamilias({ ...perfil, descripcion, franjas }, r, session);
     } catch (error) {
       document.getElementById('resultado').innerHTML =
         `<div class="aviso mal">No hemos podido analizarlo. Inténtalo de nuevo.</div>`;
@@ -3747,14 +3830,19 @@ function pantallaFamilias(perfil, propuesta, session) {
       lista.</p>
       <div class="propuesta">
         ${propuesta.prefijos.map((p, i) => `
-          <label class="familia">
-            <input type="checkbox" checked data-prefijo="${esc(p.prefijo)}">
-            <span class="cuerpo">
-              <span class="que">${esc(p.que_trae)}</span>
-              ${p.aviso ? `<span class="aviso-corto">${esc(p.aviso)}</span>` : ''}
-            </span>
-            <span class="volumen">${p.volumen ?? '—'} al año</span>
-          </label>`).join('')}
+          <div class="familia-bloque">
+            <label class="familia">
+              <input type="checkbox" checked data-prefijo="${esc(p.prefijo)}">
+              <span class="cuerpo">
+                <span class="que">${esc(p.que_trae)}</span>
+                ${p.aviso ? `<span class="aviso-corto">${esc(p.aviso)}</span>` : ''}
+              </span>
+              <span class="volumen">${p.volumen ?? '—'} al año</span>
+            </label>
+            <ul class="ejemplos" data-ejemplos="${esc(p.prefijo)}">
+              <li class="cargando">Buscando contratos parecidos al tuyo...</li>
+            </ul>
+          </div>`).join('')}
       </div>
       <button class="principal" id="seguir">Continuar</button>
       <button class="enlace" id="atras">Cambiar la descripción</button>
@@ -3762,6 +3850,22 @@ function pantallaFamilias(perfil, propuesta, session) {
     </div>`;
 
   document.getElementById('atras').onclick = () => pantallaDescribir(perfil, session);
+
+  // Los contratos parecidos llegan después: la pantalla no los espera.
+  // Si no hay (muestra aún vacía) o falla, simplemente no se enseñan.
+  const listas = [...raiz.querySelectorAll('[data-ejemplos]')];
+  llamar('ejemplos', { prefijos: propuesta.prefijos.map(p => p.prefijo) })
+    .then(r => {
+      for (const ul of listas) {
+        const ejemplos = r.ejemplos?.[ul.dataset.ejemplos] ?? [];
+        ul.innerHTML = ejemplos.map(e => `
+          <li><span class="titulo-ejemplo">${esc(e.titulo)}</span><br>
+          ${esc([e.organo, e.importe ? euros(e.importe) : null,
+                 e.adjudicatario ? `lo ganó ${e.adjudicatario}` : null]
+                .filter(Boolean).join(' · '))}</li>`).join('');
+      }
+    })
+    .catch(() => listas.forEach(ul => { ul.innerHTML = ''; }));
 
   const boton = document.getElementById('seguir');
   boton.onclick = async () => {
@@ -3773,7 +3877,7 @@ function pantallaFamilias(perfil, propuesta, session) {
       return;
     }
     boton.disabled = true;
-    boton.textContent = 'Preparando tu filtro...';
+    boton.textContent = 'Preparando tu filtro con contratos como los tuyos...';
     try {
       await llamar('confirmar_familias', { prefijos });
       const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
@@ -6285,8 +6389,28 @@ function pantallaBienvenida(perfil, session) {
 // 9 · Sus oportunidades
 // ============================================================
 
+// El tamaño que marcó al darse de alta (perfiles.franjas) ordena la
+// lista: primero lo de su tamaño, luego lo que pasa claramente de él,
+// cada parte por plazo. Nada se esconde: en la simulación, esconder lo
+// grande empeoraba siempre (las empresas también ganan contratos algo
+// mayores de lo habitual). El techo lleva margen, y nunca baja de
+// 100.000 €: por debajo de 15.000 € casi todo son menores, que no se
+// licitan, y la lista se quedaría vacía.
+function techoDeTamano(franjas) {
+  if (!franjas?.length || franjas.includes('>1M')) return Infinity;
+  const tope = franjas.includes('100k-1M') ? 1e6 : franjas.includes('15-100k') ? 1e5 : 15e3;
+  return Math.max(tope * 1.5, 1e5);
+}
+const porEncima = (o, techo) => Number(o.presupuesto) > techo;
+function ordenarContratos(xs, techo) {
+  return xs.map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
+    .sort((a, b) => (porEncima(a, techo) - porEncima(b, techo))
+                    || ((a.dias ?? 9e9) - (b.dias ?? 9e9)));
+}
+
 async function pantallaOportunidades(perfil, session, volviendo = false,
                                      pestanaInicial = 'todo') {
+  const techo = techoDeTamano(perfil.franjas);
   if (!volviendo) irA('contratos', { pestana: 'todo' }, true);
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando tus contratos...</p></div>`;
@@ -6296,9 +6420,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     // Si algo cambió por detrás, se repinta sin que el cliente
     // haya tenido que esperar.
     DATOS.length = 0;
-    (nuevos ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
-      .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9))
-      .forEach(o => DATOS.push(o));
+    ordenarContratos(nuevos ?? [], techo).forEach(o => DATOS.push(o));
     if (document.getElementById('lista')) pintar();
   });
   if (error) {
@@ -6307,8 +6429,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     return;
   }
 
-  const DATOS = (data ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
-    .sort((a,b) => (a.dias ?? 9e9) - (b.dias ?? 9e9));
+  const DATOS = ordenarContratos(data ?? [], techo);
 
   // Para el cribado de fondo del arranque: cuando termina, pide la lista
   // de nuevo y la repinta aquí mismo, conservando pestaña y filtros.
@@ -6317,9 +6438,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const { data: nuevos, error: fallo } = await pedirContratos(perfil.id);
     if (fallo || !document.getElementById('lista')) return;
     DATOS.length = 0;
-    (nuevos ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
-      .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9))
-      .forEach(o => DATOS.push(o));
+    ordenarContratos(nuevos ?? [], techo).forEach(o => DATOS.push(o));
     const cuenta = document.getElementById('c-todo');
     if (cuenta) cuenta.textContent = DATOS.length;
     pintar();
@@ -6565,6 +6684,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           ${o.dias_sin_verificar > 90
             ? `<span class="sin-verificar">Sin movimiento desde hace
                ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
+          ${porEncima(o, techo) ? `<span class="por-encima">Por encima de tu tamaño</span>` : ''}
           ${o.correccion
             ? `<span class="confirmado">Confirmado como tuyo</span>`
             : `<span class="acciones">
