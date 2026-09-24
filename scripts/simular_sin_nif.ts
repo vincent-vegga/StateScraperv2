@@ -680,7 +680,24 @@ async function buscarVecinos(descripcion: string, familias: string[], franjas: s
   // de sus franjas; si son menos de 15, los más parecidos sin más.
   const top = ordenados.slice(0, 200);
   const enFranjas = top.filter(({ l }) => franjas.includes(franja(importeDe(l)) ?? ""));
-  const vecinos = (enFranjas.length >= 15 ? enFranjas : top).slice(0, 40);
+  const candidatos = enFranjas.length >= 15 ? enFranjas : top;
+
+  // Con diversidad (MMR): cada vecino nuevo tiene que parecerse a la
+  // descripción y aportar algo que no tengan ya los elegidos. Sin esto,
+  // a quien vende mobiliario y material de oficina le salían cuarenta
+  // variaciones de "suministro de mobiliario de oficina".
+  const vec = (l: Lic) => incrustados.get(l.id_licitacion)!;
+  const vecinos: typeof candidatos = [];
+  const quedan = [...candidatos];
+  while (vecinos.length < 40 && quedan.length) {
+    let mejor = 0, puntos = -Infinity;
+    quedan.forEach(({ l, s }, i) => {
+      const parecido = vecinos.length ? Math.max(...vecinos.map((v) => coseno(vec(l), vec(v.l)))) : 0;
+      const p = 0.7 * s - 0.3 * parecido;
+      if (p > puntos) { puntos = p; mejor = i; }
+    });
+    vecinos.push(quedan.splice(mejor, 1)[0]);
+  }
   return { ordenados, vecinos, en_franjas: enFranjas.length >= 15, pool: unicos.length };
 }
 
@@ -787,7 +804,9 @@ async function evaluar(real: { criterio: string; prefijos: string[] },
   // nuevas, como una variante más: lo que tiene precio por encima cuenta
   // como "no". El filtro real no sabe de tamaños, así que esto mide
   // cuánto relevante se pierde, y `volumen` cuánto adelgaza la lista.
-  const techo = techoDe(franjas) * 1.5;
+  // Por debajo de 15.000 € casi todo son menores, que no se licitan: el
+  // techo más bajo es el del abierto simplificado, unos 100.000 €.
+  const techo = Math.max(techoDe(franjas) * 1.5, 100_000);
   for (const nombre of conTope) {
     for (const v of veredictos) {
       v.fila[`${nombre}+tope`] = v.fila[nombre] && v.fila[nombre] !== "fuera" &&
