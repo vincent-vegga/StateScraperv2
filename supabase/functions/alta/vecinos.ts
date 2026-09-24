@@ -96,6 +96,8 @@ tipo de empresa y ese cliente.
 - Sin palabras de procedimiento, que salen en cualquier contrato: nada \
 de "acuerdo marco", "contrato basado", "lote", "licitación", \
 "procedimiento", "expediente", "adjudicación".
+- Sin nombres de lugares ni de organismos concretos ("Ayuntamiento de \
+Madrid"): el tipo de cliente sí ("para centros de salud"), el sitio no.
 
 Devuelve EXCLUSIVAMENTE JSON: {"titulos":["...","..."]}`;
 
@@ -107,11 +109,6 @@ export async function titulosTipicos(descripcion: string): Promise<string[]> {
   return (Array.isArray(r.titulos) ? r.titulos : [])
     .map((t: unknown) => String(t).trim()).filter((t: string) => t.length >= 10).slice(0, 8);
 }
-
-// Por debajo de este parecido un contrato no se enseña como ejemplo: con
-// una descripción vaga, lo "más parecido" de una familia que no es la
-// suya puede no parecerse en nada.
-export const PARECIDO_MINIMO = 0.5;
 
 export type Parecidos = {
   // Todos, del más al menos parecido.
@@ -195,21 +192,30 @@ export function codigosDelVecindario(p: Parecidos): string[] {
 }
 
 /**
- * Los más parecidos de cada familia, para enseñárselos. Solo los que se
- * parecen de verdad: una familia sin ninguno se queda sin ejemplos, que
- * también le dice algo al cliente.
+ * Los más parecidos de cada familia, para enseñárselos. Solo los que
+ * están entre los 200 más parecidos de toda la búsqueda (el vecindario):
+ * con una descripción vaga, lo "más parecido" de una familia que no es
+ * la suya puede no parecerse en nada, y es mejor que esa familia se
+ * quede sin ejemplos. Un umbral fijo de parecido no servía: buscando con
+ * títulos las puntuaciones suben y la mitad de una familia lo pasaba.
  */
-export function ejemplosPorFamilia(p: Parecidos, familias: string[], cuantos = 3,
-                                   minimo = PARECIDO_MINIMO) {
-  return Object.fromEntries(familias.map((f) => [f,
-    p.ordenados.filter(({ l, s }) => s >= minimo && (l.prefijo_principal.startsWith(f) ||
-                                  f.startsWith(l.prefijo_principal)))
+export function ejemplosPorFamilia(p: Parecidos, familias: string[], cuantos = 3) {
+  const vecindario = p.ordenados.slice(0, 200);
+  return Object.fromEntries(familias.map((f) => {
+    const vistos = new Set<string>();
+    return [f, vecindario.filter(({ l }) => l.prefijo_principal.startsWith(f) ||
+                                            f.startsWith(l.prefijo_principal))
+      // Sin repetir título: hay expedientes con varios lotes iguales.
+      .filter(({ l }) => {
+        const t = l.titulo.trim().toLowerCase();
+        return !vistos.has(t) && !!vistos.add(t);
+      })
       .slice(0, cuantos)
       .map(({ l }) => ({
         titulo: l.titulo, organo: l.organo ?? "", importe: l.importe ?? l.presupuesto,
         adjudicatario: l.adjudicatario ?? "",
-      })),
-  ]));
+      }))];
+  }));
 }
 
 // Nombres de las divisiones CPV (vocabulario común de 2008), para el
