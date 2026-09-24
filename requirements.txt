@@ -29,3 +29,8 @@ supabase>=2.10,<3
 
 # Cliente de OpenAI para la clasificacion de relevancia.
 openai>=1.40,<2
+
+# --- Puntuación por huellas (puntuador.py, huellas.py) -------
+
+# Cálculo de similitudes entre títulos (vectores de 256 números).
+numpy>=1.26,<3

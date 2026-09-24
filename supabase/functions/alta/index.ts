@@ -409,6 +409,52 @@ async function parecidosDe(
   return await buscarParecidos(String(perfil.descripcion), filas, franjas);
 }
 
+// ------------------------------------------------------------
+// Puntuación por huellas (puntuador.py en GitHub Actions)
+// ------------------------------------------------------------
+//
+// Las empresas con NIF y al menos MIN_HUELLAS contratos ganados no se
+// criban con el criterio en prosa: su lista la calcula puntuador.py
+// (parecido con lo que han ganado, sus pares y el CPV como peso, y un juez
+// con ejemplos). Recupera el 95 % de lo que la empresa acaba ganando
+// frente al 76 % del criterio (docs/afinar-seleccion/RESULTADOS.md).
+//
+// Corre en GitHub Actions porque necesita ~600 MB de huellas en memoria.
+// Desde aquí solo se pide la pasada (workflow_dispatch) y se espera a que
+// `puntuado_en` alcance a `puntuacion_pedida`. Sin GITHUB_DISPATCH_TOKEN
+// no se puede pedir: el perfil sigue con el criterio de siempre y pasa al
+// sistema nuevo en la pasada diaria del día siguiente.
+const MIN_HUELLAS = 15;
+const REPO = "vincent-vegga/StateScraperv2";
+
+async function pedirPuntuacion(perfilId: string, rehacer: boolean): Promise<boolean> {
+  const token = Deno.env.get("GITHUB_DISPATCH_TOKEN");
+  if (!token) return false;
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${REPO}/actions/workflows/puntuador.yml/dispatches`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github+json",
+          "User-Agent": "StateScraper/1.0",
+        },
+        body: JSON.stringify({
+          ref: "main",
+          inputs: { perfil: perfilId, rehacer: rehacer ? "true" : "false" },
+        }),
+      });
+    if (r.status !== 204) {
+      console.error(`No se pudo pedir la puntuación: ${r.status} ${(await r.text()).slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("No se pudo pedir la puntuación:", error);
+    return false;
+  }
+}
+
 Deno.serve(async (peticion) => {
   const origen = peticion.headers.get("origin");
   if (peticion.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origen) });
@@ -599,6 +645,15 @@ Deno.serve(async (peticion) => {
         // Directo a cribar: no hay tarjetas que deslizar.
         paso_alta: "cribando",
       }).eq("id", perfil.id);
+
+      // Con historial suficiente, su lista la calcula el puntuador.
+      // Si no se puede pedir la pasada, sigue con el criterio de siempre.
+      const conHuellas = Number(suya.contratos ?? 0) >= MIN_HUELLAS &&
+        await pedirPuntuacion(perfil.id, true);
+      await admin.from("perfiles").update(conHuellas
+        ? { sistema: "huellas", puntuado_en: null,
+            puntuacion_pedida: new Date().toISOString() }
+        : { sistema: "criterio" }).eq("id", perfil.id);
 
       if (!reutilizada) {
         await admin.from("lecturas_empresa").upsert({
@@ -814,12 +869,24 @@ Deno.serve(async (peticion) => {
         .update({ aplicada: true })
         .in("id", correcciones.map((c) => c.id));
 
-      // Se vuelve a clasificar todo lo suyo con el criterio nuevo: si no,
-      // la corrección se quedaría en el contrato que la provocó en lugar
-      // de propagarse.
-      await admin.from("veredictos").delete().eq("perfil_id", perfil.id);
-      await comoUsuario.from("perfiles").update({ paso_alta: "cribando" })
-        .eq("id", perfil.id);
+      // Con huellas, el juez ve las correcciones directamente (las más
+      // parecidas a cada contrato): se le pide rehacer su grupo entero.
+      // Los veredictos no se borran: la lista sigue ahí mientras tanto.
+      // Si no se puede pedir, se vuelve al criterio (ya regenerado arriba).
+      const rehecho = perfil.sistema === "huellas" &&
+        await pedirPuntuacion(perfil.id, true);
+      if (rehecho) {
+        await admin.from("perfiles").update({
+          paso_alta: "cribando", puntuacion_pedida: new Date().toISOString(),
+        }).eq("id", perfil.id);
+      } else {
+        // Se vuelve a clasificar todo lo suyo con el criterio nuevo: si no,
+        // la corrección se quedaría en el contrato que la provocó en lugar
+        // de propagarse.
+        await admin.from("veredictos").delete().eq("perfil_id", perfil.id);
+        await admin.from("perfiles").update({ paso_alta: "cribando", sistema: "criterio" })
+          .eq("id", perfil.id);
+      }
 
       console.log(`Criterio ajustado con ${correcciones.length} correcciones`);
 
@@ -903,6 +970,45 @@ Deno.serve(async (peticion) => {
         cribados: veredictos.length,
         guardados: metidas ?? 0,
       });
+    }
+
+    if (accion === "cribar" && perfil.sistema === "huellas") {
+      // Espera a que el puntuador termine la pasada pedida. Cada llamada
+      // espera hasta ~20 s aquí dentro para que la web no martillee; la
+      // web vuelve a llamar mientras reciba `esperando`.
+      const hecha = (p: Record<string, unknown>) =>
+        !!p.puntuado_en && (!p.puntuacion_pedida ||
+          Date.parse(String(p.puntuado_en)) >= Date.parse(String(p.puntuacion_pedida)));
+      let actual: Record<string, unknown> = perfil;
+      for (let i = 0; i < 4 && !hecha(actual); i++) {
+        if (i) await new Promise((r) => setTimeout(r, 5000));
+        const { data } = await admin.from("perfiles")
+          .select("sistema, puntuado_en, puntuacion_pedida").eq("id", perfil.id).single();
+        actual = data ?? actual;
+        if (actual.sistema !== "huellas") break;
+      }
+      if (actual.sistema === "huellas" && !hecha(actual)) {
+        // Si la pasada pedida no ha llegado en 20 minutos (Actions caído,
+        // cola larga), se pide otra; si ni eso, al criterio de siempre.
+        const pedida = actual.puntuacion_pedida
+          ? Date.parse(String(actual.puntuacion_pedida)) : 0;
+        if (Date.now() - pedida > 20 * 60 * 1000) {
+          if (await pedirPuntuacion(perfil.id, false)) {
+            await admin.from("perfiles").update({ puntuacion_pedida: new Date().toISOString() })
+              .eq("id", perfil.id);
+          } else {
+            await admin.from("perfiles").update({ sistema: "criterio" }).eq("id", perfil.id);
+          }
+        }
+        return responder({ ok: true, terminado: false, hechas: 0, quedan: 0, esperando: true });
+      }
+      if (actual.sistema === "huellas") {
+        if (perfil.paso_alta === "cribando") {
+          await comoUsuario.from("perfiles").update({ paso_alta: "listo" }).eq("id", perfil.id);
+        }
+        return responder({ ok: true, terminado: true, quedan: 0 });
+      }
+      // Ha vuelto al criterio: sigue abajo, con el cribado de siempre.
     }
 
     if (accion === "cribar") {
@@ -1039,6 +1145,9 @@ Deno.serve(async (peticion) => {
         cif: null,
         empresa: null,
         paso_alta: "describiendo",
+      }).eq("id", perfil.id);
+      await admin.from("perfiles").update({
+        sistema: "criterio", puntuado_en: null, puntuacion_pedida: null,
       }).eq("id", perfil.id);
 
       console.log(`Perfil ${perfil.id} reiniciado`);
