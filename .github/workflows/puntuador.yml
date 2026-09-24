@@ -1,0 +1,81 @@
+# ============================================================
+# PUNTUACIÓN POR HUELLAS (EN SOMBRA)
+# ============================================================
+# Corre después del robot diario y puntúa lo vivo para los clientes
+# dados de alta con NIF y con historial suficiente (ver puntuador.py y
+# docs/afinar-seleccion/). De momento, EN SOMBRA: guarda sus resultados
+# en Supabase Storage (bucket `huellas`, carpeta `sombra/`) para
+# compararlos con el cribado actual. No escribe nada en la base ni
+# cambia lo que ven los clientes.
+#
+# Va en un workflow aparte, y no como paso del robot, para que un fallo
+# aquí no pueda tumbar el scraper, el cribado ni el correo.
+# ============================================================
+
+name: Puntuación por huellas (sombra)
+
+on:
+  workflow_run:
+    workflows: ["Scraper de licitaciones (eventos y cultura)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      perfil:
+        description: "Solo este perfil (uuid o sus primeras cifras). Vacío = todos."
+        required: false
+        default: ""
+      ensayo:
+        description: "Puntuar sin llamar al juez (sin gasto)"
+        type: boolean
+        default: false
+
+# Dos pasadas a la vez juzgarían lo mismo dos veces.
+concurrency:
+  group: puntuador
+  cancel-in-progress: false
+
+jobs:
+  puntuar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CACHE_HUELLAS: /home/runner/.cache/huellas
+      # Freno de gasto por pasada. Un día normal son céntimos; el tope
+      # solo salta si algo se desboca.
+      MAX_GASTO_PASADA: '2'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      # ~600 MB de huellas. Se guardan entre pasadas para no bajarlas de
+      # Storage cada día; las partes nuevas se bajan solas.
+      - name: Recuperar las huellas de la pasada anterior
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/huellas
+          key: huellas-v1-${{ github.run_id }}
+          restore-keys: |
+            huellas-v1-
+
+      - name: Puntuar (en sombra)
+        run: >
+          python puntuador.py --sombra
+          ${{ inputs.perfil && format('--perfil {0}', inputs.perfil) || '' }}
+          ${{ inputs.ensayo && '--ensayo' || '' }}
+
+      - name: Guardar las huellas para la próxima pasada
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/.cache/huellas
+          key: huellas-v1-${{ github.run_id }}
