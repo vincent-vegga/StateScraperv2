@@ -40,7 +40,19 @@ def aplicar(modelo, X):
 
 
 def combinada_loco(puntos: dict) -> dict[str, np.ndarray]:
-    """Puntuación combinada de cada empresa con pesos aprendidos del resto."""
+    """Puntuación combinada de cada empresa con pesos aprendidos del resto.
+    Se guarda en disco: son 40 ajustes y la usan varios pasos."""
+    from comun import DATOS, clave  # noqa: PLC0415
+    ruta = DATOS / f"combinada_{clave([len(f) for f in puntos.values()] + list(puntos))[:12]}.npz"
+    if ruta.exists():
+        guardado = np.load(ruta)
+        return {e: guardado[e] for e in puntos}
+    out = _combinada_loco(puntos)
+    np.savez(ruta, **out)
+    return out
+
+
+def _combinada_loco(puntos: dict) -> dict[str, np.ndarray]:
     Xs = {e: matriz(f) for e, f in puntos.items()}
     ys = {e: np.array([x["y"] for x in f], float) for e, f in puntos.items()}
     out = {}

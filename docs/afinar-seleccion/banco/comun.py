@@ -133,9 +133,15 @@ def _post_openai(ruta: str, cuerpo: dict) -> dict:
     clave_api = os.environ["OPENAI_API_KEY"]
     espera = 1.0
     for intento in range(30):
-        r = _sesion_ia.post(f"https://api.openai.com/v1/{ruta}", json=cuerpo,
-                            headers={"Authorization": f"Bearer {clave_api}"},
-                            timeout=120)
+        try:
+            r = _sesion_ia.post(f"https://api.openai.com/v1/{ruta}", json=cuerpo,
+                                headers={"Authorization": f"Bearer {clave_api}"},
+                                timeout=120)
+        except requests.RequestException:
+            # Corte de red: la petición pudo cobrarse sin llegar; se repite.
+            time.sleep(espera + random.random())
+            espera = min(espera * 2, 30)
+            continue
         if r.status_code == 200:
             return r.json()
         if r.status_code == 429 and "insufficient_quota" in r.text:
