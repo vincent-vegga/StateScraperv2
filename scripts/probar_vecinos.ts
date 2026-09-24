@@ -2,11 +2,11 @@
 // Probar los contratos parecidos del alta sin NIF (vecinos.ts)
 // ============================================================
 //
-// Con descripciones inventadas: nada de clientes. Lee lo adjudicado de
-// unas familias prefijo a prefijo (como hará refrescar_muestra_adjudicada)
-// y pasa por las mismas funciones que la función de alta. Enseña los
-// títulos más parecidos, los códigos que se capturarían y cuánto tarda.
-// Solo lee.
+// Con descripciones inventadas: nada de clientes. Lee la muestra por el
+// mismo camino que la función de alta (muestra_de_familias_json) y compara
+// buscar con la descripción tal cual y con títulos típicos de la empresa.
+// Enseña los títulos buscados, los vecinos, los códigos, los ejemplos que
+// vería y cómo se reparten los parecidos. Solo lee.
 //
 //   deno run -A scripts/probar_vecinos.ts
 //
@@ -15,7 +15,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  type Adjudicada, buscarParecidos, codigosDelVecindario, ejemplosPorFamilia,
+  type Adjudicada, buscarParecidos, codigosDelVecindario, ejemplosPorFamilia, titulosTipicos,
 } from "../supabase/functions/alta/vecinos.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_KEY")!,
@@ -28,38 +28,40 @@ const CASOS = [
     familias: ["18", "35"], franjas: ["<15k", "15-100k"] },
   { descripcion: "Hacemos la limpieza de edificios públicos, colegios y centros de salud.",
     familias: ["90"], franjas: ["100k-1M"] },
+  // Vaga a propósito: dice cómo vende, no qué.
+  { descripcion: "Empresa especializada de forma exclusiva en el suministro integral B2G para centros educativos de titularidad pública. No vendemos al por menor: trabajamos por licitaciones, concursos públicos y acuerdos marco con las Consejerías de Educación y el Ministerio.",
+    familias: ["80", "55", "39", "90", "71", "18", "33", "92"], franjas: ["<15k", "15-100k", "100k-1M"] },
+  { descripcion: "Vendemos e instalamos mobiliario escolar y de oficina: mesas y sillas para aulas, armarios, estanterías de biblioteca y mobiliario de laboratorio para institutos. También el montaje y la retirada del mobiliario viejo.",
+    familias: ["39", "51"], franjas: ["15-100k", "100k-1M"] },
 ];
 
-async function adjudicadas(familias: string[]): Promise<Adjudicada[]> {
-  const codigos = familias.flatMap((f) => Array.from({ length: 100 }, (_, i) => f + String(i).padStart(2, "0")));
-  const filas: Adjudicada[] = [];
-  for (let i = 0; i < codigos.length; i += 4) {
-    const tanda = await Promise.all(codigos.slice(i, i + 4).map(async (c) => {
-      const { data } = await db.from("licitaciones")
-        .select("id_licitacion, prefijo_principal, titulo, organo, presupuesto, presupuesto_base, importe_adjudicacion, adjudicatario, adjudicatario_cif, cpvs, procedimiento")
-        .eq("prefijo_principal", c).not("adjudicatario_cif", "is", null)
-        .order("fecha_actualizacion", { ascending: false }).limit(100);
-      return (data ?? []).filter((l) => l.procedimiento !== "Contrato menor" && l.titulo)
-        .map((l) => ({ ...l, presupuesto: l.presupuesto_base ?? l.presupuesto,
-                       importe: l.importe_adjudicacion }) as unknown as Adjudicada);
-    }));
-    filas.push(...tanda.flat());
-  }
-  return filas;
-}
+const pct = (xs: number[], p: number) => xs.length ? xs[Math.floor((xs.length - 1) * p)].toFixed(2) : "—";
 
 for (const caso of CASOS) {
-  const filas = await adjudicadas(caso.familias);
-  const t0 = performance.now();
-  const p = await buscarParecidos(caso.descripcion, filas, caso.franjas);
-  const ms = Math.round(performance.now() - t0);
-  const codigos = codigosDelVecindario(p);
-  const ejemplos = ejemplosPorFamilia(p, caso.familias);
-  console.log(`\n${caso.descripcion}`);
-  console.log(`  ${filas.length} adjudicados · ${p.vecinos.length} vecinos · ${ms} ms (embeddings incluidos)`);
-  console.log(`  códigos: ${codigos.join(", ")}`);
-  for (const l of p.vecinos.slice(0, 8)) console.log(`   · ${l.titulo.slice(0, 110)}`);
-  for (const [f, es] of Object.entries(ejemplos)) {
-    console.log(`  ejemplos ${f}: ${es.map((e) => e.titulo.slice(0, 60)).join(" | ")}`);
+  const { data, error } = await db.rpc("muestra_de_familias_json", { familias: caso.familias });
+  if (error) throw error;
+  const filas = (data ?? []) as Adjudicada[];
+  console.log(`\n=== ${caso.descripcion.slice(0, 100)}`);
+  console.log(`  ${filas.length} adjudicados en la muestra`);
+
+  const titulos = await titulosTipicos(caso.descripcion);
+  console.log(`  títulos típicos: ${titulos.join(" | ")}`);
+
+  for (const [modo, buscados] of [["descripción", []], ["títulos", titulos]] as const) {
+    const t0 = performance.now();
+    const p = await buscarParecidos(caso.descripcion, filas, caso.franjas, [...buscados]);
+    const ms = Math.round(performance.now() - t0);
+    const sims = p.ordenados.map((o) => o.s);
+    const codigos = codigosDelVecindario(p);
+    const divisiones = [...new Set(codigos.map((c) => c.slice(0, 2)))].map((d) =>
+      `${d}:${codigos.filter((c) => c.startsWith(d)).length}`).join(" ");
+    console.log(`\n  -- con ${modo} (${ms} ms)`);
+    console.log(`     parecido: máx ${pct(sims, 0)} · top10 ${pct(sims, 10 / sims.length)} · top200 ${pct(sims, 200 / sims.length)} · mediana ${pct(sims, 0.5)}`);
+    console.log(`     códigos (${codigos.length}) por división: ${divisiones}`);
+    for (const l of p.vecinos.slice(0, 8)) console.log(`      · ${l.titulo.slice(0, 105)}`);
+    const ejemplos = ejemplosPorFamilia(p, caso.familias);
+    for (const [f, es] of Object.entries(ejemplos)) {
+      console.log(`     ejemplos ${f}: ${es.length ? es.map((e) => e.titulo.slice(0, 55)).join(" | ") : "(ninguno)"}`);
+    }
   }
 }

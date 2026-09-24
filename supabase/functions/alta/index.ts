@@ -31,7 +31,7 @@ import {
   prefijosDeLectura,
 } from "./modelo.ts";
 import {
-  DIVISIONES, FRANJAS, buscarParecidos, codigosDelVecindario, ejemplosPorFamilia,
+  DIVISIONES, FRANJAS, buscarParecidos, codigosDelVecindario, ejemplosPorFamilia, titulosTipicos,
   type Adjudicada, type Parecidos,
 } from "./vecinos.ts";
 
@@ -406,7 +406,10 @@ async function parecidosDe(
   const filas = ((data ?? []) as Adjudicada[]).filter((l) => l.titulo);
   if (filas.length < 50) return null;
   const franjas = Array.isArray(perfil.franjas) ? perfil.franjas as string[] : [];
-  return await buscarParecidos(String(perfil.descripcion), filas, franjas);
+  const descripcion = String(perfil.descripcion);
+  // Si el modelo no los da, se busca con la descripción tal cual.
+  const titulos = await titulosTipicos(descripcion).catch(() => [] as string[]);
+  return await buscarParecidos(descripcion, filas, franjas, titulos);
 }
 
 Deno.serve(async (peticion) => {

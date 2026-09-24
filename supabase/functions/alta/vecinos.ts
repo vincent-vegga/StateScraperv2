@@ -17,7 +17,7 @@
 // vecindario no se pierde lo que la descripción sola sí encontraba.
 // ============================================================
 
-import { OPENAI } from "./modelo.ts";
+import { OPENAI, llamarModelo } from "./modelo.ts";
 
 const EMBEDDINGS = OPENAI.replace("/chat/completions", "/embeddings");
 
@@ -75,6 +75,44 @@ const coseno = (a: number[], b: number[]) => {
   return s;
 };
 
+// Lo que se busca no es la descripción sino títulos de contratos que
+// esa empresa ganaría: se comparan títulos con títulos. Con la
+// descripción tal cual, una que decía "suministro integral B2G a centros
+// educativos... licitaciones, concursos y acuerdos marco con las
+// Consejerías" encontraba "Contrato basado en Acuerdo Marco... suministro
+// de hemoderivados": se parecían en la jerga, no en lo que se vende.
+const INSTRUCCIONES_TITULOS = `\
+Eres un experto en contratación pública española. Te dan la descripción \
+de una empresa, escrita por ella misma.
+
+Escribe entre 6 y 8 TÍTULOS de contratos públicos que esa empresa \
+ganaría, tal como aparecerían publicados en la Plataforma de Contratación \
+del Sector Público.
+
+- Concretos: qué se suministra o qué servicio se presta, y para quién.
+- Variados: uno por cada línea de negocio que se deduzca de la descripción.
+- Si la descripción no dice qué vende, escribe lo más probable para ese \
+tipo de empresa y ese cliente.
+- Sin palabras de procedimiento, que salen en cualquier contrato: nada \
+de "acuerdo marco", "contrato basado", "lote", "licitación", \
+"procedimiento", "expediente", "adjudicación".
+
+Devuelve EXCLUSIVAMENTE JSON: {"titulos":["...","..."]}`;
+
+export async function titulosTipicos(descripcion: string): Promise<string[]> {
+  const r = await llamarModelo([
+    { role: "system", content: INSTRUCCIONES_TITULOS },
+    { role: "user", content: descripcion },
+  ], 500);
+  return (Array.isArray(r.titulos) ? r.titulos : [])
+    .map((t: unknown) => String(t).trim()).filter((t: string) => t.length >= 10).slice(0, 8);
+}
+
+// Por debajo de este parecido un contrato no se enseña como ejemplo: con
+// una descripción vaga, lo "más parecido" de una familia que no es la
+// suya puede no parecerse en nada.
+export const PARECIDO_MINIMO = 0.5;
+
 export type Parecidos = {
   // Todos, del más al menos parecido.
   ordenados: { l: Adjudicada; s: number }[];
@@ -83,7 +121,9 @@ export type Parecidos = {
 };
 
 /**
- * Los contratos de `filas` más parecidos a la descripción.
+ * Los contratos de `filas` más parecidos a la descripción o, si se dan,
+ * a los `titulos` típicos de la empresa: cuenta el más parecido de ellos,
+ * así cada línea de negocio atrae lo suyo.
  *
  * Los vecinos: de los 200 más parecidos, los de sus franjas si hay al
  * menos 15 (si no, todos), y de ahí 40 con diversidad. Sin diversidad, a
@@ -91,7 +131,8 @@ export type Parecidos = {
  * variaciones de "suministro de mobiliario de oficina".
  */
 export async function buscarParecidos(descripcion: string, filas: Adjudicada[],
-                                      franjas: string[]): Promise<Parecidos> {
+                                      franjas: string[], titulosBuscados: string[] = [],
+                                      ): Promise<Parecidos> {
   // Un título repetido se incrusta una vez.
   const porTitulo = new Map<string, number>();
   const titulos: string[] = [];
@@ -99,11 +140,16 @@ export async function buscarParecidos(descripcion: string, filas: Adjudicada[],
     const t = l.titulo.trim().toLowerCase();
     if (!porTitulo.has(t)) { porTitulo.set(t, titulos.length); titulos.push(l.titulo); }
   }
-  const [consulta, ...vectores] = await incrustar([descripcion, ...titulos]);
+  const buscadas = titulosBuscados.length ? titulosBuscados : [descripcion];
+  const todos = await incrustar([...buscadas, ...titulos]);
+  const consultas = todos.slice(0, buscadas.length);
+  const vectores = todos.slice(buscadas.length);
   const vector = (l: Adjudicada) => vectores[porTitulo.get(l.titulo.trim().toLowerCase())!];
 
-  const ordenados = filas.map((l) => ({ l, s: coseno(consulta, vector(l)) }))
-    .sort((a, b) => b.s - a.s);
+  const ordenados = filas.map((l) => {
+    const v = vector(l);
+    return { l, s: Math.max(...consultas.map((c) => coseno(c, v))) };
+  }).sort((a, b) => b.s - a.s);
 
   const top = ordenados.slice(0, 200);
   const enFranjas = franjas.length
@@ -148,11 +194,16 @@ export function codigosDelVecindario(p: Parecidos): string[] {
   return [...new Set([...deVecinos, ...deVecindario])];
 }
 
-/** Los más parecidos de cada familia, para enseñárselos. */
-export function ejemplosPorFamilia(p: Parecidos, familias: string[], cuantos = 3) {
+/**
+ * Los más parecidos de cada familia, para enseñárselos. Solo los que se
+ * parecen de verdad: una familia sin ninguno se queda sin ejemplos, que
+ * también le dice algo al cliente.
+ */
+export function ejemplosPorFamilia(p: Parecidos, familias: string[], cuantos = 3,
+                                   minimo = PARECIDO_MINIMO) {
   return Object.fromEntries(familias.map((f) => [f,
-    p.ordenados.filter(({ l }) => l.prefijo_principal.startsWith(f) ||
-                                  f.startsWith(l.prefijo_principal))
+    p.ordenados.filter(({ l, s }) => s >= minimo && (l.prefijo_principal.startsWith(f) ||
+                                  f.startsWith(l.prefijo_principal)))
       .slice(0, cuantos)
       .map(({ l }) => ({
         titulo: l.titulo, organo: l.organo ?? "", importe: l.importe ?? l.presupuesto,
