@@ -22,6 +22,15 @@ Aprobado por el dueño y encendido (PR #5). Resumen:
   where id = ...` (el cribado de siempre rellena lo que falte).
 - **Gasto de OpenAI del banco y la puesta en marcha:** 5,77 $ (clave del
   banco). En producción: ~0,1 $ al día para todos los perfiles.
+- **Regla para cualquier cambio del juez o de la puntuación** (el dueño
+  avisa: ajustes hechos mirando una empresa concreta ya hundieron a otras):
+  medirlo antes en el banco y pasar `banco/p10_por_empresa.py` con la
+  versión vigente y la nueva. La media no basta: ninguna empresa debe
+  perder más de un contrato sin explicación. El juez v2 lo pasó: 38 de 40
+  igual, 2 pierden un contrato cada una (casos sueltos), ruido −19 %.
+- **Juez en vigor:** `puntuacion-v2` (destinatario y reglas del cliente).
+  Después de medirlo se añadió una frase sobre los nombres de la policía
+  local (Policía Municipal, Guardia Urbana), sin volver a medir.
 - **Pendiente:**
   1. Medir en el banco empresas con 3-14 contratos (<1 $) y, si sale bien,
      bajar `minimo_ganados`.
