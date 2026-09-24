@@ -399,7 +399,9 @@ async function parecidosDe(
   admin: { rpc: (f: string, a: Record<string, unknown>) => PromiseLike<{ data: any; error: any }> },
   perfil: Record<string, unknown>, familias: string[],
 ): Promise<Parecidos | null> {
-  const { data, error } = await admin.rpc("muestra_de_familias", { familias });
+  // En jsonb, una sola fila: como conjunto de filas, la API cortaba en
+  // 1.000 y solo llegaban las primeras familias.
+  const { data, error } = await admin.rpc("muestra_de_familias_json", { familias });
   if (error) throw error;
   const filas = ((data ?? []) as Adjudicada[]).filter((l) => l.titulo);
   if (filas.length < 50) return null;
