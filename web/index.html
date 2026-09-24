@@ -1498,6 +1498,11 @@ select:focus{
   /* En el panel hay un botón más —«Mis contratos»— y con la campana y
      el menú no caben los tres. Ese sobra: el menú ya lleva a todo. */
   .cabecera-app .enlace{display:none}
+
+  /* El menú de la flechita se alinea con el borde derecho del grupo
+     campana + «Mi cuenta», no con la campana: desde ahí, en un móvil de
+     320 px, sus 200 px se salían de la pantalla por la izquierda. */
+  .cabecera-app .campana-grupo{position:static}
 }
 
 @media(max-width:720px){
