@@ -43,7 +43,7 @@ def combinada_loco(puntos: dict) -> dict[str, np.ndarray]:
     """Puntuación combinada de cada empresa con pesos aprendidos del resto.
     Se guarda en disco: son 40 ajustes y la usan varios pasos."""
     from comun import DATOS, clave  # noqa: PLC0415
-    ruta = DATOS / f"combinada_{clave([len(f) for f in puntos.values()] + list(puntos))[:12]}.npz"
+    ruta = DATOS / f"combinada_{clave(puntos)[:16]}.npz"   # clave según el contenido
     if ruta.exists():
         guardado = np.load(ruta)
         return {e: guardado[e] for e in puntos}

@@ -53,6 +53,12 @@ def main() -> None:
     ts = titulos()
     fila = {t: i for i, t in enumerate(ts)}
     emb = np.load(DATOS / "emb.npy", mmap_mode="r")
+    dim = int(os.environ.get("DIM", "512"))
+    if dim < emb.shape[1]:
+        # Los embeddings de OpenAI admiten recorte: primeras dimensiones y
+        # renormalizar. Sirve para medir cuánto se pierde guardando menos.
+        e = np.asarray(emb[:, :dim], np.float32)
+        emb = (e / np.linalg.norm(e, axis=1, keepdims=True)).astype(np.float16)
     hecho = np.load(DATOS / "emb_hecho.npy")
     if not os.environ.get("PRUEBA"):
         assert hecho.all(), "faltan embeddings"
@@ -154,7 +160,8 @@ def main() -> None:
         puntos[emp["etiqueta"]] = res
         log(emp["etiqueta"], f"{len(propias)} propias, {len(peso_par)} pares")
 
-    json.dump(puntos, open(DATOS / ("puntos_prueba.json" if os.environ.get("PRUEBA") else "puntos.json"), "w"))
+    json.dump(puntos, open(DATOS / ("puntos_prueba.json" if os.environ.get("PRUEBA") else
+                                 "puntos.json" if dim == 512 else f"puntos_{dim}.json"), "w"))
     log("puntos guardados")
 
 

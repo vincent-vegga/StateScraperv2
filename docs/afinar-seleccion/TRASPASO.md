@@ -3,6 +3,23 @@
 Estado al 24/09/2026. Rama de trabajo: `claude/optimistic-dijkstra-myr851`.
 Quien retome esto: lee este fichero entero antes de hacer nada.
 
+## Estado (actualizado 24/09/2026, segunda sesión)
+
+- Pasos 0-4 del plan **hechos**. Código en `banco/`, números en
+  `RESULTADOS.md`, propuesta en `PROPUESTA.md`.
+- **Paso 5 pendiente de aprobación del dueño.** Producción sigue intacta.
+- Gasto de OpenAI del banco: **4,53 $** (lecturas 0,48 · embeddings 0,97 ·
+  juez actual 0,54 · juez con ejemplos 2,54). Quedan ~5,5 $ bajo el tope.
+- Los datos (`banco/datos/`, con NIF) solo existen en el contenedor de esa
+  sesión. Para rehacer: `p1_descargar.py` → `p2_muestra.py` →
+  `p3_actual.py lecturas` / `juez` → `p4_embeddings.py hacer` →
+  `p5_puntuacion.py` → `p6_juez_ejemplos.py hacer 100` → `p7_informe.py`.
+  Sin la caché, rehacerlo todo cuesta otra vez ~4,5 $.
+- Tropiezos del entorno: `tiktoken` no puede descargar su diccionario (red
+  no permitida), se estima a 3 caracteres por token; los embeddings tienen
+  límite de 1 M tokens/min (el paso 4 tarda ~1 h).
+
+
 ## Reglas de la tarea (las puso el dueño del proyecto)
 
 - **Presupuesto OpenAI: 11 $ en total** (proyecto aparte con límite). El
