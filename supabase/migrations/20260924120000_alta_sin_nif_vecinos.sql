@@ -2,7 +2,9 @@
 -- ALTA SIN NIF: CONTRATOS PARECIDOS A LA DESCRIPCIÓN
 -- ============================================================
 --
--- PENDIENTE DE APLICAR.
+-- Aplicada el 24/09/2026. Poblada ese mismo día con una pasada suelta
+-- de pg_cron (08:26 UTC, 47 s): 71.073 filas de 1.196 códigos, 41 MB.
+-- muestra_de_familias('{72,48}') devuelve 4.118 filas en 0,1 s.
 --
 -- La entrada por NIF construye el filtro con EJEMPLOS: los contratos que
 -- la empresa ha ganado. Sin NIF solo había la descripción, y una frase
@@ -27,9 +29,8 @@
 --   muestra_de_familias(familias, por_prefijo)
 --                           lo que lee el alta.
 --
--- Mientras la tabla esté vacía (hasta la primera pasada del cron), el
--- alta sigue como antes: criterio de la descripción y captura por
--- familias. No hay que poblarla a mano con la base ocupada.
+-- Si la tabla estuviera vacía, el alta sigue como antes: criterio de la
+-- descripción y captura por familias.
 --
 -- Y en `perfiles`, `franjas`: los tamaños de contrato que marca el
 -- cliente al describir su negocio. De momento eligen qué ejemplos se

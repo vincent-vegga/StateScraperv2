@@ -994,8 +994,8 @@ algo mayores de lo habitual).
 - Su filtro sale de la descripción y de los contratos parecidos como
   ejemplos, y captura por vecindario (`supabase/functions/alta/vecinos.ts`).
 - Los contratos salen de `muestra_adjudicada`, que rehace pg_cron cada
-  noche: leerlos de `licitaciones` en el momento pasaba de 7 s. Mientras
-  esté vacía, el alta sigue como en la decisión 37.
+  noche: leerlos de `licitaciones` en el momento pasaba de 7 s. Si
+  estuviera vacía, el alta sigue como en la decisión 37.
 
 **Pendiente.** Que el tamaño ordene y marque la lista ("por encima de tu
 tamaño") sin esconder nada. Y medir la idea de partida: que el cliente
