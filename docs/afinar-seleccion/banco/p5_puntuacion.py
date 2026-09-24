@@ -23,10 +23,16 @@ from collections import Counter, defaultdict
 
 import numpy as np
 
-from comun import CORTE, DATOS, log
+from comun import CORTE, DATOS, SUFIJO, log
 from p3_actual import preparar
 from p4_embeddings import normal, titulos
 
+# Variantes (docs/afinar-seleccion/RESULTADOS.md, «mejoras de la auditoría»):
+# SIN_HOMOL=1 no cuenta como ganado estar admitido en un acuerdo marco o
+# sistema dinámico sin importe; ANIOS=N usa solo lo ganado en los N años
+# anteriores al corte (si quedan al menos 10 contratos).
+SIN_HOMOL = os.environ.get("SIN_HOMOL") == "1"
+ANIOS = int(os.environ.get("ANIOS", "0"))
 M_VECINOS = 50       # vecinos pasados por licitación candidata
 M_PARES = 20         # vecinos por contrato propio para hallar pares
 MAX_PROPIOS = 400    # contratos propios usados para hallar pares
@@ -94,7 +100,14 @@ def main() -> None:
     puntos = {}
     for emp in muestra["empresas"]:
         cif = emp["cif"]
-        propias = sorted({a[0] for a in base["por_cif"][cif] if a[2] and a[2] < CORTE})
+        propias = sorted({a[0] for a in base["por_cif"][cif] if a[2] and a[2] < CORTE
+                          and not (SIN_HOMOL and a[5])})
+        if ANIOS:
+            desde = f"{int(CORTE[:4]) - ANIOS}{CORTE[4:]}"
+            recientes = sorted({a[0] for a in base["por_cif"][cif]
+                                if a[2] and desde <= a[2] < CORTE and not (SIN_HOMOL and a[5])})
+            if len(recientes) >= 10:
+                propias = recientes
         filas_propias = sorted({fila_de(i) for i in propias} - {None})
         E = np.asarray(emb[filas_propias], np.float32)
 
@@ -161,7 +174,9 @@ def main() -> None:
         log(emp["etiqueta"], f"{len(propias)} propias, {len(peso_par)} pares")
 
     json.dump(puntos, open(DATOS / ("puntos_prueba.json" if os.environ.get("PRUEBA") else
-                                 "puntos.json" if dim == 512 else f"puntos_{dim}.json"), "w"))
+                                 "puntos.json" if dim == 512 else
+                                 f"puntos_{dim}{'_sinhomol' if SIN_HOMOL else ''}"
+                                 f"{f'_{ANIOS}a' if ANIOS else ''}{SUFIJO}.json"), "w"))
     log("puntos guardados")
 
 

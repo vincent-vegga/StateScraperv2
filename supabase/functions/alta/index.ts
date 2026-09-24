@@ -424,7 +424,9 @@ async function parecidosDe(
 // `puntuado_en` alcance a `puntuacion_pedida`. Sin GITHUB_DISPATCH_TOKEN
 // no se puede pedir: el perfil sigue con el criterio de siempre y pasa al
 // sistema nuevo en la pasada diaria del día siguiente.
-const MIN_HUELLAS = 15;
+// El mismo mínimo que puntuacion_pesos.json (minimo_ganados): medido en el
+// banco con empresas de 5-14 contratos, les va mejor que el criterio.
+const MIN_HUELLAS = 5;
 const REPO = "vincent-vegga/StateScraperv2";
 
 async function pedirPuntuacion(perfilId: string, rehacer: boolean): Promise<boolean> {
@@ -890,11 +892,26 @@ Deno.serve(async (peticion) => {
 
       console.log(`Criterio ajustado con ${correcciones.length} correcciones`);
 
+      // Con huellas, lo que cambia es lo que el cliente ha dicho: el juez
+      // aplica sus correcciones tal cual, no el criterio en prosa. Se le
+      // cuenta eso, y no lo que el modelo haya reescrito en un texto que
+      // este sistema no usa.
+      const corto = (t: unknown) => {
+        const x = String(t ?? "");
+        return x.length > 70 ? x.slice(0, 67).trimEnd() + "..." : x;
+      };
+      const cambiosHuellas = rehecho ? correcciones.slice(0, 3).map((c: Record<string, unknown>) =>
+        c.interesa
+          ? `Te enseñaremos más contratos como «${corto(c.titulo)}»`
+          : c.motivo
+            ? `Tendremos en cuenta en toda tu lista que ${String(c.motivo).trim().replace(/[.\s]+$/, "")}`
+            : `Hemos quitado «${corto(c.titulo)}» de tu lista`) : null;
+
       return responder({
         ok: true,
-        cambios: Array.isArray(nuevo.cambios)
+        cambios: cambiosHuellas ?? (Array.isArray(nuevo.cambios)
           ? nuevo.cambios.map((c: unknown) => String(c)).slice(0, 3)
-          : (nuevo.cambios ? [String(nuevo.cambios)] : []),
+          : (nuevo.cambios ? [String(nuevo.cambios)] : [])),
         que_buscamos: Array.isArray(nuevo.que_buscamos)
           ? nuevo.que_buscamos.map((c: unknown) => String(c)).slice(0, 5) : [],
         resumen: String(nuevo.resumen ?? ""),

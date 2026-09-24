@@ -11,7 +11,8 @@ Aprobado por el dueño y encendido (PR #5). Resumen:
   raíz. Huellas (256 dim) en Storage, bucket privado `huellas` (`v1/`);
   instantánea diaria en `estado/`; la sombra de la prueba en `sombra/`
   (ya no se usa).
-- **Quién va por huellas:** perfiles con NIF y ≥15 contratos
+- **Quién va por huellas:** perfiles con NIF y ≥5 contratos (antes ≥15;
+  bajado tras medir 20 empresas de 5-14 contratos)
   (`perfiles.sistema = 'huellas'`). 11 perfiles al encenderlo. El resto
   (sin NIF o con poco historial) sigue con criterio + puerta CPV.
 - **Cuándo corre:** cada mañana dentro del robot (`scraper.yml`, antes del
@@ -32,12 +33,10 @@ Aprobado por el dueño y encendido (PR #5). Resumen:
   con instrucciones sin nada de ningún sector). REGLA: las instrucciones
   del juez son comunes a todos; nunca un ejemplo ni una frase sacada del
   sector de un cliente (el v2 los tenía y se quitaron).
-- **Presupuesto del banco agotado:** 9,28 $ de 10 $. Otra medida completa
-  del juez cuesta ~1,8 $: hace falta más saldo en el proyecto del banco o
-  usar la clave de producción.
+- **Presupuesto del banco:** 14,37 $ de 16 $ (límite del proyecto: 17 $).
+- **Probado y descartado** (ver RESULTADOS.md): sin homologaciones en lo
+  ganado, solo los últimos 5 años, ejemplos con quién convocó (juez v4).
 - **Pendiente:**
-  1. Medir en el banco empresas con 3-14 contratos (<1 $) y, si sale bien,
-     bajar `minimo_ganados`.
   2. Historial sintético para el alta sin NIF (idea del otro agente):
      40 contratos parecidos a la descripción como «ganados» y medirlo con
      el banco.
