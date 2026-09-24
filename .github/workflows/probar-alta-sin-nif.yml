@@ -10,7 +10,7 @@ name: Probar alta sin NIF
 
 on:
   push:
-    branches: [alta-vecinos, alta-titulos-tipicos]
+    branches: [alta-vecinos]
     paths:
       - 'supabase/functions/alta/vecinos.ts'
       - 'scripts/probar_vecinos.ts'
