@@ -1,0 +1,42 @@
+{
+ "descripcion": "Pesos de la puntuación (regresión logística ajustada en el banco de pruebas de docs/afinar-seleccion: 40 empresas, corte 2026-01-01, huellas de 256 dimensiones). rasgo_estandarizado = (x - media) / desviacion; propio y pares se transforman antes con log1p(50·x). minimo_ganados: 5 desde el 24/09/2026 (banco de 20 empresas con 5-14 contratos: 95,4 % frente al 79,2 % del sistema anterior; ninguna pierde).",
+ "rasgos": [
+  "knn1",
+  "knn5",
+  "cpv4",
+  "cpv2",
+  "sin_cpv",
+  "propio",
+  "pares"
+ ],
+ "media": [
+  0.51282,
+  0.478703,
+  0.014925,
+  0.070278,
+  0.005226,
+  0.009512,
+  0.008169
+ ],
+ "desviacion": [
+  0.085445,
+  0.082316,
+  0.081401,
+  0.215428,
+  0.072104,
+  0.128929,
+  0.048174
+ ],
+ "pesos": [
+  0.619947,
+  0.707971,
+  0.159024,
+  0.455012,
+  -0.044219,
+  0.311248,
+  0.52999
+ ],
+ "constante": -3.298776,
+ "grupo_por_mil": 100,
+ "minimo_ganados": 5
+}

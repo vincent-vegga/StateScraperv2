@@ -45,7 +45,6 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { llamarModelo } from "../supabase/functions/alta/modelo.ts";
-import { titulosTipicos } from "../supabase/functions/alta/vecinos.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_KEY")!,
   { auth: { persistSession: false } });
@@ -928,8 +927,6 @@ for (const { codigo, p } of casos) {
         detalle: { ...base.detalle, buscadas, titulos: v.vecinos.slice(0, 10).map(({ l }) => l.titulo) } };
     };
     variantes.vecinos_vecindario = await conVecindario([]);
-    llamadas++;
-    variantes.titulos_vecindario = await conVecindario(await titulosTipicos(descripcion));
     const salida = "—";
 
     const usadas = new Set(Object.values(variantes).flatMap((v) => v?.usadas ?? []));
@@ -963,7 +960,7 @@ for (const { codigo, p } of casos) {
       return m.f1 == null ? "—" : m.f1.toFixed(2);
     };
     console.log(`${codigo}: F1 descripción ${f1("solo_descripcion")} · ` +
-                `vecinos ${f1("vecinos_vecindario")} · títulos ${f1("titulos_vecindario")} ` +
+                `vecinos ${f1("vecinos_vecindario")} ` +
                 `(${segundos} s, ${filaResumen.llamadas} llamadas)`);
   } catch (e) {
     // Solo el tipo de fallo: el mensaje podría llevar datos del cliente.
@@ -980,7 +977,7 @@ for (const { codigo, p } of casos) {
 // Resumen público: solo cifras
 // ------------------------------------------------------------
 
-const VARIANTES = ["solo_descripcion", "vecinos_vecindario", "titulos_vecindario"];
+const VARIANTES = ["solo_descripcion", "vecinos_vecindario"];
 const celda = (fila: Record<string, unknown>, v: string, campo: string) => {
   const m = ((fila.metricas as Record<string, Record<string, Record<string, number | null>>>)?.[v]?.si_quizas) ?? {};
   return m[campo] == null ? "—" : (m[campo] as number).toFixed(2);

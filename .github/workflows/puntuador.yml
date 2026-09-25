@@ -1,0 +1,69 @@
+# ============================================================
+# PUNTUACIÓN POR HUELLAS · pasada de un perfil (o manual)
+# ============================================================
+# La pasada DIARIA va dentro del robot (scraper.yml), antes del correo.
+# Este workflow es para lo que no puede esperar a mañana:
+#
+#   - Lo lanza la función del alta (workflow_dispatch con `perfil`)
+#     cuando se da de alta una empresa con historial o cuando corrige su
+#     lista. Usa la instantánea del día: ~2-3 minutos.
+#   - A mano, desde la pestaña Actions: con `perfil` vacío hace la pasada
+#     completa de todos (lee toda la base: ~10 minutos).
+#
+# Ver puntuador.py y docs/afinar-seleccion/.
+# ============================================================
+
+name: Puntuación por huellas
+
+on:
+  workflow_dispatch:
+    inputs:
+      perfil:
+        description: "uuid del perfil (vacío = todos, pasada completa)"
+        required: false
+        default: ""
+      rehacer:
+        description: "true = volver a juzgar todo su grupo (tras correcciones)"
+        required: false
+        default: "false"
+
+# Dos pasadas del mismo perfil a la vez juzgarían lo mismo dos veces.
+concurrency:
+  group: puntuador-${{ inputs.perfil || 'todos' }}
+  cancel-in-progress: false
+
+jobs:
+  puntuar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CACHE_HUELLAS: /home/runner/.cache/huellas
+      MAX_GASTO_PASADA: '2'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      # ~600 MB de huellas. La pasada diaria las guarda; aquí solo se
+      # recuperan (las partes nuevas que falten se bajan de Storage).
+      - name: Recuperar las huellas
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/huellas
+          key: huellas-v1-${{ github.run_id }}
+          restore-keys: |
+            huellas-v1-
+
+      - name: Puntuar
+        run: >
+          python puntuador.py --real
+          ${{ inputs.perfil && format('--instantanea --perfil {0}', inputs.perfil) || '' }}
+          ${{ inputs.rehacer == 'true' && '--rehacer' || '' }}

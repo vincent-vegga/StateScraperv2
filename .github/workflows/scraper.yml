@@ -228,6 +228,38 @@ jobs:
         run: |
           python cribador.py ${{ inputs.modo == 'cribado_prueba' && '--muestra 20' || '' }}
 
+      # Empresas con NIF e historial: su lista la calcula el puntuador por
+      # huellas (ver puntuador.py y docs/afinar-seleccion/). Va antes del
+      # correo para que lo nuevo de hoy entre en el correo de hoy. Si
+      # falla, no tumba nada: el correo sale con lo que haya.
+      - name: Recuperar las huellas de títulos
+        if: env.MODO != 'diagnostico' && env.MODO != 'importar_historico'
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/huellas
+          key: huellas-v1-${{ github.run_id }}
+          restore-keys: |
+            huellas-v1-
+
+      - name: Puntuación por huellas (empresas con historial)
+        id: puntuador
+        if: env.MODO != 'diagnostico' && env.MODO != 'importar_historico' && env.MODO != 'cribado_prueba'
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          CACHE_HUELLAS: /home/runner/.cache/huellas
+          MAX_GASTO_PASADA: '2'
+        run: python puntuador.py --real
+
+      - name: Guardar las huellas para la próxima pasada
+        if: always() && steps.puntuador.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/.cache/huellas
+          key: huellas-v1-${{ github.run_id }}
+
       - name: Probar la alerta sin enviarla
         # Compone los correos y los escribe en el registro, sin mandarlos.
         # Sirve para ver qué le llegaría a cada cliente.

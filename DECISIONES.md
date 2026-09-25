@@ -1004,6 +1004,28 @@ el NIF de ese competidor.
 
 ---
 
+## 39. El tamaño no ordena la lista; ejemplos sin repetir
+
+**Contexto.** Desde la decisión 38, quien entra sin NIF puede marcar los
+tamaños de contrato que le interesan (`perfiles.franjas`). El 24/09/2026 se
+probó a usarlos para ordenar la lista y el correo (lo de su tamaño primero,
+lo que pasa de él al final y marcado «Por encima de tu tamaño»).
+
+**Decisión** (25/09/2026). Se retira: el tamaño no ordena ni marca nada. Las
+franjas solo sirven para elegir los contratos de ejemplo del alta. Esconder
+lo grande ya se había descartado en la simulación (empeoraba el filtro).
+
+Se queda lo otro de aquel cambio: en la pantalla de familias, los contratos
+de ejemplo sin repetir y solo de entre los 200 más parecidos. Con una
+descripción vaga, lo "más parecido" de una familia que no era la suya
+podía no parecerse en nada.
+
+**Descartado también.** Buscar los ejemplos con títulos típicos que escribe
+el modelo, en vez de con la descripción: mejor con descripciones vagas,
+peor en el resto (F1 media 0,50 frente a 0,54; pierde en 10 de 16 perfiles).
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
