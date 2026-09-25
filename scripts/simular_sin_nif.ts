@@ -56,6 +56,11 @@ const SOLO = arg("solo");
 // reales y fuera de ellos.
 const MUESTRA = Number(arg("muestra") ?? 100);
 const SALIDA = "simulacion";
+// MODO=exportar: solo las empresas que ya van por huellas, y en vez de
+// evaluar se guarda lo que les daría el alta sin NIF (vecinos, criterio,
+// códigos) en simulacion/sinteticos.json, para medir_sintetico.py.
+const EXPORTAR = Deno.env.get("MODO") === "exportar";
+const exportados: Record<string, unknown>[] = [];
 
 // ------------------------------------------------------------
 // Las mismas instrucciones que en producción
@@ -844,7 +849,7 @@ async function evaluar(real: { criterio: string; prefijos: string[] },
 // ------------------------------------------------------------
 
 const { data: perfilesCrudos, error: fallo } = await leer(() => db.from("perfiles")
-  .select("id, cif, descripcion, criterio, cpv_prefijos, contratos_ganados, criterio_version")
+  .select("id, cif, descripcion, criterio, cpv_prefijos, contratos_ganados, criterio_version, sistema")
   .not("cif", "is", null).eq("paso_alta", "listo")
   .order("contratos_ganados", { ascending: false }));
 if (fallo) throw fallo;
@@ -853,6 +858,7 @@ if (fallo) throw fallo;
 const porCif = new Map<string, Record<string, unknown>>();
 for (const p of perfilesCrudos ?? []) {
   if (!p.cif || !p.criterio || !p.cpv_prefijos) continue;
+  if (EXPORTAR && p.sistema !== "huellas") continue;
   const previo = porCif.get(p.cif);
   if (!previo || (p.criterio_version ?? 0) > (previo.criterio_version as number ?? 0)) porCif.set(p.cif, p);
 }
@@ -924,11 +930,22 @@ for (const { codigo, p } of casos) {
       }
       return { ...base, prefijos: [...new Set([...base.prefijos,
         ...[...cuenta200.entries()].filter(([, n]) => n >= 3).map(([p]) => p)])],
-        detalle: { ...base.detalle, buscadas, titulos: v.vecinos.slice(0, 10).map(({ l }) => l.titulo) } };
+        detalle: { ...base.detalle, buscadas, titulos: v.vecinos.slice(0, 10).map(({ l }) => l.titulo),
+                   filas: v.vecinos.map(({ l }) => ({ id_licitacion: l.id_licitacion, titulo: l.titulo,
+                                                      cpvs: l.cpvs ?? [] })) } };
     };
     variantes.vecinos_vecindario = await conVecindario([]);
     const salida = "—";
 
+    if (EXPORTAR) {
+      const vv = variantes.vecinos_vecindario!;
+      exportados.push({ codigo, perfil_id: p.id, cif, descripcion, familias,
+                        vecinos: vv.detalle.filas, criterio: vv.criterio, prefijos: vv.prefijos });
+      await Deno.writeTextFile(`${SALIDA}/sinteticos.json`, JSON.stringify(exportados));
+      console.log(`${codigo}: exportado (${(vv.detalle.filas as unknown[]).length} vecinos, ` +
+                  `${vv.prefijos.length} códigos)`);
+      continue;
+    }
     const usadas = new Set(Object.values(variantes).flatMap((v) => v?.usadas ?? []));
     const ev = await evaluar(real, variantes, usadas, r, franjas, []);
 

@@ -1,0 +1,87 @@
+# ============================================================
+# MEDIR EL ALTA SIN NIF CONTRA EL MOTOR DE HUELLAS
+# ============================================================
+# Para las empresas que ya van por huellas: qué verían si hubieran
+# entrado SIN NIF (con lo de hoy y con sus vecinos como historial
+# sintético en el motor), frente a lo que el motor les enseña con su NIF.
+#   1. simular_sin_nif.ts con MODO=exportar: descripción, familias,
+#      vecinos, criterio y códigos de cada una.
+#   2. medir_sintetico.py: las mismas funciones de puntuador.py.
+# SOLO LEE. En los registros, perfiles anónimos y cifras; el detalle se
+# cifra con scripts/simulacion_certificado.pem. Unos pocos dólares.
+# ============================================================
+
+name: Medir alta sin NIF con huellas
+
+on:
+  push:
+    branches: [simulacion-sin-nif]
+    paths:
+      - 'scripts/medir_sintetico.py'
+      - '.github/workflows/medir-sintetico.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: medir-sintetico
+  cancel-in-progress: true
+
+jobs:
+  medir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CACHE_HUELLAS: /home/runner/.cache/huellas
+      MAX_GASTO: '6'
+      CRIBADO_SIMULTANEAS: '8'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+
+      - name: Recuperar las huellas
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/huellas
+          key: huellas-v1-${{ github.run_id }}
+          restore-keys: |
+            huellas-v1-
+
+      - name: Exportar lo que daría el alta sin NIF
+        env:
+          MODO: exportar
+        run: deno run -A scripts/simular_sin_nif.ts --muestra=1
+
+      - name: Medir
+        run: python scripts/medir_sintetico.py
+
+      - name: Cifrar el detalle
+        if: ${{ always() }}
+        run: |
+          for f in sinteticos sintetico; do
+            [ -f "simulacion/$f.json" ] || continue
+            openssl cms -encrypt -binary -aes256 -outform DER \
+              -in "simulacion/$f.json" -out "simulacion/$f.json.cms" \
+              scripts/simulacion_certificado.pem
+            rm "simulacion/$f.json"
+          done
+          rm -f simulacion/detalle.json simulacion/resumen.json
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: sintetico-cifrado
+          path: simulacion/*.cms
+          if-no-files-found: ignore
+          retention-days: 7
