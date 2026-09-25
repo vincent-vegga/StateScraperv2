@@ -1054,6 +1054,38 @@ estaban.
 
 ---
 
+## 41. Historial sintético sin intrusos, y el juez sabe que es sintético
+
+**Contexto.** Con la decisión 40, un alta de prueba de jardinería salió con
+230 contratos en su lista frente a 71 con el criterio en prosa, y entre
+ellos depuradoras y colonias felinas. De sus 40 contratos sintéticos, 7 no
+eran de jardinería (depuradora, desratización, alcantarillado, captura de
+animales...): los metía la búsqueda con diversidad, y el juez los toma
+como hechos ("esta empresa ha ganado una depuradora").
+
+Medido con las 14 empresas que van por huellas, haciendo como si entraran
+sin NIF (`scripts/medir_sintetico.py`; referencia, lo que el motor les
+enseña con su NIF):
+
+| Historial sintético | Enseña | Recupera | De lo que enseña, bueno |
+|---|---|---|---|
+| Decisión 40 | 257 | 62 % | 44 % |
+| Sin diversidad y filtrado contra la descripción | 190 | 57 % | 52 % |
+| Lo mismo y el juez ve la descripción | **176** | **55 %** | **57 %** |
+
+**Decisión** (25/09/2026). La tercera. El historial sintético sale de los
+más parecidos sin diversidad, y cada uno se contrasta con lo que la empresa
+dice que hace (`historialSintetico`, en `vecinos.ts`; ~80 llamadas por
+alta). En el motor, solo para perfiles sin NIF, el juez sabe que esos
+contratos son de otras empresas y ve la descripción (`AVISO_SIN_NIF`, en
+`puntuador.py`). Para las empresas con NIF el juez no cambia.
+
+**Contrapartida.** Algunas empresas cuya descripción es más estrecha que lo
+que ganan pierden cobertura (en la medición, una del 46 % al 19 %). Sigue
+muy por encima del criterio en prosa (32 % de media).
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
