@@ -1026,6 +1026,34 @@ peor en el resto (F1 media 0,50 frente a 0,54; pierde en 10 de 16 perfiles).
 
 ---
 
+## 40. Alta sin NIF por el motor de huellas, con historial sintético
+
+**Contexto.** El motor de huellas (`puntuador.py`) parte de lo que la
+empresa ha ganado; quien entra sin NIF seguía con el criterio en prosa. El
+alta sin NIF ya busca los 40 contratos adjudicados más parecidos a su
+descripción (decisión 38). Medido con las 14 empresas que van por huellas,
+haciendo como si entraran sin NIF (`scripts/medir_sintetico.py`, rama
+`simulacion-sin-nif`; referencia: lo que el motor les enseña con su NIF):
+
+| Sin NIF | Recupera de su lista real | Enseña |
+|---|---|---|
+| Criterio en prosa + códigos (lo de antes) | 32 % | 83 |
+| Esos 40 contratos como historial en el motor | **62 %** | 256 |
+
+Mejor en las 14. Cuela más contratos que no están en la lista real, pero
+recupera el doble con un volumen parecido al de la lista real (196).
+
+**Decisión** (25/09/2026). El alta sin NIF guarda esos 40 contratos en
+`perfiles.ganados_sinteticos` y pide la pasada del motor, como el alta por
+NIF. El motor los trata como ganados: sin NIF, el rasgo `propio` sale a
+cero y los pares cuentan a todos los ganadores. El juez y la puntuación no
+cambian para nadie. El criterio en prosa se sigue escribiendo y queda de
+reserva: si no se puede pedir la pasada o no llega, el perfil sigue con él.
+Los perfiles sin NIF anteriores no tienen historial sintético y siguen como
+estaban.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.

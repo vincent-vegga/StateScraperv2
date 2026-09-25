@@ -425,6 +425,20 @@ def ganados_de(cif: str) -> list[dict]:
     """Lo que ha ganado la empresa: título y CPV de cada licitación."""
     ids = sorted({f["id_licitacion"] for f in leer(
         "adjudicaciones_empresa", {"select": "id_licitacion", "cif": f"eq.{cif}"})})
+    return licitaciones_de(ids)
+
+
+def ganados_del_perfil(p: dict) -> list[dict]:
+    """Con NIF, lo que ha ganado. Sin NIF, su historial sintético: los 40
+    contratos adjudicados más parecidos a su descripción que guardó el alta
+    (perfiles.ganados_sinteticos, decisión 40). Sin `cif`, el rasgo
+    `propio` sale a cero y los pares cuentan a todos los ganadores."""
+    if p.get("cif"):
+        return ganados_de(p["cif"])
+    return licitaciones_de(sorted(set(p.get("ganados_sinteticos") or [])))
+
+
+def licitaciones_de(ids: list[str]) -> list[dict]:
     out = []
     for a in range(0, len(ids), 100):
         filtro = "(" + ",".join(_q(i) for i in ids[a:a + 100]) + ")"
@@ -736,8 +750,10 @@ def main() -> int:
             c.guardar()
 
     try:
-        perfiles = leer("perfiles", {"select": "id,cif,sistema,criterio_version,puntuado_en",
-                                     "activo": "is.true", "cif": "not.is.null"})
+        # Con NIF, o sin NIF con historial sintético (alta sin NIF).
+        perfiles = leer("perfiles", {
+            "select": "id,cif,sistema,criterio_version,puntuado_en,ganados_sinteticos",
+            "activo": "is.true", "or": "(cif.not.is.null,ganados_sinteticos.not.is.null)"})
     except RuntimeError as error:
         # Sin la migración 20260924200000 no hay columna `sistema`: solo
         # vale para la sombra, que no la necesita.
@@ -755,9 +771,9 @@ def main() -> int:
     hechos = 0
     for p in perfiles:
         et = p["id"][:8]
-        if not p["cif"]:
+        if not p.get("cif") and not p.get("ganados_sinteticos"):
             continue
-        ganados = ganados_de(p["cif"])
+        ganados = ganados_del_perfil(p)
         if len(ganados) < PESOS["minimo_ganados"]:
             # Poco historial: sigue con el criterio en prosa. Si se le había
             # marcado para este sistema, se le devuelve (y se da por hecha la
