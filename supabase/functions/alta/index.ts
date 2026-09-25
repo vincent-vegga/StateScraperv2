@@ -813,8 +813,20 @@ Deno.serve(async (peticion) => {
         paso_alta: "cribando",
       }).eq("id", perfil.id);
 
+      // Los vecinos, además, como historial sintético para el motor de
+      // huellas: los trata como si los hubiera ganado (decisión 40). El
+      // criterio de arriba queda de reserva: si no se puede pedir la
+      // pasada, o no llega, el perfil sigue con él.
+      const conHuellas = !!conEjemplos && await pedirPuntuacion(perfil.id, true);
+      await admin.from("perfiles").update(conHuellas
+        ? { ganados_sinteticos: parecidos!.vecinos.map((l) => l.id_licitacion),
+            sistema: "huellas", puntuado_en: null,
+            puntuacion_pedida: new Date().toISOString() }
+        : { ganados_sinteticos: null, sistema: "criterio" }).eq("id", perfil.id);
+
       console.log(`Alta sin NIF: ${conEjemplos ? parecidos!.vecinos.length : 0} ejemplos, ` +
-                  `${codigos.length || lista.length} códigos`);
+                  `${codigos.length || lista.length} códigos, ` +
+                  `${conHuellas ? "por huellas" : "por criterio"}`);
       return responder({ ok: true, resumen: criterio.resumen });
     }
 
@@ -1164,6 +1176,7 @@ Deno.serve(async (peticion) => {
       }).eq("id", perfil.id);
       await admin.from("perfiles").update({
         sistema: "criterio", puntuado_en: null, puntuacion_pedida: null,
+        ganados_sinteticos: null,
       }).eq("id", perfil.id);
 
       console.log(`Perfil ${perfil.id} reiniciado`);
