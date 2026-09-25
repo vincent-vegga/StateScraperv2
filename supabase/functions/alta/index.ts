@@ -32,6 +32,7 @@ import {
 } from "./modelo.ts";
 import {
   DIVISIONES, FRANJAS, buscarParecidos, codigosDelVecindario, ejemplosPorFamilia,
+  historialSintetico,
   type Adjudicada, type Parecidos,
 } from "./vecinos.ts";
 
@@ -817,9 +818,17 @@ Deno.serve(async (peticion) => {
       // huellas: los trata como si los hubiera ganado (decisión 40). El
       // criterio de arriba queda de reserva: si no se puede pedir la
       // pasada, o no llega, el perfil sigue con él.
-      const conHuellas = !!conEjemplos && await pedirPuntuacion(perfil.id, true);
+      // Se guarda antes de pedir la pasada: el motor lo lee al arrancar.
+      const historial = conEjemplos
+        ? await historialSintetico(String(perfil.descripcion), parecidos!) : [];
+      if (historial.length) {
+        await admin.from("perfiles").update({
+          ganados_sinteticos: historial.map((l) => l.id_licitacion),
+        }).eq("id", perfil.id);
+      }
+      const conHuellas = historial.length > 0 && await pedirPuntuacion(perfil.id, true);
       await admin.from("perfiles").update(conHuellas
-        ? { ganados_sinteticos: parecidos!.vecinos.map((l) => l.id_licitacion),
+        ? {
             sistema: "huellas", puntuado_en: null,
             puntuacion_pedida: new Date().toISOString() }
         : { ganados_sinteticos: null, sistema: "criterio" }).eq("id", perfil.id);
