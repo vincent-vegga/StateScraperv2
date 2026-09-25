@@ -16,6 +16,12 @@ simular_sin_nif.ts con MODO=exportar):
   sintetico   los 40 vecinos como «ganados» en el motor de huellas:
               rasgos_perfil + combinar + grupo + juez con ejemplos, las
               mismas funciones de puntuador.py, sin tocarlas.
+  limpio      contra el ruido: los más parecidos sin empujón a la variedad,
+              y fuera los que el modelo dice que no encajan con la
+              descripción (FILTRO).
+  limpio_desc lo mismo, y el juez ve además la descripción (AVISO_SIN_NIF).
+
+Con MEDIR_ACTUAL=1 se mide también lo de antes (criterio en prosa).
 
 Sin trampas: los vecinos ya salen sin los contratos de la propia empresa,
 y en «sintetico» el rasgo `propio` (cuánto de lo parecido ganó ella) se
@@ -76,6 +82,83 @@ def mostrados_reales(perfil_id: str, vivas: set[str]) -> set[str]:
     return {f["id_licitacion"] for f in filas if f["id_licitacion"] in vivas}
 
 
+FILTRO = """\
+Eres un analista de contratación pública española. Te damos lo que una \
+empresa dice que hace y el título de un contrato público ya adjudicado. \
+¿Podría esta empresa haber sido la adjudicataria, haciendo lo que dice \
+que hace?
+
+- "si": es su tipo de trabajo o de producto.
+- "no": es otro oficio, aunque sea del mismo ámbito o para el mismo tipo \
+de cliente (limpiar un parque no es gestionar su depuradora).
+
+Devuelve EXCLUSIVAMENTE JSON: {"encaja": "si|no"}"""
+
+AVISO_SIN_NIF = """
+
+Esta empresa todavía no ha ganado contratos: los «contratos ganados más \
+parecidos» son contratos adjudicados a otras empresas, parecidos a lo que \
+dice que hace. Te damos también lo que dice que hace: si un ejemplo y su \
+descripción no casan, manda la descripción."""
+
+
+def preguntar(mensajes: list, gasto) -> dict | None:
+    clave = os.environ["OPENAI_API_KEY"]
+    for intento in range(5):
+        try:
+            r = P.requests.post("https://api.openai.com/v1/chat/completions", timeout=60,
+                                headers={"Authorization": f"Bearer {clave}"},
+                                json={"model": "gpt-4o-mini", "messages": mensajes,
+                                      "response_format": {"type": "json_object"},
+                                      "temperature": 0, "max_tokens": 30})
+            if r.status_code == 200:
+                d = r.json()
+                gasto.apuntar(d.get("usage", {}))
+                return json.loads(d["choices"][0]["message"]["content"] or "{}")
+        except Exception:
+            pass
+        P.time.sleep(2 ** intento)
+    return None
+
+
+def limpiar(descripcion: str, puros: list[dict], gasto) -> list[dict]:
+    """De los más parecidos (sin variedad), los que encajan con lo que dice
+    que hace; los 40 primeros. Si pasan menos de 10, los 40 más parecidos."""
+    def encaja(v):
+        r = preguntar([{"role": "system", "content": FILTRO},
+                       {"role": "user", "content": f"LO QUE DICE QUE HACE:\n{descripcion}\n\n"
+                                                   f"CONTRATO:\n{v['titulo']}"}], gasto)
+        return bool(r) and P.sin_tildes(str(r.get("encaja", ""))).strip().lower() == "si"
+    with ThreadPoolExecutor(8) as ex:
+        buenos = [v for v, ok in zip(puros, ex.map(encaja, puros)) if ok]
+    return (buenos if len(buenos) >= 10 else puros)[:40]
+
+
+def con_motor(c, cif, ganados, k, gasto, descripcion=None):
+    """Grupo y lista del motor con un historial sintético (propio a cero)."""
+    gan = [{"id_licitacion": v["id_licitacion"], "titulo": v["titulo"], "cpvs": v["cpvs"]}
+           for v in ganados]
+    c.completar_huellas({v["titulo"] for v in gan}, guardar=False)
+    X, filas = P.rasgos_perfil(c, cif, gan)
+    X[:, 5] = 0.0
+    grupo = [c.vivas[j] for j in np.argsort(-P.combinar(X))[:k]]
+    E = np.asarray(c.emb[filas], np.float32)
+    tareas = []
+    for idl in grupo:
+        f = c.ficha_viva[idl]
+        r = c.fila_de_titulo(f["titulo"])
+        v = np.asarray(c.emb[r], np.float32) if r is not None else np.zeros(E.shape[1], np.float32)
+        ejemplos = [f"- {c.titulos[filas[j]]}" for j in np.argsort(-(E @ v))[:P.EJEMPLOS]]
+        m = P.mensajes_juez(f, ejemplos, [], [])
+        if descripcion:
+            m[0]["content"] += AVISO_SIN_NIF
+            m[1]["content"] = f"LO QUE LA EMPRESA DICE QUE HACE:\n{descripcion}\n\n" + m[1]["content"]
+        tareas.append((idl, m))
+    with ThreadPoolExecutor(8) as ex:
+        juicios = list(ex.map(lambda t: P.juzgar(t[1], gasto), tareas))
+    return {idl for (idl, _), j in zip(tareas, juicios) if j and j["veredicto"] in ("si", "quizas")}
+
+
 def main() -> int:
     casos = json.loads((SALIDA / "sinteticos.json").read_text())
     c = P.Contexto.desde_instantanea(Path(os.environ.get("CACHE_HUELLAS",
@@ -83,97 +166,69 @@ def main() -> int:
     vivas = set(c.vivas)
     k = math.ceil(P.PESOS["grupo_por_mil"] / 1000 * len(c.vivas))
     gasto = P.Gasto(MAX_GASTO)
-    ia = cribador.obtener_cliente_openai()
+    medir_actual = os.environ.get("MEDIR_ACTUAL") == "1"
+    ia = cribador.obtener_cliente_openai() if medir_actual else None
+    VARIANTES = (["actual"] if medir_actual else []) + ["sintetico", "limpio", "limpio_desc"]
     resultados, resumen = [], []
 
     for caso in casos:
+        if gasto.agotado():
+            logging.info("Tope de gasto alcanzado, se para")
+            break
         cod, cif = caso["codigo"], caso["cif"]
         R = mostrados_reales(caso["perfil_id"], vivas)
+        mostrados, extra = {}, {}
 
-        # ---- Real (con NIF), para situar: su grupo con lo que ha ganado
-        ganados = P.ganados_de(cif)
-        Xr, _ = P.rasgos_perfil(c, cif, ganados)
-        grupo_r = [c.vivas[j] for j in np.argsort(-P.combinar(Xr))[:k]]
+        mostrados["sintetico"] = con_motor(c, cif, caso["vecinos"], k, gasto)
+        limpios = limpiar(caso["descripcion"], caso["puros"], gasto)
+        extra["limpios"] = len(limpios)
+        extra["quitados"] = [v["titulo"] for v in caso["puros"][:len(limpios) + 20]
+                             if v not in limpios][:10]
+        mostrados["limpio"] = con_motor(c, cif, limpios, k, gasto)
+        mostrados["limpio_desc"] = con_motor(c, cif, limpios, k, gasto, caso["descripcion"])
 
-        # ---- Sintético: los vecinos como ganados, sin `propio`
-        gan_s = [{"id_licitacion": v["id_licitacion"], "titulo": v["titulo"],
-                  "cpvs": v["cpvs"]} for v in caso["vecinos"]]
-        c.completar_huellas({v["titulo"] for v in gan_s}, guardar=False)
-        Xs, filas_s = P.rasgos_perfil(c, cif, gan_s)
-        Xs[:, 5] = 0.0
-        orden_s = np.argsort(-P.combinar(Xs))
-        grupo_s = [c.vivas[j] for j in orden_s[:k]]
+        if medir_actual:
+            puerta = set(caso["prefijos"])
+            candidatas = [i for i in c.vivas if prefijos_de(c.ficha_viva[i]["cpvs"]) & puerta]
+            def clasificar(idl):
+                f = c.ficha_viva[idl]
+                return cribador.clasificar(ia, caso["criterio"],
+                                           {"titulo": f["titulo"], "organo": f.get("organo"),
+                                            "presupuesto": f.get("presupuesto"), "cpvs": f.get("cpvs")})
+            with ThreadPoolExecutor(8) as ex:
+                vs = list(ex.map(clasificar, candidatas))
+            mostrados["actual"] = {i for i, v in zip(candidatas, vs)
+                                   if v and v["veredicto"] in ("si", "quizas")}
+            gasto.total += len(candidatas) * (450 * 0.15 + 60 * 0.60) / 1e6
 
-        E = np.asarray(c.emb[filas_s], np.float32)
-        tareas = []
-        for idl in grupo_s:
-            f = c.ficha_viva[idl]
-            r = c.fila_de_titulo(f["titulo"])
-            v = np.asarray(c.emb[r], np.float32) if r is not None else np.zeros(E.shape[1], np.float32)
-            ejemplos = [f"- {c.titulos[filas_s[j]]}" for j in np.argsort(-(E @ v))[:P.EJEMPLOS]]
-            tareas.append((idl, P.mensajes_juez(f, ejemplos, [], [])))
-        with ThreadPoolExecutor(8) as ex:
-            juicios = list(ex.map(lambda t: P.juzgar(t[1], gasto), tareas))
-        mostrados_s = {idl for (idl, _), j in zip(tareas, juicios)
-                       if j and j["veredicto"] in ("si", "quizas")}
-
-        # ---- Actual (alta sin NIF de hoy): puerta por códigos + criterio
-        puerta = set(caso["prefijos"])
-        candidatas = [i for i in c.vivas if prefijos_de(c.ficha_viva[i]["cpvs"]) & puerta]
-        def clasificar(idl):
-            f = c.ficha_viva[idl]
-            return cribador.clasificar(ia, caso["criterio"],
-                                       {"titulo": f["titulo"], "organo": f.get("organo"),
-                                        "presupuesto": f.get("presupuesto"), "cpvs": f.get("cpvs")})
-        if gasto.agotado():
-            logging.info("%s: tope de gasto alcanzado, se para", cod)
-            break
-        with ThreadPoolExecutor(8) as ex:
-            vs = list(ex.map(clasificar, candidatas))
-        mostrados_a = {i for i, v in zip(candidatas, vs) if v and v["veredicto"] in ("si", "quizas")}
-        # El cribador no lleva cuenta de gasto: se estima (unos 450 tokens).
-        gasto.total += len(candidatas) * (450 * 0.15 + 60 * 0.60) / 1e6
-
-        rec = lambda S: (len(S & R) / len(R)) if R else None
-        fila = {
-            "codigo": cod, "reales": len(R), "grupo": k,
-            "grupo_real_cubre": rec(set(grupo_r)),
-            "actual": {"mostrados": len(mostrados_a), "recupera": rec(mostrados_a),
-                       "puerta": len(candidatas)},
-            "sintetico": {"mostrados": len(mostrados_s), "recupera": rec(mostrados_s),
-                          "grupo_recupera": rec(set(grupo_s)),
-                          "grupo_comun": len(set(grupo_s) & set(grupo_r)) / k},
-        }
+        fila = {"codigo": cod, "reales": len(R), "limpios": extra["limpios"]}
+        for v in VARIANTES:
+            S = mostrados[v]
+            acierto = len(S & R)
+            fila[v] = {"mostrados": len(S),
+                       "recupera": acierto / len(R) if R else None,
+                       "precision": acierto / len(S) if S else None}
         resumen.append(fila)
-        resultados.append({**fila, "perfil_id": caso["perfil_id"],
-                           "mostrados_sintetico": sorted(mostrados_s),
-                           "mostrados_actual": sorted(mostrados_a), "reales_ids": sorted(R)})
-        fmt = lambda x: "—" if x is None else f"{x:.2f}"
-        logging.info("%s: reales %d · actual %d mostrados, recupera %s · sintético %d mostrados, "
-                     "recupera %s (grupo %s) · gasto %.2f $", cod, len(R), len(mostrados_a),
-                     fmt(fila["actual"]["recupera"]), len(mostrados_s),
-                     fmt(fila["sintetico"]["recupera"]), fmt(fila["sintetico"]["grupo_recupera"]),
-                     gasto.total)
+        resultados.append({**fila, "perfil_id": caso["perfil_id"], "quitados": extra["quitados"],
+                           **{f"ids_{v}": sorted(mostrados[v]) for v in VARIANTES}})
+        g = lambda x: "—" if x is None else f"{x:.2f}"
+        logging.info("%s: reales %d · %s · gasto %.2f $", cod, len(R), " · ".join(
+            f"{v} {fila[v]['mostrados']} (rec {g(fila[v]['recupera'])}, prec {g(fila[v]['precision'])})"
+            for v in VARIANTES), gasto.total)
         (SALIDA / "sintetico.json").write_text(json.dumps(resultados))
 
     # ---- Resumen público: solo cifras
-    def media(xs):
-        xs = [x for x in xs if x is not None]
-        return f"{sum(xs) / len(xs):.2f}" if xs else "—"
-    lineas = ["## Alta sin NIF frente al motor de huellas", "",
-              "Referencia: lo que el motor enseña hoy a cada empresa con su NIF (sí + quizás, vivas).", "",
-              "| Perfil | Reales | Actual: mostrados | Actual: recupera | Sintético: mostrados | Sintético: recupera |",
-              "|---|---|---|---|---|---|"]
-    for f in resumen:
-        g = lambda x: "—" if x is None else f"{x:.2f}"
-        lineas.append(f"| {f['codigo']} | {f['reales']} | {f['actual']['mostrados']} | "
-                      f"{g(f['actual']['recupera'])} | {f['sintetico']['mostrados']} | "
-                      f"{g(f['sintetico']['recupera'])} |")
-    lineas += ["", f"Media recupera: actual {media([f['actual']['recupera'] for f in resumen])} · "
-               f"sintético {media([f['sintetico']['recupera'] for f in resumen])}. "
-               f"Mostrados medios: actual {media([f['actual']['mostrados'] for f in resumen])} · "
-               f"sintético {media([f['sintetico']['mostrados'] for f in resumen])}. "
-               f"Gasto estimado {gasto.total:.2f} $."]
+    def media(v, campo):
+        xs = [f[v][campo] for f in resumen if f[v][campo] is not None]
+        return sum(xs) / len(xs) if xs else float("nan")
+    lineas = ["## Alta sin NIF con el motor de huellas: contra el ruido", "",
+              "Referencia: lo que el motor enseña hoy a cada empresa con su NIF.", "",
+              "| Variante | Enseña (media) | Recupera de la lista real | De lo que enseña, está en la lista real |",
+              "|---|---|---|---|"]
+    for v in VARIANTES:
+        lineas.append(f"| {v} | {media(v, 'mostrados'):.0f} | {media(v, 'recupera'):.2f} | "
+                      f"{media(v, 'precision'):.2f} |")
+    lineas += ["", f"Perfiles: {len(resumen)}. Gasto: {gasto.total:.2f} $."]
     informe = "\n".join(lineas)
     print("\n" + informe)
     if os.environ.get("GITHUB_STEP_SUMMARY"):

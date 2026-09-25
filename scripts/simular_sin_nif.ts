@@ -702,7 +702,9 @@ async function buscarVecinos(descripcion: string, familias: string[], franjas: s
     });
     vecinos.push(quedan.splice(mejor, 1)[0]);
   }
-  return { ordenados, vecinos, en_franjas: enFranjas.length >= 15, pool: unicos.length };
+  // Los más parecidos sin empujón a la variedad (para medir_sintetico).
+  const puros = candidatos.slice(0, 80);
+  return { ordenados, vecinos, puros, en_franjas: enFranjas.length >= 15, pool: unicos.length };
 }
 
 // Criterio y códigos a partir de un historial (sintético): lo mismo que
@@ -932,7 +934,9 @@ for (const { codigo, p } of casos) {
         ...[...cuenta200.entries()].filter(([, n]) => n >= 3).map(([p]) => p)])],
         detalle: { ...base.detalle, buscadas, titulos: v.vecinos.slice(0, 10).map(({ l }) => l.titulo),
                    filas: v.vecinos.map(({ l }) => ({ id_licitacion: l.id_licitacion, titulo: l.titulo,
-                                                      cpvs: l.cpvs ?? [] })) } };
+                                                      cpvs: l.cpvs ?? [] })),
+                   puros: v.puros.map(({ l, s }) => ({ id_licitacion: l.id_licitacion, titulo: l.titulo,
+                                                       cpvs: l.cpvs ?? [], s })) } };
     };
     variantes.vecinos_vecindario = await conVecindario([]);
     const salida = "—";
@@ -940,7 +944,8 @@ for (const { codigo, p } of casos) {
     if (EXPORTAR) {
       const vv = variantes.vecinos_vecindario!;
       exportados.push({ codigo, perfil_id: p.id, cif, descripcion, familias,
-                        vecinos: vv.detalle.filas, criterio: vv.criterio, prefijos: vv.prefijos });
+                        vecinos: vv.detalle.filas, puros: vv.detalle.puros,
+                        criterio: vv.criterio, prefijos: vv.prefijos });
       await Deno.writeTextFile(`${SALIDA}/sinteticos.json`, JSON.stringify(exportados));
       console.log(`${codigo}: exportado (${(vv.detalle.filas as unknown[]).length} vecinos, ` +
                   `${vv.prefijos.length} códigos)`);
