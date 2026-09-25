@@ -3944,8 +3944,11 @@ async function pantallaCribando(perfil, session, lectura, volviendo = false) {
     // aquí (un par de minutos) y `cribar` responde `esperando` mientras
     // tanto. Esperar no es «no avanzar».
     if (r.esperando) {
-      document.getElementById('progreso').textContent =
-        'Comparando con los contratos que has ganado. Un par de minutos...';
+      // Sin NIF no ha ganado nada: se compara con contratos parecidos a
+      // lo que ha descrito (su historial sintético, decisión 40).
+      document.getElementById('progreso').textContent = perfil.cif
+        ? 'Comparando con los contratos que has ganado. Un par de minutos...'
+        : 'Comparando con contratos parecidos a lo que haces. Un par de minutos...';
       document.getElementById('relleno').style.width = `${Math.min(95, 10 + vuelta * 8)}%`;
       continue;
     }
