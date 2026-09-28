@@ -385,3 +385,45 @@ pero el cribado de contratos de frontera ("quizás" o "no") puede variar:
 **Cómo cerrarlo, si molesta.** Copiar los veredictos de otro perfil con el
 mismo NIF y el mismo criterio en vez de volver a cribar. Además sería más
 barato.
+
+---
+
+## 16. Organismos: enseñar lo que le interesa a la empresa, no solo su CPV (opción A, en reserva)
+
+**Qué pasa.** La ficha de organismo solo cuenta contratos cuyo CPV
+**principal** está en `perfiles.cpv_prefijos`. No pasa por ningún juez.
+Con perfiles como el de una empresa de IA para atención ciudadana por voz
+(alta sin NIF, 26/09/2026), sus CPV son todos de la familia 72 (software).
+Deja fuera lo que de verdad le interesa: 7951 (centro de llamadas), 7934
+(atención omnicanal), 6421 (contact center) o 4800 (plataformas de IA). Y
+cuenta como suyo mucho software genérico: el juez de mercado
+(`veredictos_mercado`) marcó como ajenos 108 de 120 contratos recientes de
+sus CPV (a SOLTEC, 131 de 180).
+
+**No se puede arreglar ampliando `cpv_prefijos`**: alimenta avisos,
+cribado, Empresas y Movimientos, y en las altas con NIF no se toca.
+
+**Opción A (guardada 28/09/2026).** En cada ficha, además de lo de ahora,
+ordenar **todos** los contratos adjudicados del organismo, de cualquier
+CPV, por parecido de título (huellas, `huellas.py`) con los contratos de
+referencia del perfil. Son los mismos que usa `puntuador.py`: los ganados
+en las altas con NIF, los sintéticos (`perfiles.ganados_sinteticos`) en
+las altas por descripción. Enseñar los más cercanos como "contratos
+parecidos a los tuyos".
+
+- Igual para las dos vías de alta, y solo lee lo que ya genera el
+  puntuador: no toca el sistema del NIF.
+- Riesgo: en las altas sin NIF depende de cómo se generen los sintéticos,
+  que se está rehaciendo. Si deja de haber "unos títulos de referencia",
+  hay que adaptarla.
+- Las huellas viven en Storage (~1,1 M vectores), no en Postgres: el
+  cálculo tendría que hacerse fuera (GitHub Actions) y guardarse por
+  perfil y organismo, o limitarse a los organismos que se abran.
+
+**Antes de construir:** medirla con dos perfiles (el de atención
+ciudadana y SOLTEC) en un par de organismos, y ver qué contratos quedan
+arriba.
+
+**Lo que no arregla:** lo que el organismo compra por contratos menores o
+por centrales de compras (acuerdos marco del CCDL, la FEMP o la DGRCC)
+sigue sin estar en la base (ver §6 y §12).
