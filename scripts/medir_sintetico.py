@@ -20,8 +20,19 @@ simular_sin_nif.ts con MODO=exportar):
               y fuera los que el modelo dice que no encajan con la
               descripción (FILTRO).
   limpio_desc lo mismo, y el juez ve además la descripción (AVISO_SIN_NIF).
+              Es lo que hay en producción (decisión 41) y la base de las
+              demás.
+  lineas      además de a qué se dedica, «¿qué productos o servicios
+              vendéis más?»: una búsqueda por línea (puros_lineas), y la
+              descripción que ven el filtro y el juez lleva las líneas.
+  competidor  «¿con qué empresa parecida a la vuestra os encontráis?»: sus
+              contratos (solo título y CPV) intercalados con los más
+              parecidos a la descripción. Sin competidor de su tamaño,
+              igual que limpio_desc.
+  ambas       líneas y competidor.
 
-Con MEDIR_ACTUAL=1 se mide también lo de antes (criterio en prosa).
+Con MEDIR_ACTUAL=1 se mide también lo de antes (criterio en prosa), y con
+MEDIR_ANTERIORES=1 sintetico y limpio.
 
 Sin trampas: los vecinos ya salen sin los contratos de la propia empresa,
 y en «sintetico» el rasgo `propio` (cuánto de lo parecido ganó ella) se
@@ -134,6 +145,17 @@ def limpiar(descripcion: str, puros: list[dict], gasto) -> list[dict]:
     return (buenos if len(buenos) >= 10 else puros)[:40]
 
 
+def intercalar(*listas: list[dict]) -> list[dict]:
+    """Uno de cada lista por turnos, sin repetir."""
+    vistos, salida = set(), []
+    for i in range(max((len(x) for x in listas), default=0)):
+        for x in listas:
+            if i < len(x) and x[i]["id_licitacion"] not in vistos:
+                vistos.add(x[i]["id_licitacion"])
+                salida.append(x[i])
+    return salida
+
+
 def con_motor(c, cif, ganados, k, gasto, descripcion=None):
     """Grupo y lista del motor con un historial sintético (propio a cero)."""
     gan = [{"id_licitacion": v["id_licitacion"], "titulo": v["titulo"], "cpvs": v["cpvs"]}
@@ -168,7 +190,9 @@ def main() -> int:
     gasto = P.Gasto(MAX_GASTO)
     medir_actual = os.environ.get("MEDIR_ACTUAL") == "1"
     ia = cribador.obtener_cliente_openai() if medir_actual else None
-    VARIANTES = (["actual"] if medir_actual else []) + ["sintetico", "limpio", "limpio_desc"]
+    anteriores = os.environ.get("MEDIR_ANTERIORES") == "1"
+    VARIANTES = ((["actual"] if medir_actual else []) + (["sintetico", "limpio"] if anteriores else [])
+                 + ["limpio_desc", "lineas", "competidor", "ambas"])
     resultados, resumen = [], []
 
     for caso in casos:
@@ -179,13 +203,26 @@ def main() -> int:
         R = mostrados_reales(caso["perfil_id"], vivas)
         mostrados, extra = {}, {}
 
-        mostrados["sintetico"] = con_motor(c, cif, caso["vecinos"], k, gasto)
-        limpios = limpiar(caso["descripcion"], caso["puros"], gasto)
+        desc, desc_l = caso["descripcion"], caso.get("descripcion_lineas") or caso["descripcion"]
+        puros_l = caso.get("puros_lineas") or caso["puros"]
+        puros_c = caso.get("puros_competidor") or []
+        if anteriores:
+            mostrados["sintetico"] = con_motor(c, cif, caso["vecinos"], k, gasto)
+        limpios = limpiar(desc, caso["puros"], gasto)
         extra["limpios"] = len(limpios)
         extra["quitados"] = [v["titulo"] for v in caso["puros"][:len(limpios) + 20]
                              if v not in limpios][:10]
-        mostrados["limpio"] = con_motor(c, cif, limpios, k, gasto)
-        mostrados["limpio_desc"] = con_motor(c, cif, limpios, k, gasto, caso["descripcion"])
+        if anteriores:
+            mostrados["limpio"] = con_motor(c, cif, limpios, k, gasto)
+        mostrados["limpio_desc"] = con_motor(c, cif, limpios, k, gasto, desc)
+        mostrados["lineas"] = con_motor(c, cif, limpiar(desc_l, puros_l, gasto), k, gasto, desc_l)
+        mostrados["competidor"] = (
+            con_motor(c, cif, limpiar(desc, intercalar(caso["puros"], puros_c), gasto), k, gasto, desc)
+            if puros_c else mostrados["limpio_desc"])
+        mostrados["ambas"] = (
+            con_motor(c, cif, limpiar(desc_l, intercalar(puros_l, puros_c), gasto), k, gasto, desc_l)
+            if puros_c else mostrados["lineas"])
+        comp = caso.get("competidor") or {}
 
         if medir_actual:
             puerta = set(caso["prefijos"])
@@ -201,7 +238,9 @@ def main() -> int:
                                    if v and v["veredicto"] in ("si", "quizas")}
             gasto.total += len(candidatas) * (450 * 0.15 + 60 * 0.60) / 1e6
 
-        fila = {"codigo": cod, "reales": len(R), "limpios": extra["limpios"]}
+        fila = {"codigo": cod, "reales": len(R), "limpios": extra["limpios"],
+                "lineas": len(caso.get("lineas") or []),
+                "competidor": comp.get("factor_tamano") if comp.get("elegida") else None}
         for v in VARIANTES:
             S = mostrados[v]
             acierto = len(S & R)
@@ -210,6 +249,7 @@ def main() -> int:
                        "precision": acierto / len(S) if S else None}
         resumen.append(fila)
         resultados.append({**fila, "perfil_id": caso["perfil_id"], "quitados": extra["quitados"],
+                           "lineas_texto": caso.get("lineas"), "competidor_info": comp,
                            **{f"ids_{v}": sorted(mostrados[v]) for v in VARIANTES}})
         g = lambda x: "—" if x is None else f"{x:.2f}"
         logging.info("%s: reales %d · %s · gasto %.2f $", cod, len(R), " · ".join(
@@ -221,13 +261,42 @@ def main() -> int:
     def media(v, campo):
         xs = [f[v][campo] for f in resumen if f[v][campo] is not None]
         return sum(xs) / len(xs) if xs else float("nan")
-    lineas = ["## Alta sin NIF con el motor de huellas: contra el ruido", "",
+    lineas = ["## Alta sin NIF con el motor de huellas: líneas de producto y competidor", "",
               "Referencia: lo que el motor enseña hoy a cada empresa con su NIF.", "",
               "| Variante | Enseña (media) | Recupera de la lista real | De lo que enseña, está en la lista real |",
               "|---|---|---|---|"]
     for v in VARIANTES:
         lineas.append(f"| {v} | {media(v, 'mostrados'):.0f} | {media(v, 'recupera'):.2f} | "
                       f"{media(v, 'precision'):.2f} |")
+    # Empresa por empresa, frente a lo que hay en producción: una variante
+    # gana si recupera más sin enseñar peor (o enseña mejor sin recuperar
+    # menos). Diferencias de menos de 0,02 cuentan como empate.
+    def compara(v):
+        gana = pierde = 0
+        for f in resumen:
+            a, b = f["limpio_desc"], f[v]
+            if None in (a["recupera"], b["recupera"], a["precision"], b["precision"]):
+                continue
+            dr, dp = b["recupera"] - a["recupera"], b["precision"] - a["precision"]
+            if (dr > 0.02 and dp > -0.02) or (dp > 0.02 and dr > -0.02):
+                gana += 1
+            elif (dr < -0.02 and dp < 0.02) or (dp < -0.02 and dr < 0.02):
+                pierde += 1
+        return gana, pierde
+    lineas += ["", "| Frente a limpio_desc | Mejor en | Peor en |", "|---|---|---|"]
+    for v in VARIANTES:
+        if v != "limpio_desc":
+            gana, pierde = compara(v)
+            lineas.append(f"| {v} | {gana} | {pierde} |")
+    g = lambda x: "—" if x is None else f"{x:.2f}"
+    lineas += ["", "| Perfil | Reales | Líneas | Competidor (factor de tamaño) | " +
+               " | ".join(f"{v} rec / prec" for v in VARIANTES) + " |",
+               "|---|---|---|---|" + "---|" * len(VARIANTES)]
+    for f in resumen:
+        lineas.append(f"| {f['codigo']} | {f['reales']} | {f['lineas']} | "
+                      f"{'—' if f['competidor'] is None else 'x' + str(f['competidor'])} | " +
+                      " | ".join(f"{g(f[v]['recupera'])} / {g(f[v]['precision'])}" for v in VARIANTES)
+                      + " |")
     lineas += ["", f"Perfiles: {len(resumen)}. Gasto: {gasto.total:.2f} $."]
     informe = "\n".join(lineas)
     print("\n" + informe)

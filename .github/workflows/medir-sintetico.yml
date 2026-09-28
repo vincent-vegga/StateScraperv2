@@ -15,10 +15,11 @@ name: Medir alta sin NIF con huellas
 
 on:
   push:
-    branches: [simulacion-sin-nif]
+    branches: [simulacion-sin-nif, simulacion-lineas-producto]
     paths:
       - 'scripts/medir_sintetico.py'
       - '.github/workflows/medir-sintetico.yml'
+      - 'scripts/simular_sin_nif.ts'
   workflow_dispatch:
 
 permissions:
@@ -37,7 +38,7 @@ jobs:
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       CACHE_HUELLAS: /home/runner/.cache/huellas
-      MAX_GASTO: '6'
+      MAX_GASTO: '12'
       CRIBADO_SIMULTANEAS: '8'
     steps:
       - uses: actions/checkout@v4

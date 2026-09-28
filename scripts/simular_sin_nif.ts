@@ -275,6 +275,24 @@ async function describirComoCliente(actividad: string): Promise<string> {
   return String(r.descripcion ?? actividad).trim();
 }
 
+// "¿Qué productos o servicios vendéis más?". Sale de la misma actividad
+// que la descripción, nunca de sus contratos: si viera lo que ha ganado,
+// la medición se inflaría.
+async function lineasComoCliente(actividad: string): Promise<string[]> {
+  const r = await modelo([
+    { role: "system", content:
+      "Esta empresa contesta en un formulario a «¿qué productos o servicios " +
+      "vendéis o hacéis más a menudo?». Escribe entre 3 y 6 respuestas como " +
+      "las pondría su dueño: cortas (de dos a seis palabras), concretas, sin " +
+      "códigos CPV, sin nombre de empresa, sin organismos y sin cifras. Solo " +
+      "lo que se deduce de lo que hace, sin inventar líneas nuevas. Devuelve " +
+      "EXCLUSIVAMENTE JSON: {\"lineas\":[\"...\"]}" },
+    { role: "user", content: actividad },
+  ], 200);
+  return (Array.isArray(r.lineas) ? r.lineas : []).map((x: unknown) => String(x).trim())
+    .filter(Boolean).slice(0, 6);
+}
+
 // Nombres de las divisiones CPV (vocabulario común de 2008). El
 // catálogo de `proponer` en producción solo lleva número y volumen, y
 // con "prefiere divisiones con volumen alto" el modelo, que no sabe de
@@ -707,6 +725,67 @@ async function buscarVecinos(descripcion: string, familias: string[], franjas: s
   return { ordenados, vecinos, puros, en_franjas: enFranjas.length >= 15, pool: unicos.length };
 }
 
+// Una búsqueda por línea de producto, no una sola con todo junto: un
+// único vector de una empresa con varias líneas queda a medio camino y
+// no se parece a ninguna. De cada línea, sus más parecidos (dentro de su
+// tamaño, como buscarVecinos), y se reparten por turnos: la primera de
+// cada línea, luego la segunda... hasta 80, sin repetir.
+async function buscarPorLineas(lineas: string[], familias: string[], franjas: string[],
+                               cifPropio: string) {
+  const porLinea = await Promise.all(lineas.map((linea) =>
+    buscarVecinos(linea, familias, franjas, cifPropio)));
+  const vistos = new Set<string>();
+  const puros: { l: Lic; s: number }[] = [];
+  for (let i = 0; puros.length < 80 && porLinea.some((v) => i < v.puros.length); i++) {
+    for (const v of porLinea) {
+      const x = v.puros[i];
+      if (x && puros.length < 80 && !vistos.has(x.l.id_licitacion)) {
+        vistos.add(x.l.id_licitacion);
+        puros.push(x);
+      }
+    }
+  }
+  return puros;
+}
+
+// "¿Con qué empresa parecida a la vuestra os encontráis?". Un consultor
+// pequeño no nombra a una multinacional, así que el oráculo nombra una
+// de su tamaño: de quienes ganan entre los 200 contratos más parecidos
+// a su descripción (sin ella misma), las de importe mediano a menos de
+// un factor 3 del suyo, y de esas la que más gana ahí. Usa el tamaño
+// real de la empresa: es una cota, como las franjas.
+// De sus contratos solo se toma el «qué» (título y CPV), ordenados por
+// parecido a la descripción: ni su tamaño, ni sus órganos, ni su zona.
+async function buscarCompetidor(descripcion: string, ordenados: { l: Lic }[],
+                                cifPropio: string, medianaPropia: number | null) {
+  const porEmpresa = new Map<string, Lic[]>();
+  for (const { l } of ordenados.slice(0, 200)) {
+    const c = String(l.adjudicatario_cif ?? "");
+    if (!c || c === cifPropio) continue;
+    porEmpresa.set(c, [...(porEmpresa.get(c) ?? []), l]);
+  }
+  const candidatas = [...porEmpresa.entries()].filter(([, ls]) => ls.length >= 2)
+    .map(([cif, ls]) => ({ cif, n: ls.length,
+      mediana: mediana(ls.map(importeDe).filter((x): x is number => x != null)) }))
+    .sort((a, b) => b.n - a.n);
+  const ratio = (m: number | null) =>
+    m && medianaPropia ? Math.max(m, medianaPropia) / Math.min(m, medianaPropia) : Infinity;
+  const elegida = candidatas.find((c) => ratio(c.mediana) <= 3);
+  if (!elegida) return { puros: [], info: { candidatas: candidatas.length, elegida: false } };
+
+  const { data } = await leer(() => db.from("licitaciones").select(COLUMNAS)
+    .eq("adjudicatario_cif", elegida.cif).order("fecha_actualizacion", { ascending: false })
+    .limit(300));
+  const suyas = ((data ?? []) as unknown as Lic[]).filter((l) => !esMenor(l) && l.titulo);
+  const [consulta] = await incrustar([descripcion]);
+  const vs = await vectoresDe(suyas);
+  const puros = suyas.map((l, i) => ({ l, s: coseno(consulta, vs[i]) }))
+    .sort((a, b) => b.s - a.s).slice(0, 40);
+  return { puros, info: { candidatas: candidatas.length, elegida: true,
+                          en_vecindario: elegida.n, contratos: suyas.length,
+                          factor_tamano: Math.round(ratio(elegida.mediana) * 10) / 10 } };
+}
+
 // Criterio y códigos a partir de un historial (sintético): lo mismo que
 // hace el alta con NIF, con la descripción como base.
 async function desdeHistorial(descripcion: string, familias: string[],
@@ -943,12 +1022,38 @@ for (const { codigo, p } of casos) {
 
     if (EXPORTAR) {
       const vv = variantes.vecinos_vecindario!;
+      const fila = ({ l, s }: { l: Lic; s: number }) =>
+        ({ id_licitacion: l.id_licitacion, titulo: l.titulo, cpvs: l.cpvs ?? [], s });
+
+      // Con las líneas de producto: las familias se proponen con la
+      // descripción y las líneas (como lo haría el alta), y se busca
+      // por cada línea.
+      const lineas = await lineasComoCliente(String(p.descripcion ?? ""));
+      const descripcionLineas = lineas.length
+        ? `${descripcion} Lo que más vendemos o hacemos: ${lineas.join("; ")}.` : descripcion;
+      const familiasLineas = lineas.length
+        ? marcar((await proponer(descripcionLineas, true)).prefijos).familias : familias;
+      const purosLineas = lineas.length
+        ? await buscarPorLineas(lineas, familiasLineas, franjas, cif) : [];
+
+      // Con un competidor de su tamaño.
+      const medianaPropia = mediana(((suyos ?? []) as Lic[])
+        .filter((l) => !esMenor(l)).map(importeDe).filter((x): x is number => x != null));
+      const { ordenados } = await buscarVecinos(descripcion, familias, franjas, cif);
+      const comp = await buscarCompetidor(descripcion, ordenados, cif, medianaPropia);
+
       exportados.push({ codigo, perfil_id: p.id, cif, descripcion, familias,
                         vecinos: vv.detalle.filas, puros: vv.detalle.puros,
-                        criterio: vv.criterio, prefijos: vv.prefijos });
+                        criterio: vv.criterio, prefijos: vv.prefijos,
+                        lineas, descripcion_lineas: descripcionLineas,
+                        familias_lineas: familiasLineas, puros_lineas: purosLineas.map(fila),
+                        puros_competidor: comp.puros.map(fila), competidor: comp.info });
       await Deno.writeTextFile(`${SALIDA}/sinteticos.json`, JSON.stringify(exportados));
       console.log(`${codigo}: exportado (${(vv.detalle.filas as unknown[]).length} vecinos, ` +
-                  `${vv.prefijos.length} códigos)`);
+                  `${vv.prefijos.length} códigos, ${lineas.length} líneas, ` +
+                  `${purosLineas.length} por líneas, ` +
+                  (comp.info.elegida ? `competidor x${comp.info.factor_tamano} con ` +
+                    `${comp.puros.length} contratos` : "sin competidor de su tamaño") + ")");
       continue;
     }
     const usadas = new Set(Object.values(variantes).flatMap((v) => v?.usadas ?? []));
