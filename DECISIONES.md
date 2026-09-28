@@ -1026,6 +1026,66 @@ peor en el resto (F1 media 0,50 frente a 0,54; pierde en 10 de 16 perfiles).
 
 ---
 
+## 40. Alta sin NIF por el motor de huellas, con historial sintético
+
+**Contexto.** El motor de huellas (`puntuador.py`) parte de lo que la
+empresa ha ganado; quien entra sin NIF seguía con el criterio en prosa. El
+alta sin NIF ya busca los 40 contratos adjudicados más parecidos a su
+descripción (decisión 38). Medido con las 14 empresas que van por huellas,
+haciendo como si entraran sin NIF (`scripts/medir_sintetico.py`, rama
+`simulacion-sin-nif`; referencia: lo que el motor les enseña con su NIF):
+
+| Sin NIF | Recupera de su lista real | Enseña |
+|---|---|---|
+| Criterio en prosa + códigos (lo de antes) | 32 % | 83 |
+| Esos 40 contratos como historial en el motor | **62 %** | 256 |
+
+Mejor en las 14. Cuela más contratos que no están en la lista real, pero
+recupera el doble con un volumen parecido al de la lista real (196).
+
+**Decisión** (25/09/2026). El alta sin NIF guarda esos 40 contratos en
+`perfiles.ganados_sinteticos` y pide la pasada del motor, como el alta por
+NIF. El motor los trata como ganados: sin NIF, el rasgo `propio` sale a
+cero y los pares cuentan a todos los ganadores. El juez y la puntuación no
+cambian para nadie. El criterio en prosa se sigue escribiendo y queda de
+reserva: si no se puede pedir la pasada o no llega, el perfil sigue con él.
+Los perfiles sin NIF anteriores no tienen historial sintético y siguen como
+estaban.
+
+---
+
+## 41. Historial sintético sin intrusos, y el juez sabe que es sintético
+
+**Contexto.** Con la decisión 40, un alta de prueba de jardinería salió con
+230 contratos en su lista frente a 71 con el criterio en prosa, y entre
+ellos depuradoras y colonias felinas. De sus 40 contratos sintéticos, 7 no
+eran de jardinería (depuradora, desratización, alcantarillado, captura de
+animales...): los metía la búsqueda con diversidad, y el juez los toma
+como hechos ("esta empresa ha ganado una depuradora").
+
+Medido con las 14 empresas que van por huellas, haciendo como si entraran
+sin NIF (`scripts/medir_sintetico.py`; referencia, lo que el motor les
+enseña con su NIF):
+
+| Historial sintético | Enseña | Recupera | De lo que enseña, bueno |
+|---|---|---|---|
+| Decisión 40 | 257 | 62 % | 44 % |
+| Sin diversidad y filtrado contra la descripción | 190 | 57 % | 52 % |
+| Lo mismo y el juez ve la descripción | **176** | **55 %** | **57 %** |
+
+**Decisión** (25/09/2026). La tercera. El historial sintético sale de los
+más parecidos sin diversidad, y cada uno se contrasta con lo que la empresa
+dice que hace (`historialSintetico`, en `vecinos.ts`; ~80 llamadas por
+alta). En el motor, solo para perfiles sin NIF, el juez sabe que esos
+contratos son de otras empresas y ve la descripción (`AVISO_SIN_NIF`, en
+`puntuador.py`). Para las empresas con NIF el juez no cambia.
+
+**Contrapartida.** Algunas empresas cuya descripción es más estrecha que lo
+que ganan pierden cobertura (en la medición, una del 46 % al 19 %). Sigue
+muy por encima del criterio en prosa (32 % de media).
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.

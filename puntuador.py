@@ -122,6 +122,19 @@ Devuelve EXCLUSIVAMENTE JSON:
 {"veredicto": "si|quizas|no", "motivo": "una frase breve que cite el \
 contrato ganado que más se parece, o por qué ninguno encaja"}"""
 
+# Solo para perfiles SIN NIF (historial sintético, decisiones 40 y 41): sus
+# «contratos ganados» son contratos de otras empresas parecidos a lo que
+# dice que hace. El juez lo sabe y ve también su descripción. Para las
+# empresas con NIF el juez no cambia. Medido con 14 empresas haciendo como
+# si entraran sin NIF: la parte buena de lo que se enseña sube del 52 % al
+# 57 % frente a no darle la descripción.
+AVISO_SIN_NIF = """
+
+Esta empresa todavía no ha ganado contratos: los «contratos ganados más \
+parecidos» son contratos adjudicados a otras empresas, parecidos a lo que \
+dice que hace. Te damos también lo que dice que hace: si un ejemplo y su \
+descripción no casan, manda la descripción."""
+
 # Lo que el cliente ha dicho al corregir su lista. Los motivos escritos son
 # reglas suyas y se le enseñan todos al juez, en cada contrato: una regla
 # sobre un organismo vale para cualquier contrato de ese organismo, no solo
@@ -425,6 +438,20 @@ def ganados_de(cif: str) -> list[dict]:
     """Lo que ha ganado la empresa: título y CPV de cada licitación."""
     ids = sorted({f["id_licitacion"] for f in leer(
         "adjudicaciones_empresa", {"select": "id_licitacion", "cif": f"eq.{cif}"})})
+    return licitaciones_de(ids)
+
+
+def ganados_del_perfil(p: dict) -> list[dict]:
+    """Con NIF, lo que ha ganado. Sin NIF, su historial sintético: los 40
+    contratos adjudicados más parecidos a su descripción que guardó el alta
+    (perfiles.ganados_sinteticos, decisión 40). Sin `cif`, el rasgo
+    `propio` sale a cero y los pares cuentan a todos los ganadores."""
+    if p.get("cif"):
+        return ganados_de(p["cif"])
+    return licitaciones_de(sorted(set(p.get("ganados_sinteticos") or [])))
+
+
+def licitaciones_de(ids: list[str]) -> list[dict]:
     out = []
     for a in range(0, len(ids), 100):
         filtro = "(" + ",".join(_q(i) for i in ids[a:a + 100]) + ")"
@@ -622,7 +649,12 @@ def procesar_perfil(c: Contexto, perfil: dict, ganados: list[dict], previos: dic
         if len(C):
             sc = C @ v
             cerca = [corr[j] for j in np.argsort(-sc)[:CORRECCIONES] if sc[j] >= SIM_CORRECCION]
-        tareas.append((idl, mensajes_juez(f, ejemplos, cerca, reglas)))
+        m = mensajes_juez(f, ejemplos, cerca, reglas)
+        if not perfil.get("cif") and perfil.get("descripcion"):
+            m[0]["content"] += AVISO_SIN_NIF
+            m[1]["content"] = (f"LO QUE LA EMPRESA DICE QUE HACE:\n{perfil['descripcion']}\n\n"
+                               + m[1]["content"])
+        tareas.append((idl, m))
 
     nuevos = {}
     if not ensayo and tareas:
@@ -736,8 +768,10 @@ def main() -> int:
             c.guardar()
 
     try:
-        perfiles = leer("perfiles", {"select": "id,cif,sistema,criterio_version,puntuado_en",
-                                     "activo": "is.true", "cif": "not.is.null"})
+        # Con NIF, o sin NIF con historial sintético (alta sin NIF).
+        perfiles = leer("perfiles", {
+            "select": "id,cif,sistema,criterio_version,puntuado_en,ganados_sinteticos,descripcion",
+            "activo": "is.true", "or": "(cif.not.is.null,ganados_sinteticos.not.is.null)"})
     except RuntimeError as error:
         # Sin la migración 20260924200000 no hay columna `sistema`: solo
         # vale para la sombra, que no la necesita.
@@ -755,9 +789,9 @@ def main() -> int:
     hechos = 0
     for p in perfiles:
         et = p["id"][:8]
-        if not p["cif"]:
+        if not p.get("cif") and not p.get("ganados_sinteticos"):
             continue
-        ganados = ganados_de(p["cif"])
+        ganados = ganados_del_perfil(p)
         if len(ganados) < PESOS["minimo_ganados"]:
             # Poco historial: sigue con el criterio en prosa. Si se le había
             # marcado para este sistema, se le devuelve (y se da por hecha la

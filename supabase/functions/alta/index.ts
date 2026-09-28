@@ -31,7 +31,8 @@ import {
   prefijosDeLectura,
 } from "./modelo.ts";
 import {
-  DIVISIONES, FRANJAS, buscarParecidos, codigosDelVecindario, ejemplosPorFamilia, titulosTipicos,
+  DIVISIONES, FRANJAS, buscarParecidos, codigosDelVecindario, ejemplosPorFamilia,
+  historialSintetico,
   type Adjudicada, type Parecidos,
 } from "./vecinos.ts";
 
@@ -406,10 +407,7 @@ async function parecidosDe(
   const filas = ((data ?? []) as Adjudicada[]).filter((l) => l.titulo);
   if (filas.length < 50) return null;
   const franjas = Array.isArray(perfil.franjas) ? perfil.franjas as string[] : [];
-  const descripcion = String(perfil.descripcion);
-  // Si el modelo no los da, se busca con la descripción tal cual.
-  const titulos = await titulosTipicos(descripcion).catch(() => [] as string[]);
-  return await buscarParecidos(descripcion, filas, franjas, titulos);
+  return await buscarParecidos(String(perfil.descripcion), filas, franjas);
 }
 
 // ------------------------------------------------------------
@@ -816,8 +814,28 @@ Deno.serve(async (peticion) => {
         paso_alta: "cribando",
       }).eq("id", perfil.id);
 
+      // Los vecinos, además, como historial sintético para el motor de
+      // huellas: los trata como si los hubiera ganado (decisión 40). El
+      // criterio de arriba queda de reserva: si no se puede pedir la
+      // pasada, o no llega, el perfil sigue con él.
+      // Se guarda antes de pedir la pasada: el motor lo lee al arrancar.
+      const historial = conEjemplos
+        ? await historialSintetico(String(perfil.descripcion), parecidos!) : [];
+      if (historial.length) {
+        await admin.from("perfiles").update({
+          ganados_sinteticos: historial.map((l) => l.id_licitacion),
+        }).eq("id", perfil.id);
+      }
+      const conHuellas = historial.length > 0 && await pedirPuntuacion(perfil.id, true);
+      await admin.from("perfiles").update(conHuellas
+        ? {
+            sistema: "huellas", puntuado_en: null,
+            puntuacion_pedida: new Date().toISOString() }
+        : { ganados_sinteticos: null, sistema: "criterio" }).eq("id", perfil.id);
+
       console.log(`Alta sin NIF: ${conEjemplos ? parecidos!.vecinos.length : 0} ejemplos, ` +
-                  `${codigos.length || lista.length} códigos`);
+                  `${codigos.length || lista.length} códigos, ` +
+                  `${conHuellas ? "por huellas" : "por criterio"}`);
       return responder({ ok: true, resumen: criterio.resumen });
     }
 
@@ -1167,6 +1185,7 @@ Deno.serve(async (peticion) => {
       }).eq("id", perfil.id);
       await admin.from("perfiles").update({
         sistema: "criterio", puntuado_en: null, puntuacion_pedida: null,
+        ganados_sinteticos: null,
       }).eq("id", perfil.id);
 
       console.log(`Perfil ${perfil.id} reiniciado`);

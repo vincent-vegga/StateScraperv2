@@ -17,7 +17,7 @@
 // vecindario no se pierde lo que la descripción sola sí encontraba.
 // ============================================================
 
-import { OPENAI } from "./modelo.ts";
+import { OPENAI, llamarModelo } from "./modelo.ts";
 
 const EMBEDDINGS = OPENAI.replace("/chat/completions", "/embeddings");
 
@@ -78,8 +78,11 @@ const coseno = (a: number[], b: number[]) => {
 export type Parecidos = {
   // Todos, del más al menos parecido.
   ordenados: { l: Adjudicada; s: number }[];
-  // Los que hacen de historial.
+  // Los que hacen de ejemplos del criterio en prosa (con diversidad).
   vecinos: Adjudicada[];
+  // Los más parecidos, sin diversidad: de donde sale el historial
+  // sintético del motor de huellas (historialSintetico).
+  puros: Adjudicada[];
 };
 
 /**
@@ -126,7 +129,59 @@ export async function buscarParecidos(descripcion: string, filas: Adjudicada[],
     elegidos.push(e);
     for (const q of quedan) q.max = Math.max(q.max, coseno(q.v, e.v));
   }
-  return { ordenados, vecinos: elegidos.map((e) => e.l) };
+  return { ordenados, vecinos: elegidos.map((e) => e.l),
+           puros: candidatos.slice(0, 80).map(({ l }) => l) };
+}
+
+// Para el historial sintético del motor de huellas (decisión 41), cada
+// contrato se contrasta con lo que la empresa dice que hace: el juez lo
+// tomará como algo que ella ha ganado, y un intruso le hace decir "sí" a
+// lo que no es suyo. A una empresa de jardinería se le colaron una
+// depuradora, desratización y capturas de animales, y su lista acabó con
+// depuradoras y colonias felinas.
+const FILTRO = `\
+Eres un analista de contratación pública española. Te damos lo que una \
+empresa dice que hace y el título de un contrato público ya adjudicado. \
+¿Podría esta empresa haber sido la adjudicataria, haciendo lo que dice \
+que hace?
+
+- "si": es su tipo de trabajo o de producto.
+- "no": es otro oficio, aunque sea del mismo ámbito o para el mismo tipo \
+de cliente (limpiar un parque no es gestionar su depuradora).
+
+Devuelve EXCLUSIVAMENTE JSON: {"encaja": "si|no"}`;
+
+/**
+ * El historial sintético para el motor de huellas: de los más parecidos
+ * (sin diversidad, que aquí empuja a coger contratos de los bordes), los
+ * que encajan con lo que dice que hace; los 40 primeros. Si pasan menos
+ * de 10, los 40 más parecidos sin filtrar. Medido con 14 empresas: la
+ * parte buena de lo que se enseña sube del 44 % al 57 % (con el juez
+ * viendo la descripción), y la cobertura baja del 62 % al 55 %.
+ */
+export async function historialSintetico(descripcion: string, p: Parecidos): Promise<Adjudicada[]> {
+  const encaja = async (l: Adjudicada) => {
+    try {
+      const r = await llamarModelo([
+        { role: "system", content: FILTRO },
+        { role: "user", content: `LO QUE DICE QUE HACE:\n${descripcion}\n\nCONTRATO:\n${l.titulo}` },
+      ], 30);
+      return String(r.encaja ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .trim().toLowerCase() === "si";
+    } catch {
+      return false;
+    }
+  };
+  const juicios: boolean[] = new Array(p.puros.length);
+  let siguiente = 0;
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    while (siguiente < p.puros.length) {
+      const i = siguiente++;
+      juicios[i] = await encaja(p.puros[i]);
+    }
+  }));
+  const buenos = p.puros.filter((_, i) => juicios[i]);
+  return (buenos.length >= 10 ? buenos : p.puros).slice(0, 40);
 }
 
 /**
