@@ -41,6 +41,8 @@ def main() -> int:
     if contenido is None:
         return 1
 
+    ejemplos_ext = 0
+    cont: Counter = Counter()
     entradas = con_periodo = con_duracion = con_prorroga = vistos = 0
     unidades: Counter = Counter()
     etiquetas: Counter = Counter()
@@ -65,6 +67,23 @@ def main() -> int:
                     con_periodo += 1
                 if lector.buscar_todos(e, "ContractExtension"):
                     con_prorroga += 1
+                # Cobertura de la duración a nivel de contrato frente a lote.
+                ns = {'cac': 'urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2',
+                      'cbc': 'urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2'}
+                gen = e.xpath('.//cac:ProcurementProject/cac:PlannedPeriod/cbc:DurationMeasure', namespaces=ns)
+                lot = e.xpath('.//cac:ProcurementProjectLot/cac:ProcurementProject/cac:PlannedPeriod/cbc:DurationMeasure', namespaces=ns)
+                # ProcurementProject dentro de Lot también casa con 'gen'; el de contrato es el hijo directo del folder.
+                top = e.xpath('.//*[local-name()="ContractFolderStatus"]/cac:ProcurementProject/cac:PlannedPeriod/cbc:DurationMeasure', namespaces=ns)
+                cont['top' if top else ('solo_lote' if lot else 'ninguna')] += 1
+                fechas = e.xpath('.//cac:ProcurementProject/cac:PlannedPeriod/cbc:StartDate | .//cac:ProcurementProject/cac:PlannedPeriod/cbc:EndDate', namespaces=ns)
+                if fechas and not top and not lot:
+                    cont['solo_fechas'] += 1
+                for x in e.xpath('.//cac:ContractExtension', namespaces=ns):
+                    cont['ext'] += 1
+                    if ejemplos_ext < 4:
+                        ejemplos_ext += 1
+                        print('--- ContractExtension ---')
+                        print(etree.tostring(x, pretty_print=True, encoding='unicode')[:1500])
                 if a.buscar and vistos < 3:
                     bruto = etree.tostring(e, encoding="unicode")
                     if a.buscar in bruto:
@@ -83,6 +102,7 @@ def main() -> int:
           f"  con ContractExtension: {con_prorroga}")
     print("Unidades:", dict(unidades))
     print("Etiquetas:", dict(etiquetas))
+    print("Cobertura:", dict(cont))
     return 0
 
 
