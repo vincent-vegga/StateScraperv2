@@ -1,0 +1,38 @@
+name: Rellenar duración del contrato
+# Relee los ZIP del histórico y rellena SOLO duracion_meses, duracion_origen
+# y prorrogas_texto de lo que ya está en la base (función rellenar_duracion).
+# No crea filas ni toca otras columnas. Arranca con el push de la rama
+# mientras no esté en main; después, a mano desde Actions.
+on:
+  push:
+    branches: [duracion-contrato]
+    paths: ['.github/workflows/rellenar-duracion.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rellenar:
+    name: ${{ matrix.conjunto }} · ${{ matrix.ym }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - {conjunto: '1044', ym: '2026-05'}
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: |
+          YM="${{ matrix.ym }}"
+          python rellenar_duracion.py --conjunto "${{ matrix.conjunto }}" --anio "${YM%-*}" --mes "$((10#${YM#*-}))"

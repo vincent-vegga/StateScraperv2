@@ -81,6 +81,7 @@ CAMPOS = [
     "oferta_baja", "oferta_alta", "motivo_adjudicacion",
     "fecha_adjudicacion", "fecha_formalizacion", "gano_pyme", "sistema",
     "fecha_actualizacion", "fecha_publicacion", "fecha_limite",
+    "duracion_meses", "duracion_origen", "prorrogas_texto",
 ]
 
 
@@ -237,6 +238,9 @@ def a_fila(entrada, etiqueta: str) -> dict | None:
         "fecha_actualizacion": fecha_act.isoformat() if fecha_act else "",
         "fecha_publicacion": datos.get("fecha_publicacion") or "",
         "fecha_limite": datos.get("fecha_limite") or "",
+        "duracion_meses": datos.get("duracion_meses") if datos.get("duracion_meses") is not None else "",
+        "duracion_origen": datos.get("duracion_origen") or "",
+        "prorrogas_texto": datos.get("prorrogas_texto") or "",
     }
 
 
@@ -519,6 +523,10 @@ def volcar_todo(filas: list[dict], etiqueta: str, conjunto: str = "643") -> int:
             "gano_pyme": (f.get("gano_pyme") == "True"
                           if f.get("gano_pyme") not in ("", None) else None),
             "sistema": f.get("sistema") or None,
+            "duracion_meses": (float(f["duracion_meses"])
+                               if str(f.get("duracion_meses") or "").strip() else None),
+            "duracion_origen": f.get("duracion_origen") or None,
+            "prorrogas_texto": f.get("prorrogas_texto") or None,
             "adjudicatarios": (int(f["adjudicatarios"])
                                if str(f.get("adjudicatarios") or "").isdigit() else 0),
             "importe_adjudicacion": (f["importe_adjudicacion"]
