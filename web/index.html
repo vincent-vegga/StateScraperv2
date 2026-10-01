@@ -5734,9 +5734,14 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
           <div>
             <h3>${esc(e.nombre ?? e.cif)}</h3>
             <p class="cifras">
-              <span><strong>${e.contratos}</strong> ${e.contratos === 1 ? 'contrato' : 'contratos'}${
+              ${!e.contratos && utes.length
+                // Solo ha ganado en UTE: "0 contratos" sería cierto, pero
+                // parece que la ficha está vacía.
+                ? `<span>Sin contratos propios${cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}
+                    · participa en <strong>${plural(utes.length, 'UTE', 'UTEs')}</strong></span>`
+                : `<span><strong>${e.contratos}</strong> ${e.contratos === 1 ? 'contrato' : 'contratos'}${
                 e.lotes > e.contratos ? ` (${e.lotes} lotes)` : ''}${
-                cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}</span>
+                cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}</span>`}
               ${e.importe ? `<span><strong>${euros(Number(e.importe))}</strong>
                 adjudicados</span>` : ''}
               ${e.ultimo ? `<span>último en ${esc(new Date(e.ultimo)
