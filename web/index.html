@@ -5685,13 +5685,22 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     repintarVista = () => verEmpresa(cif, true);
     const turno = ++vueltaEmp;
     esperando('Buscando...');
-    const { data, error } = await sb.rpc('ficha_empresa',
-      { cif_buscado: cif, ...argsPeriodo(periodoEmp) });
+    // Las UTEs van aparte (utes_y_socios, 20261001120000) y en paralelo:
+    // si fallan, la ficha sale igual, sin esa sección.
+    const [{ data, error }, { data: utes }] = await Promise.all([
+      sb.rpc('ficha_empresa', { cif_buscado: cif, ...argsPeriodo(periodoEmp) }),
+      sb.rpc('utes_y_socios', { cif_buscado: cif, ...argsPeriodo(periodoEmp) }),
+    ]);
     if (turno !== vueltaEmp) return;
     zona.classList.remove('cambiando');
+    if (data) {
+      data.utes = utes?.utes ?? [];
+      data.socios = utes?.socios ?? [];
+    }
     // Una empresa que en el periodo solo está homologada en acuerdos
-    // marco no tiene contratos, pero sí algo que enseñar.
-    if (error || !data || (!data.contratos && !data.marcos?.length)) {
+    // marco, o que solo ha ganado en UTE, no tiene contratos propios,
+    // pero sí algo que enseñar.
+    if (error || !data || (!data.contratos && !data.marcos?.length && !data.utes.length)) {
       // Con nombre es que existe y ha ganado algo, pero no en este
       // periodo: decir "no hemos encontrado ese NIF" sería falso.
       zona.innerHTML = `
@@ -5712,6 +5721,11 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const organos = e.organos ?? [];
     const ultimos = e.ultimos ?? [];
     const marcos = e.marcos ?? [];
+    const utes = e.utes ?? [];
+    const socios = e.socios ?? [];
+    // Un socio o una UTE se abre como cualquier otra empresa.
+    const enlaceEmpresa = (cif, nombre) => `<a href="#" data-ver-cif="${esc(cif)}"
+      style="color:inherit">${esc(nombre ?? cif)}</a>`;
 
     zona.innerHTML = `
       <button class="volver-listas" id="volver-listas">← Volver a las listas</button>
@@ -5720,9 +5734,14 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
           <div>
             <h3>${esc(e.nombre ?? e.cif)}</h3>
             <p class="cifras">
-              <span><strong>${e.contratos}</strong> ${e.contratos === 1 ? 'contrato' : 'contratos'}${
+              ${!e.contratos && utes.length
+                // Solo ha ganado en UTE: "0 contratos" sería cierto, pero
+                // parece que la ficha está vacía.
+                ? `<span>Sin contratos propios${cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}
+                    · participa en <strong>${plural(utes.length, 'UTE', 'UTEs')}</strong></span>`
+                : `<span><strong>${e.contratos}</strong> ${e.contratos === 1 ? 'contrato' : 'contratos'}${
                 e.lotes > e.contratos ? ` (${e.lotes} lotes)` : ''}${
-                cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}</span>
+                cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}</span>`}
               ${e.importe ? `<span><strong>${euros(Number(e.importe))}</strong>
                 adjudicados</span>` : ''}
               ${e.ultimo ? `<span>último en ${esc(new Date(e.ultimo)
@@ -5791,7 +5810,38 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
                 m.valor_marco ? ` · marco de ${euros(Number(m.valor_marco))} en total` : ''}</span>
             </div>`).join('')}
           </div>` : ''}
+
+        ${socios.length ? `
+          <h4 style="margin:26px 0 4px;font-size:.83rem;font-weight:650;
+                     color:var(--tenue);letter-spacing:.05em;
+                     text-transform:uppercase">Empresas que forman esta UTE</h4>
+          <p class="guia" style="margin:0 0 6px;font-size:.86rem">Sacadas del nombre
+            de la UTE: puede haber más socios. Cuánto le toca a cada uno no se
+            publica.</p>
+          <div class="ultimos-contratos">
+            ${socios.map(s => `<div><p class="que">${enlaceEmpresa(s.cif, s.nombre)}</p></div>`).join('')}
+          </div>` : ''}
+
+        ${utes.length ? `
+          <h4 style="margin:26px 0 4px;font-size:.83rem;font-weight:650;
+                     color:var(--tenue);letter-spacing:.05em;
+                     text-transform:uppercase">UTEs en las que participa</h4>
+          <p class="guia" style="margin:0 0 6px;font-size:.86rem">No cuentan en las
+            cifras de arriba. El importe es el de toda la UTE: cuánto le toca a
+            cada socio no se publica.</p>
+          <div class="ultimos-contratos">
+            ${utes.map(u => `<div>
+              <p class="que">${enlaceEmpresa(u.cif, u.nombre)}</p>
+              <span class="quien">${plural(u.contratos, 'contrato', 'contratos')}${
+                Number(u.importe_ute) ? ` · ${euros(Number(u.importe_ute))} la UTE entera` : ''}${
+                u.socios?.length ? ` · con ${u.socios.map(s => esc(s.nombre)).join(', ')}` : ''}</span>
+            </div>`).join('')}
+          </div>` : ''}
       </div>`;
+
+    zona.querySelectorAll('[data-ver-cif]').forEach(a => {
+      a.onclick = ev => { ev.preventDefault(); verEmpresa(a.dataset.verCif); };
+    });
 
     activarBarras(zona);
     alPulsar('volver-listas', () => history.back());

@@ -1086,6 +1086,42 @@ muy por encima del criterio en prosa (32 % de media).
 
 ---
 
+## 42. UTEs: quién las forma, sin repartir el dinero
+
+**Contexto.** Desde 2024 (sin menores), 7.730 UTEs ganaron 12.781
+adjudicaciones por 42.100 M€, el 17 % del dinero. La plataforma publica el
+nombre, el NIF y el importe de la UTE; no publica los socios ni cuánto le
+toca a cada uno (va en su contrato privado, y las UTE no se inscriben en el
+Registro Mercantil). Ningún competidor revisado lo reparte: Civio ("¿Quién
+cobra la obra?", 2016) y Gobierto enseñan la UTE como entidad y, en cada
+empresa, las UTEs en las que participa.
+
+**Decisión.** El mismo modelo. La UTE sigue siendo una entidad con sus
+contratos e importe, como hasta ahora, y además:
+
+- Ficha de empresa: "UTEs en las que participa", con el importe de **toda**
+  la UTE rotulado así. No cuenta en las cifras de la empresa.
+- Ficha de UTE: "Empresas que forman esta UTE".
+
+Los socios se sacan del nombre de la UTE (`scripts/utes_socios.py`, tabla
+`ute_socios`, función `utes_y_socios`, workflow semanal `utes-socios.yml`),
+solo con cruces fiables: el NIF del socio escrito en el nombre, o un trozo
+del nombre que coincide sin forma jurídica con una única sociedad del
+catálogo. Revisado a mano: 24 de 25 bien. Se descartaron el cruce por el
+principio del nombre (~72 %) y por contenido (~60 %): confunden filiales
+("Telefónica Móviles" con "Telefónica SA") y topónimos.
+
+**Cobertura** (01/10/2026). 7.867 UTEs: dos o más socios en el 12 %, uno en
+el 25 %, ninguno en el 63 %. 4.057 parejas, 1.603 empresas socias. Lo que
+queda fuera son siglas ("UTE INCOPE-CYGSA"), nombres de proyecto ("UTE 3
+XEMENEIES") y socios que nunca han ganado solos y no están en el catálogo.
+
+**Lo que no cambia.** El historial de las altas con NIF (`puntuador.py`,
+`ultimos_ganados`) sigue sin incluir lo ganado en UTE: es el sistema del
+NIF y no se toca.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
