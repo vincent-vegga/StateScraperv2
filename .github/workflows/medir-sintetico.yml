@@ -8,7 +8,8 @@
 #      vecinos, criterio y códigos de cada una.
 #   2. medir_sintetico.py: las mismas funciones de puntuador.py.
 # SOLO LEE. En los registros, perfiles anónimos y cifras; el detalle se
-# cifra con scripts/simulacion_certificado.pem. Unos pocos dólares.
+# cifra con scripts/simulacion_certificado.pem. Gasto contado y con tope
+# (MAX_GASTO): para entre empresas antes de pasarlo.
 # ============================================================
 
 name: Medir alta sin NIF con huellas
@@ -38,7 +39,9 @@ jobs:
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       CACHE_HUELLAS: /home/runner/.cache/huellas
+      # Tope de las dos fases juntas; la exportación, como mucho 2 $.
       MAX_GASTO: '12'
+      MAX_GASTO_EXPORTAR: '2'
       CRIBADO_SIMULTANEAS: '8'
     steps:
       - uses: actions/checkout@v4

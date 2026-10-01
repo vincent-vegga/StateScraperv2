@@ -25,11 +25,13 @@ simular_sin_nif.ts con MODO=exportar):
   lineas      además de a qué se dedica, «¿qué productos o servicios
               vendéis más?»: una búsqueda por línea (puros_lineas), y la
               descripción que ven el filtro y el juez lleva las líneas.
-  competidor  «¿con qué empresa parecida a la vuestra os encontráis?»: sus
-              contratos (solo título y CPV) intercalados con los más
-              parecidos a la descripción. Sin competidor de su tamaño,
-              igual que limpio_desc.
-  ambas       líneas y competidor.
+  referentes  se le enseñan hasta ocho empresas de su tamaño que ganan lo
+              que describe y marca las que hacen lo mismo que él (el
+              oráculo, con su filtro real: es una cota). De las marcadas,
+              sus contratos (solo título y CPV) intercalados con los más
+              parecidos a la descripción. Si no marca ninguna, igual que
+              limpio_desc.
+  ambas       líneas y referentes.
 
 Con MEDIR_ACTUAL=1 se mide también lo de antes (criterio en prosa), y con
 MEDIR_ANTERIORES=1 sintetico y limpio.
@@ -42,8 +44,14 @@ Solo lee. Lo que sale:
   - consola y resumen de la ejecución: cifras y perfiles anónimos;
   - simulacion/sintetico.json (con ids), que el workflow cifra.
 
+Gasto: se cuenta todo lo que va a OpenAI desde este proceso (juez,
+filtro y huellas nuevas), más lo que dejó la exportación en
+simulacion/gasto.json. Antes de cada empresa, si lo gastado más la
+empresa más cara hasta ahora (con un 25 % de margen) pasaría MAX_GASTO,
+se para. Una empresa que se queda a medias no cuenta en las medias.
+
 Variables: SUPABASE_URL, SUPABASE_KEY, OPENAI_API_KEY, CACHE_HUELLAS,
-    MAX_GASTO (dólares; por defecto 3).
+    MAX_GASTO (dólares, total de las dos fases; por defecto 3).
 """
 from __future__ import annotations
 
@@ -113,7 +121,33 @@ dice que hace. Te damos también lo que dice que hace: si un ejemplo y su \
 descripción no casan, manda la descripción."""
 
 
+def contar_gasto(gasto) -> None:
+    """Todo lo que va a OpenAI pasa por Session.request (también
+    requests.post y las huellas): ahí se lee el uso de cada respuesta.
+    Gasto.apuntar deja de contar, para no contar dos veces."""
+    if P.MODELO_JUEZ != "gpt-4o-mini":
+        raise SystemExit("El contador de gasto solo conoce los precios de gpt-4o-mini")
+    original = P.requests.sessions.Session.request
+
+    def request(self, method, url, *a, **kw):  # mismos nombres: requests los pasa así
+        r = original(self, method, url, *a, **kw)
+        if str(url).startswith("https://api.openai.com/") and r.status_code == 200:
+            try:
+                u = r.json().get("usage", {})
+            except ValueError:
+                u = {}
+            d = (u.get("total_tokens", 0) * 0.02 if "/embeddings" in str(url)
+                 else u.get("prompt_tokens", 0) * 0.15 + u.get("completion_tokens", 0) * 0.60) / 1e6
+            with gasto.c:
+                gasto.total += d
+        return r
+    P.requests.sessions.Session.request = request
+    gasto.apuntar = lambda uso: None
+
+
 def preguntar(mensajes: list, gasto) -> dict | None:
+    if gasto.agotado():
+        return None
     clave = os.environ["OPENAI_API_KEY"]
     for intento in range(5):
         try:
@@ -188,24 +222,32 @@ def main() -> int:
     vivas = set(c.vivas)
     k = math.ceil(P.PESOS["grupo_por_mil"] / 1000 * len(c.vivas))
     gasto = P.Gasto(MAX_GASTO)
+    contar_gasto(gasto)
+    previo = SALIDA / "gasto.json"
+    gasto.total = json.loads(previo.read_text())["dolares"] if previo.exists() else 0.0
+    logging.info("Gasto de la exportación: %.2f $ (tope total %.2f $)", gasto.total, MAX_GASTO)
+    mas_cara = 0.0
+    a_medias = 0
     medir_actual = os.environ.get("MEDIR_ACTUAL") == "1"
     ia = cribador.obtener_cliente_openai() if medir_actual else None
     anteriores = os.environ.get("MEDIR_ANTERIORES") == "1"
     VARIANTES = ((["actual"] if medir_actual else []) + (["sintetico", "limpio"] if anteriores else [])
-                 + ["limpio_desc", "lineas", "competidor", "ambas"])
+                 + ["limpio_desc", "lineas", "referentes", "ambas"])
     resultados, resumen = [], []
 
     for caso in casos:
-        if gasto.agotado():
-            logging.info("Tope de gasto alcanzado, se para")
+        if gasto.total + mas_cara * 1.25 > MAX_GASTO:
+            logging.info("Se para antes de %s: %.2f $ gastados, la más cara costó %.2f $",
+                         caso["codigo"], gasto.total, mas_cara)
             break
+        antes = gasto.total
         cod, cif = caso["codigo"], caso["cif"]
         R = mostrados_reales(caso["perfil_id"], vivas)
         mostrados, extra = {}, {}
 
         desc, desc_l = caso["descripcion"], caso.get("descripcion_lineas") or caso["descripcion"]
         puros_l = caso.get("puros_lineas") or caso["puros"]
-        puros_c = caso.get("puros_competidor") or []
+        puros_c = caso.get("puros_referentes") or []
         if anteriores:
             mostrados["sintetico"] = con_motor(c, cif, caso["vecinos"], k, gasto)
         limpios = limpiar(desc, caso["puros"], gasto)
@@ -216,13 +258,19 @@ def main() -> int:
             mostrados["limpio"] = con_motor(c, cif, limpios, k, gasto)
         mostrados["limpio_desc"] = con_motor(c, cif, limpios, k, gasto, desc)
         mostrados["lineas"] = con_motor(c, cif, limpiar(desc_l, puros_l, gasto), k, gasto, desc_l)
-        mostrados["competidor"] = (
+        mostrados["referentes"] = (
             con_motor(c, cif, limpiar(desc, intercalar(caso["puros"], puros_c), gasto), k, gasto, desc)
             if puros_c else mostrados["limpio_desc"])
         mostrados["ambas"] = (
             con_motor(c, cif, limpiar(desc_l, intercalar(puros_l, puros_c), gasto), k, gasto, desc_l)
             if puros_c else mostrados["lineas"])
-        comp = caso.get("competidor") or {}
+        comp = caso.get("referentes") or {}
+        mas_cara = max(mas_cara, gasto.total - antes)
+        if gasto.agotado():
+            # Algo se quedó sin juzgar: sus cifras saldrían falsamente bajas.
+            a_medias += 1
+            logging.info("%s: tope alcanzado a medias, no cuenta", cod)
+            break
 
         if medir_actual:
             puerta = set(caso["prefijos"])
@@ -240,7 +288,7 @@ def main() -> int:
 
         fila = {"codigo": cod, "reales": len(R), "limpios": extra["limpios"],
                 "lineas": len(caso.get("lineas") or []),
-                "competidor": comp.get("factor_tamano") if comp.get("elegida") else None}
+                "referentes": f"{comp.get('marcadas', 0)}/{comp.get('enseñadas', 0)}"}
         for v in VARIANTES:
             S = mostrados[v]
             acierto = len(S & R)
@@ -249,7 +297,7 @@ def main() -> int:
                        "precision": acierto / len(S) if S else None}
         resumen.append(fila)
         resultados.append({**fila, "perfil_id": caso["perfil_id"], "quitados": extra["quitados"],
-                           "lineas_texto": caso.get("lineas"), "competidor_info": comp,
+                           "lineas_texto": caso.get("lineas"), "referentes_info": comp,
                            **{f"ids_{v}": sorted(mostrados[v]) for v in VARIANTES}})
         g = lambda x: "—" if x is None else f"{x:.2f}"
         logging.info("%s: reales %d · %s · gasto %.2f $", cod, len(R), " · ".join(
@@ -261,7 +309,7 @@ def main() -> int:
     def media(v, campo):
         xs = [f[v][campo] for f in resumen if f[v][campo] is not None]
         return sum(xs) / len(xs) if xs else float("nan")
-    lineas = ["## Alta sin NIF con el motor de huellas: líneas de producto y competidor", "",
+    lineas = ["## Alta sin NIF con el motor de huellas: líneas de producto y referentes", "",
               "Referencia: lo que el motor enseña hoy a cada empresa con su NIF.", "",
               "| Variante | Enseña (media) | Recupera de la lista real | De lo que enseña, está en la lista real |",
               "|---|---|---|---|"]
@@ -289,15 +337,17 @@ def main() -> int:
             gana, pierde = compara(v)
             lineas.append(f"| {v} | {gana} | {pierde} |")
     g = lambda x: "—" if x is None else f"{x:.2f}"
-    lineas += ["", "| Perfil | Reales | Líneas | Competidor (factor de tamaño) | " +
+    lineas += ["", "| Perfil | Reales | Líneas | Referentes marcados / enseñados | " +
                " | ".join(f"{v} rec / prec" for v in VARIANTES) + " |",
                "|---|---|---|---|" + "---|" * len(VARIANTES)]
     for f in resumen:
         lineas.append(f"| {f['codigo']} | {f['reales']} | {f['lineas']} | "
-                      f"{'—' if f['competidor'] is None else 'x' + str(f['competidor'])} | " +
+                      f"{f['referentes']} | " +
                       " | ".join(f"{g(f[v]['recupera'])} / {g(f[v]['precision'])}" for v in VARIANTES)
                       + " |")
-    lineas += ["", f"Perfiles: {len(resumen)}. Gasto: {gasto.total:.2f} $."]
+    lineas += ["", f"Perfiles: {len(resumen)} de {len(casos)} exportados"
+               + (f" ({a_medias} a medias, fuera)" if a_medias else "")
+               + f". Gasto contado, las dos fases: {gasto.total:.2f} $ (tope {MAX_GASTO:.2f} $)."]
     informe = "\n".join(lineas)
     print("\n" + informe)
     if os.environ.get("GITHUB_STEP_SUMMARY"):

@@ -46,6 +46,37 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { llamarModelo } from "../supabase/functions/alta/modelo.ts";
 
+// ------------------------------------------------------------
+// Gasto
+// ------------------------------------------------------------
+//
+// Se cuenta en fetch: así entra todo lo que va a OpenAI (modelo y
+// embeddings), lo llame quien lo llame. Precios de gpt-4o-mini y de
+// text-embedding-3-small, en dólares por millón de tokens. Con
+// MODELO_EXPORTAR distinto se pararía: los precios no valdrían.
+// MAX_GASTO_EXPORTAR es lo que puede gastar esta fase; lo que gasta se
+// deja en simulacion/gasto.json para que medir_sintetico.py lo sume al
+// suyo y el total no pase de MAX_GASTO.
+if ((Deno.env.get("MODELO_ALTA") ?? "gpt-4o-mini") !== "gpt-4o-mini") {
+  throw new Error("El contador de gasto solo conoce los precios de gpt-4o-mini");
+}
+const TOPE_EXPORTAR = Number(Deno.env.get("MAX_GASTO_EXPORTAR") ?? "2");
+let dolares = 0;
+const fetchOriginal = globalThis.fetch;
+globalThis.fetch = async (entrada: string | URL | Request, init?: RequestInit) => {
+  const r = await fetchOriginal(entrada, init);
+  const url = entrada instanceof Request ? entrada.url : String(entrada);
+  if (r.ok && url.startsWith("https://api.openai.com/")) {
+    try {
+      const u = (await r.clone().json()).usage ?? {};
+      dolares += url.includes("/embeddings")
+        ? (u.total_tokens ?? 0) * 0.02 / 1e6
+        : ((u.prompt_tokens ?? 0) * 0.15 + (u.completion_tokens ?? 0) * 0.60) / 1e6;
+    } catch { /* sin uso legible: no cambia nada */ }
+  }
+  return r;
+};
+
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_KEY")!,
   { auth: { persistSession: false } });
 
@@ -748,42 +779,59 @@ async function buscarPorLineas(lineas: string[], familias: string[], franjas: st
   return puros;
 }
 
-// "¿Con qué empresa parecida a la vuestra os encontráis?". Un consultor
-// pequeño no nombra a una multinacional, así que el oráculo nombra una
-// de su tamaño: de quienes ganan entre los 200 contratos más parecidos
-// a su descripción (sin ella misma), las de importe mediano a menos de
-// un factor 3 del suyo, y de esas la que más gana ahí. Usa el tamaño
-// real de la empresa: es una cota, como las franjas.
-// De sus contratos solo se toma el «qué» (título y CPV), ordenados por
-// parecido a la descripción: ni su tamaño, ni sus órganos, ni su zona.
-async function buscarCompetidor(descripcion: string, ordenados: { l: Lic }[],
-                                cifPropio: string, medianaPropia: number | null) {
+// Referentes: tras describir su negocio y marcar sus tamaños de
+// contrato (las franjas, que el alta ya pregunta), se le enseñan hasta
+// ocho empresas que ganan lo que describe y son de su tamaño, con dos o
+// tres contratos suyos, y marca las que hacen lo mismo que él. Nadie
+// tiene que saber de memoria quién es su competencia ni cuánto factura.
+//
+// Las candidatas: quienes ganan al menos dos de los 200 contratos más
+// parecidos a su descripción (sin ella misma), y de esas, las que tienen
+// la mitad o más de esos contratos en sus franjas. De su tamaño según
+// lo que ganan en contratación pública, que es lo que hay en la base.
+//
+// El oráculo marca una si al menos la mitad de cinco contratos suyos
+// pasan el filtro real de la empresa (como en porReferentes). Es una
+// cota: un cliente real puede no reconocer ningún nombre.
+//
+// De las marcadas (hasta tres) solo se toma el «qué»: sus contratos,
+// título y CPV, ordenados por parecido a la descripción. Ni su tamaño,
+// ni sus órganos, ni su zona.
+async function buscarReferentes(descripcion: string, ordenados: { l: Lic }[],
+                                cifPropio: string, franjas: string[], criterioReal: string) {
   const porEmpresa = new Map<string, Lic[]>();
   for (const { l } of ordenados.slice(0, 200)) {
     const c = String(l.adjudicatario_cif ?? "");
     if (!c || c === cifPropio) continue;
     porEmpresa.set(c, [...(porEmpresa.get(c) ?? []), l]);
   }
-  const candidatas = [...porEmpresa.entries()].filter(([, ls]) => ls.length >= 2)
-    .map(([cif, ls]) => ({ cif, n: ls.length,
-      mediana: mediana(ls.map(importeDe).filter((x): x is number => x != null)) }))
-    .sort((a, b) => b.n - a.n);
-  const ratio = (m: number | null) =>
-    m && medianaPropia ? Math.max(m, medianaPropia) / Math.min(m, medianaPropia) : Infinity;
-  const elegida = candidatas.find((c) => ratio(c.mediana) <= 3);
-  if (!elegida) return { puros: [], info: { candidatas: candidatas.length, elegida: false } };
+  const enFranja = (l: Lic) => franjas.includes(franja(importeDe(l)) ?? "");
+  const enseñadas = [...porEmpresa.entries()]
+    .filter(([, ls]) => ls.length >= 2 && ls.filter(enFranja).length * 2 >= ls.length)
+    .sort((a, b) => b[1].length - a[1].length).slice(0, 8);
 
-  const { data } = await leer(() => db.from("licitaciones").select(COLUMNAS)
-    .eq("adjudicatario_cif", elegida.cif).order("fecha_actualizacion", { ascending: false })
-    .limit(300));
-  const suyas = ((data ?? []) as unknown as Lic[]).filter((l) => !esMenor(l) && l.titulo);
+  const marcadas: string[] = [];
+  for (const [cif, ls] of enseñadas) {
+    if (marcadas.length >= 3) break;
+    const vistos = await enParalelo(ls.slice(0, 5), 5, (l) => veredicto(criterioReal, l));
+    if (vistos.filter((v) => v === "si" || v === "quizas").length * 2 >= vistos.length) {
+      marcadas.push(cif);
+    }
+  }
+  const info = { candidatas: porEmpresa.size, enseñadas: enseñadas.length, marcadas: marcadas.length };
+  if (!marcadas.length) return { puros: [], info };
+
+  const suyas = (await Promise.all(marcadas.map(async (cif) => {
+    const { data } = await leer(() => db.from("licitaciones").select(COLUMNAS)
+      .eq("adjudicatario_cif", cif).order("fecha_actualizacion", { ascending: false })
+      .limit(300));
+    return ((data ?? []) as unknown as Lic[]).filter((l) => !esMenor(l) && l.titulo);
+  }))).flat();
   const [consulta] = await incrustar([descripcion]);
   const vs = await vectoresDe(suyas);
   const puros = suyas.map((l, i) => ({ l, s: coseno(consulta, vs[i]) }))
     .sort((a, b) => b.s - a.s).slice(0, 40);
-  return { puros, info: { candidatas: candidatas.length, elegida: true,
-                          en_vecindario: elegida.n, contratos: suyas.length,
-                          factor_tamano: Math.round(ratio(elegida.mediana) * 10) / 10 } };
+  return { puros, info: { ...info, contratos: suyas.length } };
 }
 
 // Criterio y códigos a partir de un historial (sintético): lo mismo que
@@ -956,8 +1004,17 @@ const resumen: Record<string, unknown>[] = [];
 // llamadas al modelo a la vez y lecturas de cuatro en cuatro por índice,
 // con reintento si encuentra algo bloqueado.
 
+// Antes de cada empresa: si lo gastado más la empresa más cara hasta
+// ahora (con un 25 % de margen) pasaría el tope, se para ahí.
+let masCara = 0;
 for (const { codigo, p } of casos) {
   if (SOLO && !SOLO.split(",").includes(codigo)) continue;
+  if (EXPORTAR && dolares + masCara * 1.25 > TOPE_EXPORTAR) {
+    console.log(`Tope de gasto de la exportación: se para antes de ${codigo} ` +
+                `(${dolares.toFixed(2)} $)`);
+    break;
+  }
+  const antesDeEsta = dolares;
   const inicio = Date.now();
   const llamadasAntes = llamadas;
   const r = azar(Number.parseInt(codigo.slice(1)) * 7919);
@@ -1036,24 +1093,24 @@ for (const { codigo, p } of casos) {
       const purosLineas = lineas.length
         ? await buscarPorLineas(lineas, familiasLineas, franjas, cif) : [];
 
-      // Con un competidor de su tamaño.
-      const medianaPropia = mediana(((suyos ?? []) as Lic[])
-        .filter((l) => !esMenor(l)).map(importeDe).filter((x): x is number => x != null));
+      // Con referentes de su tamaño.
       const { ordenados } = await buscarVecinos(descripcion, familias, franjas, cif);
-      const comp = await buscarCompetidor(descripcion, ordenados, cif, medianaPropia);
+      const refs = await buscarReferentes(descripcion, ordenados, cif, franjas, real.criterio);
 
       exportados.push({ codigo, perfil_id: p.id, cif, descripcion, familias,
                         vecinos: vv.detalle.filas, puros: vv.detalle.puros,
                         criterio: vv.criterio, prefijos: vv.prefijos,
                         lineas, descripcion_lineas: descripcionLineas,
                         familias_lineas: familiasLineas, puros_lineas: purosLineas.map(fila),
-                        puros_competidor: comp.puros.map(fila), competidor: comp.info });
+                        puros_referentes: refs.puros.map(fila), referentes: refs.info });
+      await Deno.writeTextFile(`${SALIDA}/gasto.json`, JSON.stringify({ dolares }));
       await Deno.writeTextFile(`${SALIDA}/sinteticos.json`, JSON.stringify(exportados));
       console.log(`${codigo}: exportado (${(vv.detalle.filas as unknown[]).length} vecinos, ` +
                   `${vv.prefijos.length} códigos, ${lineas.length} líneas, ` +
                   `${purosLineas.length} por líneas, ` +
-                  (comp.info.elegida ? `competidor x${comp.info.factor_tamano} con ` +
-                    `${comp.puros.length} contratos` : "sin competidor de su tamaño") + ")");
+                  `referentes ${refs.info.marcadas}/${refs.info.enseñadas}, ` +
+                  `gasto ${dolares.toFixed(2)} $)`);
+      masCara = Math.max(masCara, dolares - antesDeEsta);
       continue;
     }
     const usadas = new Set(Object.values(variantes).flatMap((v) => v?.usadas ?? []));
@@ -1099,6 +1156,9 @@ for (const { codigo, p } of casos) {
   await Deno.writeTextFile(`${SALIDA}/detalle.json`, JSON.stringify(detalle, null, 1));
   await Deno.writeTextFile(`${SALIDA}/resumen.json`, JSON.stringify(resumen, null, 1));
 }
+
+// También si alguna empresa falló después de gastar.
+if (EXPORTAR) await Deno.writeTextFile(`${SALIDA}/gasto.json`, JSON.stringify({ dolares }));
 
 // ------------------------------------------------------------
 // Resumen público: solo cifras
