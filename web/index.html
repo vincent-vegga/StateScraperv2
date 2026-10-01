@@ -2933,6 +2933,11 @@ const ZONA = 'Europe/Madrid';
 // por parecido del texto. Está anotado en supabase/LEEME.md.
 // ------------------------------------------------------------
 const VIABILIDAD_VISIBLE = false;
+// UTEs en la ficha de empresa (decisión 42), apagadas el 01/10/2026: el
+// enlace a otra ficha no subía la página y la ficha de la UTE no decía
+// arriba que lo era. Se rehará como apartado propio dentro de Mercado.
+// Apagado, la ficha es la de antes: ni siquiera se llama a utes_y_socios.
+const UTES_VISIBLE = false;
 const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
 // Todas las fechas en hora peninsular, sea cual sea la del visitante: un
@@ -5689,7 +5694,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     // si fallan, la ficha sale igual, sin esa sección.
     const [{ data, error }, { data: utes }] = await Promise.all([
       sb.rpc('ficha_empresa', { cif_buscado: cif, ...argsPeriodo(periodoEmp) }),
-      sb.rpc('utes_y_socios', { cif_buscado: cif, ...argsPeriodo(periodoEmp) }),
+      UTES_VISIBLE
+        ? sb.rpc('utes_y_socios', { cif_buscado: cif, ...argsPeriodo(periodoEmp) })
+        : { data: null },
     ]);
     if (turno !== vueltaEmp) return;
     zona.classList.remove('cambiando');
