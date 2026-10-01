@@ -29,4 +29,4 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - run: python scripts/ver_duracion.py --anio "${{ inputs.anio || 2026 }}" --mes "${{ inputs.mes || 5 }}" --conjunto "${{ inputs.conjunto || 643 }}" --buscar "${{ inputs.buscar || 16532957 }}"
+      - run: python scripts/ver_duracion.py --anio "${{ inputs.anio || 2026 }}" --mes "${{ inputs.mes || 5 }}" --conjunto "${{ inputs.conjunto || 1044 }}" --buscar "${{ inputs.buscar || 16532957 }}"
