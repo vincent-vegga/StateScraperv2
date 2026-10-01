@@ -287,8 +287,8 @@ def main() -> int:
             gasto.total += len(candidatas) * (450 * 0.15 + 60 * 0.60) / 1e6
 
         fila = {"codigo": cod, "reales": len(R), "limpios": extra["limpios"],
-                "lineas": len(caso.get("lineas") or []),
-                "referentes": f"{comp.get('marcadas', 0)}/{comp.get('enseñadas', 0)}"}
+                "n_lineas": len(caso.get("lineas") or []),
+                "n_referentes": f"{comp.get('marcadas', 0)}/{comp.get('enseñadas', 0)}"}
         for v in VARIANTES:
             S = mostrados[v]
             acierto = len(S & R)
@@ -341,8 +341,8 @@ def main() -> int:
                " | ".join(f"{v} rec / prec" for v in VARIANTES) + " |",
                "|---|---|---|---|" + "---|" * len(VARIANTES)]
     for f in resumen:
-        lineas.append(f"| {f['codigo']} | {f['reales']} | {f['lineas']} | "
-                      f"{f['referentes']} | " +
+        lineas.append(f"| {f['codigo']} | {f['reales']} | {f["n_lineas"]} | "
+                      f"{f['n_referentes']} | " +
                       " | ".join(f"{g(f[v]['recupera'])} / {g(f[v]['precision'])}" for v in VARIANTES)
                       + " |")
     lineas += ["", f"Perfiles: {len(resumen)} de {len(casos)} exportados"
