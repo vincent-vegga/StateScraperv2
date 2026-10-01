@@ -6,7 +6,7 @@ name: Rellenar duración del contrato
 on:
   push:
     branches: [duracion-contrato]
-    paths: ['.github/workflows/rellenar-duracion.yml']
+    paths: ['.github/workflows/rellenar-duracion.yml']  # relanzar = tocar este fichero
   workflow_dispatch:
 
 permissions:
@@ -22,7 +22,84 @@ jobs:
       max-parallel: 3
       matrix:
         include:
+          - {conjunto: '643', ym: '2024-01'}
+          - {conjunto: '643', ym: '2024-02'}
+          - {conjunto: '643', ym: '2024-03'}
+          - {conjunto: '643', ym: '2024-04'}
+          - {conjunto: '643', ym: '2024-05'}
+          - {conjunto: '643', ym: '2024-06'}
+          - {conjunto: '643', ym: '2024-07'}
+          - {conjunto: '643', ym: '2024-08'}
+          - {conjunto: '643', ym: '2024-09'}
+          - {conjunto: '643', ym: '2024-10'}
+          - {conjunto: '643', ym: '2024-11'}
+          - {conjunto: '643', ym: '2024-12'}
+          - {conjunto: '643', ym: '2025-01'}
+          - {conjunto: '643', ym: '2025-02'}
+          - {conjunto: '643', ym: '2025-03'}
+          - {conjunto: '643', ym: '2025-04'}
+          - {conjunto: '643', ym: '2025-05'}
+          - {conjunto: '643', ym: '2025-06'}
+          - {conjunto: '643', ym: '2025-07'}
+          - {conjunto: '643', ym: '2025-08'}
+          - {conjunto: '643', ym: '2025-09'}
+          - {conjunto: '643', ym: '2025-10'}
+          - {conjunto: '643', ym: '2025-11'}
+          - {conjunto: '643', ym: '2025-12'}
+          - {conjunto: '643', ym: '2026-01'}
+          - {conjunto: '643', ym: '2026-02'}
+          - {conjunto: '643', ym: '2026-03'}
+          - {conjunto: '643', ym: '2026-04'}
+          - {conjunto: '643', ym: '2026-05'}
+          - {conjunto: '643', ym: '2026-06'}
+          - {conjunto: '643', ym: '2026-07'}
+          - {conjunto: '643', ym: '2026-08'}
+          - {conjunto: '643', ym: '2026-09'}
+          - {conjunto: '1044', ym: '2024-01'}
+          - {conjunto: '1044', ym: '2024-02'}
+          - {conjunto: '1044', ym: '2024-03'}
+          - {conjunto: '1044', ym: '2024-04'}
+          - {conjunto: '1044', ym: '2024-05'}
+          - {conjunto: '1044', ym: '2024-06'}
+          - {conjunto: '1044', ym: '2024-07'}
+          - {conjunto: '1044', ym: '2024-08'}
+          - {conjunto: '1044', ym: '2024-09'}
+          - {conjunto: '1044', ym: '2024-10'}
+          - {conjunto: '1044', ym: '2024-11'}
+          - {conjunto: '1044', ym: '2024-12'}
+          - {conjunto: '1044', ym: '2025-01'}
+          - {conjunto: '1044', ym: '2025-02'}
+          - {conjunto: '1044', ym: '2025-03'}
+          - {conjunto: '1044', ym: '2025-04'}
+          - {conjunto: '1044', ym: '2025-05'}
+          - {conjunto: '1044', ym: '2025-06'}
+          - {conjunto: '1044', ym: '2025-07'}
+          - {conjunto: '1044', ym: '2025-08'}
+          - {conjunto: '1044', ym: '2025-09'}
+          - {conjunto: '1044', ym: '2025-10'}
+          - {conjunto: '1044', ym: '2025-11'}
+          - {conjunto: '1044', ym: '2025-12'}
+          - {conjunto: '1044', ym: '2026-01'}
+          - {conjunto: '1044', ym: '2026-02'}
+          - {conjunto: '1044', ym: '2026-03'}
+          - {conjunto: '1044', ym: '2026-04'}
           - {conjunto: '1044', ym: '2026-05'}
+          - {conjunto: '1044', ym: '2026-06'}
+          - {conjunto: '1044', ym: '2026-07'}
+          - {conjunto: '1044', ym: '2026-08'}
+          - {conjunto: '1044', ym: '2026-09'}
+          - {conjunto: '1143', ym: '2025-01'}
+          - {conjunto: '1143', ym: '2025-02'}
+          - {conjunto: '1143', ym: '2025-03'}
+          - {conjunto: '1143', ym: '2025-04'}
+          - {conjunto: '1143', ym: '2025-05'}
+          - {conjunto: '1143', ym: '2025-06'}
+          - {conjunto: '1143', ym: '2025-07'}
+          - {conjunto: '1143', ym: '2025-08'}
+          - {conjunto: '1143', ym: '2025-09'}
+          - {conjunto: '1143', ym: '2025-10'}
+          - {conjunto: '1143', ym: '2025-11'}
+          - {conjunto: '1143', ym: '2025-12'}
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
