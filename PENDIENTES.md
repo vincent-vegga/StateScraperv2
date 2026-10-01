@@ -427,3 +427,32 @@ arriba.
 **Lo que no arregla:** lo que el organismo compra por contratos menores o
 por centrales de compras (acuerdos marco del CCDL, la FEMP o la DGRCC)
 sigue sin estar en la base (ver §6 y §12).
+
+---
+
+## 17. UTEs en la web: rehacerlas como apartado propio de Mercado
+
+**Estado (01/10/2026).** Los datos están en producción y se mantienen
+solos: `ute_socios` (4.057 parejas, 1.603 empresas socias), la función
+`utes_y_socios` y el workflow semanal `utes-socios.yml` (decisión 42). En
+la web están **apagadas** (`UTES_VISIBLE = false` en `web/index.html`): la
+ficha de empresa es la de antes.
+
+**Por qué se apagaron.** Las secciones al final de la ficha de empresa
+confundían:
+
+- Al pulsar una UTE, la página no subía: te quedabas al final de la ficha
+  nueva, sin ver el título.
+- La ficha de una UTE parecía la de cualquier empresa; quién la forma
+  estaba al final de todo.
+- "← Volver a las listas" devolvía a la ficha anterior, no a las listas.
+- Todo el nombre era un enlace, sin aspecto de enlace.
+
+**Idea para retomarlo.** Un botón dentro de Mercado que lleve a un
+apartado solo de UTEs, y dentro de él:
+
+- subir arriba al abrir otra ficha desde un enlace (no al cambiar el
+  periodo);
+- en una UTE, decirlo arriba: "UTE formada por X e Y", con enlaces;
+- enlaces con aspecto de enlace (solo el nombre, en color de acento);
+- el botón de volver dice adónde vuelve.
