@@ -1120,6 +1120,15 @@ XEMENEIES") y socios que nunca han ganado solos y no están en el catálogo.
 `ultimos_ganados`) sigue sin incluir lo ganado en UTE: es el sistema del
 NIF y no se toca.
 
+**En la web (02/10/2026).** La ficha de empresa tiene un interruptor
+"Contratos / UTEs y acuerdos marco · N". Por defecto, contratos; si en el
+periodo solo tiene UTEs o marcos, abre en esos. Los acuerdos marco se
+mudaron ahí desde el final de la ficha. En una UTE, quién la forma va
+arriba, bajo el nombre. Al abrir otra ficha desde un enlace se sube arriba,
+el botón de volver dice adónde vuelve y la vista elegida se recuerda al
+volver atrás. La primera versión (01/10, secciones al final de la ficha)
+se apagó por confusa: ver `PENDIENTES.md` §17.
+
 ---
 
 ## Deuda técnica anotada

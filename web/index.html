@@ -1625,6 +1625,17 @@ select:focus{
 .forma button[aria-pressed="true"]{
   background:var(--btn-fondo);color:var(--btn-texto);border-color:var(--btn-fondo);
 }
+/* El mismo interruptor, para elegir qué enseña la ficha de empresa:
+   sus contratos o lo raro (UTEs y acuerdos marco). Va a la izquierda,
+   bajo las cifras, no arrinconado a la derecha como el de los gráficos. */
+.vista-ficha{margin:0 0 22px}
+.vista-ficha button{font-size:.84rem;padding:7px 14px}
+/* Nombre de otra empresa que abre su ficha. Subrayado siempre, para que
+   se vea que se puede pulsar; el color de acento solo al pasar por
+   encima (como texto no tiene contraste suficiente). */
+.enlace-ficha{color:inherit;text-decoration:underline;
+  text-decoration-color:var(--fuerte);text-underline-offset:3px}
+.enlace-ficha:hover{text-decoration-color:var(--acento)}
 
 .apilada{
   display:flex;width:100%;height:34px;border-radius:7px;overflow:hidden;
@@ -2951,11 +2962,12 @@ function importeAnualTxt(importe, meses) {
 // por parecido del texto. Está anotado en supabase/LEEME.md.
 // ------------------------------------------------------------
 const VIABILIDAD_VISIBLE = false;
-// UTEs en la ficha de empresa (decisión 42), apagadas el 01/10/2026: el
+// UTEs en la ficha de empresa (decisión 42). Apagadas el 01/10/2026 (el
 // enlace a otra ficha no subía la página y la ficha de la UTE no decía
-// arriba que lo era. Se rehará como apartado propio dentro de Mercado.
-// Apagado, la ficha es la de antes: ni siquiera se llama a utes_y_socios.
-const UTES_VISIBLE = false;
+// arriba que lo era) y encendidas el 02/10 con el interruptor
+// "Contratos / UTEs y acuerdos marco". Apagado, la ficha es la de antes
+// de las UTEs: ni siquiera se llama a utes_y_socios.
+const UTES_VISIBLE = true;
 const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
 // Todas las fechas en hora peninsular, sea cual sea la del visitante: un
@@ -5549,6 +5561,10 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   // gráficos. Enganchado una sola vez sobre el contenedor, que no se
   // sustituye al redibujar.
   let ultimaEmpresa = null;
+  // Qué enseña la ficha: 'contratos' o 'otros' (UTEs y acuerdos marco).
+  // Se guarda con el NIF para que sobreviva al cambio de periodo y al de
+  // forma de los gráficos, que repintan la ficha entera.
+  let vistaFicha = { cif: null, cual: null };
   zona.addEventListener('click', ev => {
     const b = ev.target.closest('[data-forma]');
     if (!b || !ultimaEmpresa) return;
@@ -5703,9 +5719,20 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   //
   // Deja marca en el historial: sin ella, atrás salía de Mercado entero
   // en vez de devolver a las listas.
-  async function verEmpresa(cif, restaurando = false) {
-    if (!restaurando) irA('mercado', { cif });
+  //
+  // `desde` es el nombre de la ficha en la que se pulsó el enlace (un socio,
+  // una UTE): queda en el historial para que el botón de volver diga
+  // adónde vuelve.
+  async function verEmpresa(cif, restaurando = false, desde = null) {
+    if (!restaurando) {
+      irA('mercado', { cif, ...(desde ? { desde } : {}) });
+      // Cada ficha nueva empieza en su vista por defecto (ver pintarFicha).
+      vistaFicha = { cif: null, cual: null };
+    }
     repintarVista = () => verEmpresa(cif, true);
+    // El buscador enseña el NIF de la ficha abierta: al llegar por un
+    // enlace se quedaba con el de la anterior.
+    campo.value = cif;
     const turno = ++vueltaEmp;
     esperando('Buscando...');
     // Las UTEs van aparte (utes_y_socios, 20261001120000) y en paralelo:
@@ -5721,15 +5748,18 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     if (data) {
       data.utes = utes?.utes ?? [];
       data.socios = utes?.socios ?? [];
+      // La lista llega cortada en 30; el total, aparte.
+      data.n_utes = Math.max(utes?.n_utes ?? 0, data.utes.length);
     }
     // Una empresa que en el periodo solo está homologada en acuerdos
     // marco, o que solo ha ganado en UTE, no tiene contratos propios,
     // pero sí algo que enseñar.
-    if (error || !data || (!data.contratos && !data.marcos?.length && !data.utes.length)) {
+    if (error || !data || (!data.contratos && !data.marcos?.length
+                           && !data.utes.length && !data.socios.length)) {
       // Con nombre es que existe y ha ganado algo, pero no en este
       // periodo: decir "no hemos encontrado ese NIF" sería falso.
       zona.innerHTML = `
-        <button class="volver-listas" id="volver-listas">← Volver a las listas</button>
+        <button class="volver-listas" id="volver-listas">${textoVolver()}</button>
         <div class="aviso">${data?.nombre
           ? `${esc(data.nombre)} no tiene contratos adjudicados
              ${esc(cuandoEmp())}. Prueba con otro periodo.`
@@ -5739,7 +5769,18 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       return;
     }
     pintarFicha(data);
+    // Al abrir otra ficha, arriba: si no, desde el final de una ficha
+    // larga se caía en mitad de la nueva sin ver su nombre. Al cambiar de
+    // periodo (restaurando) se queda donde estaba.
+    // Al instante: la página tiene desplazamiento suave, y deslizarse
+    // medio segundo por encima de la ficha nueva parece otro salto.
+    if (!restaurando) window.scrollTo({ top: 0, behavior: 'instant' });
   }
+
+  // Con `desde` en el historial se vuelve a la ficha anterior, no a las
+  // listas, y el botón lo dice.
+  const textoVolver = () => history.state?.desde
+    ? `← Volver a ${esc(history.state.desde)}` : '← Volver a las listas';
 
   function pintarFicha(e) {
     const sectores = e.sectores ?? [];
@@ -5748,22 +5789,53 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const marcos = e.marcos ?? [];
     const utes = e.utes ?? [];
     const socios = e.socios ?? [];
-    // Un socio o una UTE se abre como cualquier otra empresa.
-    const enlaceEmpresa = (cif, nombre) => `<a href="#" data-ver-cif="${esc(cif)}"
-      style="color:inherit">${esc(nombre ?? cif)}</a>`;
+    const nUtes = Math.max(e.n_utes ?? 0, utes.length);
+    const raros = nUtes + marcos.length;
+
+    // Por defecto, sus contratos. Si en el periodo no tiene ninguno pero sí
+    // UTEs o acuerdos marco, se abre en esos: una vista vacía no enseña nada.
+    // Al volver atrás a esta ficha, la vista que se dejó (va en el historial).
+    if (vistaFicha.cif !== e.cif || !vistaFicha.cual) {
+      const guardada = history.state?.cif === e.cif ? history.state.vistaFicha : null;
+      vistaFicha = { cif: e.cif,
+        cual: guardada ?? (!e.contratos && raros ? 'otros' : 'contratos') };
+    }
+    const vista = raros ? vistaFicha.cual : 'contratos';
+
+    // Otra empresa que se abre al pulsar: solo el nombre, con aspecto de
+    // enlace. `desde` deja dicho en el historial de dónde se viene.
+    const enlaceEmpresa = (cif, nombre) => `<a href="#" class="enlace-ficha"
+      data-ver-cif="${esc(cif)}">${esc(nombre ?? cif)}</a>`;
+    const yLista = xs => xs.length < 2 ? xs.join('')
+      : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`;
+    const etiquetaRaros = utes.length && marcos.length ? 'UTEs y acuerdos marco'
+      : utes.length ? 'UTEs' : 'Acuerdos marco';
+    const resumenRaros = yLista([
+      nUtes ? plural(nUtes, 'UTE', 'UTEs') : '',
+      marcos.length ? plural(marcos.length, 'acuerdo marco', 'acuerdos marco') : '',
+    ].filter(Boolean));
+    const titulo = t => `<h4 style="margin:26px 0 4px;font-size:.83rem;font-weight:650;
+                     color:var(--tenue);letter-spacing:.05em;
+                     text-transform:uppercase">${t}</h4>`;
 
     zona.innerHTML = `
-      <button class="volver-listas" id="volver-listas">← Volver a las listas</button>
+      <button class="volver-listas" id="volver-listas">${textoVolver()}</button>
       <div class="tarjeta-empresa" style="margin-top:8px">
         <div class="arriba">
           <div>
             <h3>${esc(e.nombre ?? e.cif)}</h3>
+            ${socios.length ? `
+              <p class="cifras" style="margin-top:-2px">
+                <span>UTE formada por ${yLista(socios.map(s => enlaceEmpresa(s.cif, s.nombre)))}
+                  <span style="color:var(--tenue)" title="Sacados del nombre de la UTE.
+Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></span>
+              </p>` : ''}
             <p class="cifras">
-              ${!e.contratos && utes.length
-                // Solo ha ganado en UTE: "0 contratos" sería cierto, pero
-                // parece que la ficha está vacía.
+              ${!e.contratos && raros
+                // Solo UTEs o acuerdos marco: "0 contratos" sería cierto,
+                // pero parece que la ficha está vacía.
                 ? `<span>Sin contratos propios${cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}
-                    · participa en <strong>${plural(utes.length, 'UTE', 'UTEs')}</strong></span>`
+                    · ${esc(resumenRaros)}</span>`
                 : `<span><strong>${e.contratos}</strong> ${e.contratos === 1 ? 'contrato' : 'contratos'}${
                 e.lotes > e.contratos ? ` (${e.lotes} lotes)` : ''}${
                 cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}</span>`}
@@ -5779,6 +5851,18 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
                     data-cif="${esc(e.cif)}" data-nombre="${esc(e.nombre ?? e.cif)}">
               ${e.sigo ? 'Siguiendo' : 'Seguir'}</button>`}
         </div>
+
+        ${raros ? `
+          <div class="forma vista-ficha" role="group" aria-label="Qué enseñar de esta empresa">
+            <button data-vista="contratos"
+              aria-pressed="${vista === 'contratos'}">Contratos</button>
+            <button data-vista="otros"
+              aria-pressed="${vista === 'otros'}">${etiquetaRaros} · ${raros}</button>
+          </div>` : ''}
+
+        ${vista === 'contratos' ? `
+          ${!e.contratos ? `<p class="sin-datos">Sin contratos propios${
+            cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}.</p>` : ''}
 
         ${sectores.length ? `
           <div style="display:flex;align-items:center;margin-bottom:6px">
@@ -5821,11 +5905,25 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
                   ? ` · ${importeAnualTxt(u.importe, u.duracion_meses)}` : ''}</span>
             </div>`).join('')}
           </div>` : ''}
+        ` : `
+          ${utes.length ? `
+            ${titulo('UTEs en las que participa')}
+            <p class="guia" style="margin:0 0 6px;font-size:.86rem">Uniones temporales
+              con otras empresas. No cuentan en sus cifras: el importe es el de
+              toda la UTE, y cuánto le toca a cada socio no se publica.${
+              nUtes > utes.length ? ` Aquí, las ${utes.length} más recientes de ${nUtes}.` : ''}</p>
+            <div class="ultimos-contratos">
+              ${utes.map(u => `<div>
+                <p class="que">${enlaceEmpresa(u.cif, u.nombre)}</p>
+                <span class="quien">${plural(u.contratos, 'contrato', 'contratos')}${
+                  Number(u.importe_ute) ? ` · ${euros(Number(u.importe_ute))} la UTE entera` : ''}${
+                  u.socios?.length ? ` · con ${yLista(u.socios.map(s =>
+                    enlaceEmpresa(s.cif, s.nombre)))}` : ''}</span>
+              </div>`).join('')}
+            </div>` : ''}
 
         ${marcos.length ? `
-          <h4 style="margin:26px 0 4px;font-size:.83rem;font-weight:650;
-                     color:var(--tenue);letter-spacing:.05em;
-                     text-transform:uppercase">Acuerdos marco en los que está homologada</h4>
+          ${titulo('Acuerdos marco en los que está homologada')}
           <p class="guia" style="margin:0 0 6px;font-size:.86rem">Cualquier organismo
             adherido le puede encargar sin nueva licitación. No cuentan en las
             cifras de arriba: el dinero llega por los contratos que salen de ellos.</p>
@@ -5839,37 +5937,24 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
                 m.valor_marco ? ` · marco de ${euros(Number(m.valor_marco))} en total` : ''}</span>
             </div>`).join('')}
           </div>` : ''}
-
-        ${socios.length ? `
-          <h4 style="margin:26px 0 4px;font-size:.83rem;font-weight:650;
-                     color:var(--tenue);letter-spacing:.05em;
-                     text-transform:uppercase">Empresas que forman esta UTE</h4>
-          <p class="guia" style="margin:0 0 6px;font-size:.86rem">Sacadas del nombre
-            de la UTE: puede haber más socios. Cuánto le toca a cada uno no se
-            publica.</p>
-          <div class="ultimos-contratos">
-            ${socios.map(s => `<div><p class="que">${enlaceEmpresa(s.cif, s.nombre)}</p></div>`).join('')}
-          </div>` : ''}
-
-        ${utes.length ? `
-          <h4 style="margin:26px 0 4px;font-size:.83rem;font-weight:650;
-                     color:var(--tenue);letter-spacing:.05em;
-                     text-transform:uppercase">UTEs en las que participa</h4>
-          <p class="guia" style="margin:0 0 6px;font-size:.86rem">No cuentan en las
-            cifras de arriba. El importe es el de toda la UTE: cuánto le toca a
-            cada socio no se publica.</p>
-          <div class="ultimos-contratos">
-            ${utes.map(u => `<div>
-              <p class="que">${enlaceEmpresa(u.cif, u.nombre)}</p>
-              <span class="quien">${plural(u.contratos, 'contrato', 'contratos')}${
-                Number(u.importe_ute) ? ` · ${euros(Number(u.importe_ute))} la UTE entera` : ''}${
-                u.socios?.length ? ` · con ${u.socios.map(s => esc(s.nombre)).join(', ')}` : ''}</span>
-            </div>`).join('')}
-          </div>` : ''}
+        `}
       </div>`;
 
     zona.querySelectorAll('[data-ver-cif]').forEach(a => {
-      a.onclick = ev => { ev.preventDefault(); verEmpresa(a.dataset.verCif); };
+      a.onclick = ev => {
+        ev.preventDefault();
+        verEmpresa(a.dataset.verCif, false, e.nombre ?? e.cif);
+      };
+    });
+    zona.querySelectorAll('[data-vista]').forEach(b => {
+      b.onclick = () => {
+        if (b.getAttribute('aria-pressed') === 'true') return;
+        vistaFicha = { cif: e.cif, cual: b.dataset.vista };
+        // Sin entrada nueva en el historial: cambiar de vista no es cambiar
+        // de página, y "atrás" debe seguir llevando a la ficha anterior.
+        history.replaceState({ ...history.state, vistaFicha: b.dataset.vista }, '');
+        pintarFicha(e);
+      };
     });
 
     activarBarras(zona);
