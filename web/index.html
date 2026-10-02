@@ -2906,6 +2906,24 @@ const euros = n => n == null ? null : new Intl.NumberFormat('es-ES',
    useGrouping:'always'}).format(n);
 const ZONA = 'Europe/Madrid';
 
+// Duración de un contrato y lo que sale por año. El importe adjudicado es
+// el de TODO el contrato: un servicio a doce años por 448 M€ son unos
+// 37 M€ al año. Solo se calcula cuando el organismo publicó la duración
+// y pasa de un año; con menos, "por año" sería mayor que el total.
+function duracionTxt(meses) {
+  const m = Number(meses);
+  if (!(m > 0)) return null;
+  if (m < 1) { const d = Math.max(1, Math.round(m * 30.44));
+               return `${d} ${d === 1 ? 'día' : 'días'}`; }
+  if (m >= 12 && Math.abs(m / 12 - Math.round(m / 12)) < 0.05) {
+    const a = Math.round(m / 12); return `${a} ${a === 1 ? 'año' : 'años'}`; }
+  const n = Math.round(m); return `${n} ${n === 1 ? 'mes' : 'meses'}`;
+}
+function importeAnualTxt(importe, meses) {
+  const i = Number(importe), m = Number(meses);
+  return i > 0 && m > 12 ? `≈ ${euros(i / (m / 12))}/año` : null;
+}
+
 // ------------------------------------------------------------
 // VIABILIDAD, GUARDADA EN EL CAJÓN (20/09/2026)
 //
@@ -5796,7 +5814,11 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
             ${ultimos.map(u => `<div>
               <p class="que">${esc(u.titulo)}</p>
               <span class="quien">${esc(u.organo ?? '')}${
-                u.importe ? ` · ${euros(Number(u.importe))}` : ''}</span>
+                u.importe ? ` · ${euros(Number(u.importe))}` : ''}${
+                duracionTxt(u.duracion_meses)
+                  ? ` · ${duracionTxt(u.duracion_meses)}` : ''}${
+                importeAnualTxt(u.importe, u.duracion_meses)
+                  ? ` · ${importeAnualTxt(u.importe, u.duracion_meses)}` : ''}</span>
             </div>`).join('')}
           </div>` : ''}
 
@@ -6750,6 +6772,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
         </div>
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
+          ${duracionTxt(o.duracion_meses)
+            ? `<span class="marca">${duracionTxt(o.duracion_meses)}</span>` : ''}
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
       </button>
       <section class="detalle" id="d${i}">
@@ -6764,6 +6788,13 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           <dt>Provincia</dt><dd>${esc(o.provincia
             ?? (o.comunidad ? `sin precisar (${o.comunidad})` : 'no informada'))}</dd>
           <dt>Presupuesto</dt><dd>${euros(o.presupuesto) ?? 'sin importe publicado'}</dd>
+          <dt>Duración</dt><dd>${duracionTxt(o.duracion_meses)
+            ? `${duracionTxt(o.duracion_meses)}${
+                importeAnualTxt(o.presupuesto_base, o.duracion_meses)
+                  ? ` · base de licitación ${importeAnualTxt(o.presupuesto_base, o.duracion_meses)}` : ''}${
+                o.prorrogas_texto
+                  ? `<br><span style="color:var(--tenue)">Prórrogas: ${esc(o.prorrogas_texto)}</span>` : ''}`
+            : '<span style="color:var(--tenue)">no publicada por el organismo</span>'}</dd>
           <dt>Plazo</dt><dd>${plazoLargo(o.fecha_limite)}</dd>
           <dt>Códigos CPV</dt><dd>${esc((o.cpvs || []).join(', ')) || '—'}</dd>
           <dt>Último movimiento</dt><dd>${
