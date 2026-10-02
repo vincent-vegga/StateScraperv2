@@ -1,0 +1,101 @@
+name: Rellenar duración del contrato
+# Relee los ZIP del histórico y rellena SOLO duracion_meses, duracion_origen
+# y prorrogas_texto de lo que ya está en la base (función rellenar_duracion).
+# No crea filas ni toca otras columnas. Solo a mano desde Actions.
+# 1143 (menores) queda fuera: no forma parte del producto por ahora, y
+# 2025-07 a 2025-09 ya están rellenos; faltan 2025-10 a 2025-12.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rellenar:
+    name: ${{ matrix.conjunto }} · ${{ matrix.ym }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - {conjunto: '643', ym: '2024-01'}
+          - {conjunto: '643', ym: '2024-02'}
+          - {conjunto: '643', ym: '2024-03'}
+          - {conjunto: '643', ym: '2024-04'}
+          - {conjunto: '643', ym: '2024-05'}
+          - {conjunto: '643', ym: '2024-06'}
+          - {conjunto: '643', ym: '2024-07'}
+          - {conjunto: '643', ym: '2024-08'}
+          - {conjunto: '643', ym: '2024-09'}
+          - {conjunto: '643', ym: '2024-10'}
+          - {conjunto: '643', ym: '2024-11'}
+          - {conjunto: '643', ym: '2024-12'}
+          - {conjunto: '643', ym: '2025-01'}
+          - {conjunto: '643', ym: '2025-02'}
+          - {conjunto: '643', ym: '2025-03'}
+          - {conjunto: '643', ym: '2025-04'}
+          - {conjunto: '643', ym: '2025-05'}
+          - {conjunto: '643', ym: '2025-06'}
+          - {conjunto: '643', ym: '2025-07'}
+          - {conjunto: '643', ym: '2025-08'}
+          - {conjunto: '643', ym: '2025-09'}
+          - {conjunto: '643', ym: '2025-10'}
+          - {conjunto: '643', ym: '2025-11'}
+          - {conjunto: '643', ym: '2025-12'}
+          - {conjunto: '643', ym: '2026-01'}
+          - {conjunto: '643', ym: '2026-02'}
+          - {conjunto: '643', ym: '2026-03'}
+          - {conjunto: '643', ym: '2026-04'}
+          - {conjunto: '643', ym: '2026-05'}
+          - {conjunto: '643', ym: '2026-06'}
+          - {conjunto: '643', ym: '2026-07'}
+          - {conjunto: '643', ym: '2026-08'}
+          - {conjunto: '643', ym: '2026-09'}
+          - {conjunto: '1044', ym: '2024-01'}
+          - {conjunto: '1044', ym: '2024-02'}
+          - {conjunto: '1044', ym: '2024-03'}
+          - {conjunto: '1044', ym: '2024-04'}
+          - {conjunto: '1044', ym: '2024-05'}
+          - {conjunto: '1044', ym: '2024-06'}
+          - {conjunto: '1044', ym: '2024-07'}
+          - {conjunto: '1044', ym: '2024-08'}
+          - {conjunto: '1044', ym: '2024-09'}
+          - {conjunto: '1044', ym: '2024-10'}
+          - {conjunto: '1044', ym: '2024-11'}
+          - {conjunto: '1044', ym: '2024-12'}
+          - {conjunto: '1044', ym: '2025-01'}
+          - {conjunto: '1044', ym: '2025-02'}
+          - {conjunto: '1044', ym: '2025-03'}
+          - {conjunto: '1044', ym: '2025-04'}
+          - {conjunto: '1044', ym: '2025-05'}
+          - {conjunto: '1044', ym: '2025-06'}
+          - {conjunto: '1044', ym: '2025-07'}
+          - {conjunto: '1044', ym: '2025-08'}
+          - {conjunto: '1044', ym: '2025-09'}
+          - {conjunto: '1044', ym: '2025-10'}
+          - {conjunto: '1044', ym: '2025-11'}
+          - {conjunto: '1044', ym: '2025-12'}
+          - {conjunto: '1044', ym: '2026-01'}
+          - {conjunto: '1044', ym: '2026-02'}
+          - {conjunto: '1044', ym: '2026-03'}
+          - {conjunto: '1044', ym: '2026-04'}
+          - {conjunto: '1044', ym: '2026-05'}
+          - {conjunto: '1044', ym: '2026-06'}
+          - {conjunto: '1044', ym: '2026-07'}
+          - {conjunto: '1044', ym: '2026-08'}
+          - {conjunto: '1044', ym: '2026-09'}
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: |
+          YM="${{ matrix.ym }}"
+          python rellenar_duracion.py --conjunto "${{ matrix.conjunto }}" --anio "${YM%-*}" --mes "$((10#${YM#*-}))"

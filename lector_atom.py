@@ -491,6 +491,59 @@ def limpiar_nombre_adjudicatario(nombre: str) -> str:
     return re.sub(r"^\s*(UTE\s+)+(?=UTE\b)", "", nombre or "", flags=re.IGNORECASE).strip()
 
 
+def extraer_duracion(entrada: etree._Element) -> dict[str, Any]:
+    """
+    Duración del contrato, en meses, y texto de las prórrogas.
+
+    Sale del `PlannedPeriod` del contrato (no del de cada lote): lo
+    publica el 90 % de los expedientes, con `DurationMeasure` y una
+    unidad CODICE (MON meses, ANN años, DAY días, WEE semanas). Otro 10 %
+    solo trae `StartDate` y `EndDate`; de ahí se deduce y se marca como
+    tal. Si no hay ninguna de las dos, queda a None: mejor un hueco que
+    una cifra inventada, igual que con los importes.
+
+    Las prórrogas llegan como texto libre ("3 años adicionales", "dos
+    prórrogas de 12 meses") y no se interpretan: se guardan tal cual.
+    """
+    vacio = {"duracion_meses": None, "duracion_origen": None,
+             "prorrogas_texto": None}
+    proyectos = []
+    for estado in buscar_todos(entrada, "ContractFolderStatus"):
+        proyectos += buscar_hijos(estado, "ProcurementProject")
+    periodos = [p for pr in proyectos for p in buscar_hijos(pr, "PlannedPeriod")]
+    if not periodos:
+        return vacio
+
+    meses = origen = None
+    por_unidad = {"MON": 1.0, "ANN": 12.0, "DAY": 12.0 / 365.25,
+                  "WEE": 12.0 / 52.18}
+    for periodo in periodos:
+        for medida in buscar_hijos(periodo, "DurationMeasure"):
+            n = a_numero(texto_limpio(medida.text))
+            factor = por_unidad.get((medida.get("unitCode") or "").upper())
+            if n is not None and factor and n > 0:
+                meses, origen = round(n * factor, 2), "publicada"
+                break
+        if meses is None:
+            inicio = a_fecha(primer_texto(periodo, "StartDate", solo_hijos=True))
+            fin = a_fecha(primer_texto(periodo, "EndDate", solo_hijos=True))
+            if inicio and fin and fin > inicio:
+                meses = round((fin - inicio).days / 30.4375, 1)
+                origen = "fechas"
+        if meses is not None:
+            break
+    # Más de cien años es un error de tecleo (años en la casilla de días).
+    if meses is not None and not 0 < meses <= 1200:
+        meses = origen = None
+
+    prorrogas = " | ".join(filter(None, (
+        texto_limpio(d.text)
+        for e in buscar_todos(entrada, "ContractExtension")
+        for d in buscar_todos(e, "Description"))))
+    return {"duracion_meses": meses, "duracion_origen": origen,
+            "prorrogas_texto": prorrogas[:500] or None}
+
+
 def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
     """
     Todas las adjudicaciones del expediente, con lo que las explica.
@@ -1296,6 +1349,7 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
         "presupuesto_base": extraer_presupuesto_detallado(entrada)[0],
         "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
         "sistema": extraer_sistema(entrada),
+        **extraer_duracion(entrada),
         **extraer_criterios(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
         **resumir_adjudicaciones(
@@ -1454,6 +1508,7 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
         "presupuesto_base": extraer_presupuesto_detallado(entrada)[0],
         "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
         "sistema": extraer_sistema(entrada),
+        **extraer_duracion(entrada),
         **extraer_criterios(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
         **resumir_adjudicaciones(
@@ -2385,6 +2440,9 @@ def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
             "presupuesto_base": item.get("presupuesto_base"),
             "valor_estimado": item.get("valor_estimado"),
             "sistema": item.get("sistema") or None,
+            "duracion_meses": item.get("duracion_meses"),
+            "duracion_origen": item.get("duracion_origen"),
+            "prorrogas_texto": item.get("prorrogas_texto"),
             "peso_objetivo": item.get("peso_objetivo"),
             "peso_subjetivo": item.get("peso_subjetivo"),
             "criterios": item.get("criterios") or None,
