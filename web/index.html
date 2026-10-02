@@ -6857,8 +6857,6 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
         </div>
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
-          ${duracionTxt(o.duracion_meses)
-            ? `<span class="marca">${duracionTxt(o.duracion_meses)}</span>` : ''}
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
       </button>
       <section class="detalle" id="d${i}">
