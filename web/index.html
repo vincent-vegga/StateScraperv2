@@ -6772,6 +6772,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
         </div>
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
+          ${duracionTxt(o.duracion_meses)
+            ? `<span class="marca">${duracionTxt(o.duracion_meses)}</span>` : ''}
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
       </button>
       <section class="detalle" id="d${i}">
@@ -6786,6 +6788,13 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           <dt>Provincia</dt><dd>${esc(o.provincia
             ?? (o.comunidad ? `sin precisar (${o.comunidad})` : 'no informada'))}</dd>
           <dt>Presupuesto</dt><dd>${euros(o.presupuesto) ?? 'sin importe publicado'}</dd>
+          <dt>Duración</dt><dd>${duracionTxt(o.duracion_meses)
+            ? `${duracionTxt(o.duracion_meses)}${
+                importeAnualTxt(o.presupuesto_base, o.duracion_meses)
+                  ? ` · base de licitación ${importeAnualTxt(o.presupuesto_base, o.duracion_meses)}` : ''}${
+                o.prorrogas_texto
+                  ? `<br><span style="color:var(--tenue)">Prórrogas: ${esc(o.prorrogas_texto)}</span>` : ''}`
+            : '<span style="color:var(--tenue)">no publicada por el organismo</span>'}</dd>
           <dt>Plazo</dt><dd>${plazoLargo(o.fecha_limite)}</dd>
           <dt>Códigos CPV</dt><dd>${esc((o.cpvs || []).join(', ')) || '—'}</dd>
           <dt>Último movimiento</dt><dd>${
