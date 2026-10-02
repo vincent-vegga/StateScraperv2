@@ -430,7 +430,9 @@ sigue sin estar en la base (ver §6 y §12).
 
 ---
 
-## 17. UTEs en la web: rehacerlas como apartado propio de Mercado
+## 17. ~~UTEs en la web: rehacerlas como apartado propio de Mercado~~ (resuelto 02/10/2026)
+
+Resuelto con un interruptor en la ficha de empresa (decisión 42).
 
 **Estado (01/10/2026).** Los datos están en producción y se mantienen
 solos: `ute_socios` (4.057 parejas, 1.603 empresas socias), la función
