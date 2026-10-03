@@ -6238,7 +6238,8 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
                      text-transform:uppercase">A quién le vende</h4>
           <table class="tabla"><tbody>
             ${organos.map(o => `<tr style="cursor:default">
-              <td class="quien">${esc(o.organo)}</td>
+              <td class="quien"><a href="#" class="enlace-ficha"
+                data-a-organismo="${esc(o.organo)}">${esc(o.organo)}</a></td>
               <td class="num">${o.contratos}</td>
               <td class="num">${o.importe ? euros(Number(o.importe))
                 // Corto: la columna mide 112 px (92 en el móvil) y no parte
@@ -6301,6 +6302,14 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
       a.onclick = ev => {
         ev.preventDefault();
         verEmpresa(a.dataset.verCif, false, e.nombre ?? e.cif);
+      };
+    });
+    // El organismo abre su ficha en la pestaña Organismos.
+    zona.querySelectorAll('[data-a-organismo]').forEach(a => {
+      a.onclick = ev => {
+        ev.preventDefault();
+        pantallaOrganismos(perfil, session, false, a.dataset.aOrganismo);
+        window.scrollTo({ top: 0, behavior: 'instant' });
       };
     });
     zona.querySelectorAll('[data-vista]').forEach(b => {
