@@ -1137,10 +1137,10 @@ sus prefijos):
 | Por tamaño de contrato (p25/2 – p75×2 de lo que gana el perfil) | Igual o peor en 6 de 7 perfiles pequeños: los grandes también ganan muchos contratos pequeños |
 | Por lo que gana la empresa al año en contratos públicos (10× lo suyo) | En los perfiles de menos de 1 M€/año pasan de empresas de 3-800 M€/año a otras de 10.000 € a 4 M€/año, con 8-140 contratos en su sector. Por encima de 1 M€/año apenas cambia |
 
-**Decisión** (03/10/2026). Encima de la lista, unos botones con un tope a
-lo que ganan al año: hasta 500.000 €, 2 M€, 10 M€, o todas. La regla va
-escrita en la frase de la lista, así que no hay nada que adivinar: si no
-cuadra, se cambia con un clic y se guarda en el perfil
+**Decisión** (03/10/2026). Encima de la lista, un deslizador con un tope a
+lo que ganan al año y cuatro paradas, de menos a más: hasta 500.000 €,
+2 M€, 10 M€, o todas. La regla va escrita en la frase de la lista, así que
+no hay nada que adivinar: si no cuadra, se mueve y se guarda en el perfil
 (`perfiles.tamano_competencia`). Con NIF y sin haber elegido, el primer
 tope que llega a diez veces lo que gana él (todas, si pasa de 1 M€ al
 año); sin NIF, todas. Las dos tablas ganan la columna "Gana al año" (en

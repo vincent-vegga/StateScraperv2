@@ -1429,18 +1429,68 @@ select:focus{
 .tabla .quien{font-weight:600}
 .tabla .anual-movil{display:none}
 
-/* El tamaño de la competencia: un tope a lo que ganan al año. */
-.tamanos{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px}
-.tamanos span{margin-right:4px;color:var(--tenue);font-size:.86rem}
-.tamanos button{
-  min-height:34px;padding:5px 12px;
-  border:1px solid var(--fuerte);border-radius:8px;
-  background:var(--superficie);color:var(--texto);
-  font:inherit;font-size:.86rem;cursor:pointer;
+/* El tamaño de la competencia: un tope a lo que ganan al año, en una
+   barra con una parada por tope, de menos a más (a la derecha, todas).
+   La barra y sus puntos se dibujan detrás; del deslizador nativo solo se
+   ve el pulgar, que es lo que se arrastra y lo que maneja el teclado. */
+.tamanos{
+  display:flex;flex-wrap:wrap;align-items:flex-start;gap:2px 20px;
+  margin:0 0 12px;--pulgar:20px;
 }
-.tamanos button[aria-pressed="true"]{
-  border-color:var(--texto);background:var(--texto);color:var(--superficie);
+/* A la altura de la barra, no centrada con barra y etiquetas juntas. */
+.tamanos .etiqueta-tamanos{padding-top:7px;color:var(--tenue);font-size:.86rem}
+/* El hueco a los lados es para que quepan centradas las etiquetas de los
+   extremos. */
+.pista-tamanos{flex:0 1 380px;min-width:250px;padding:0 30px}
+.riel{position:relative}
+.riel input{
+  display:block;position:relative;z-index:1;width:100%;height:34px;margin:0;
+  background:none;-webkit-appearance:none;appearance:none;cursor:pointer;
 }
+/* Sin el recuadro de los campos de texto al enfocarse: aquí el foco se ve
+   en el pulgar. */
+.riel input:focus, .riel input:focus-visible{outline:none;box-shadow:none}
+.riel input::-webkit-slider-runnable-track{height:34px;background:none}
+.riel input::-moz-range-track{background:none}
+.riel input::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:var(--pulgar);height:var(--pulgar);margin-top:calc((34px - var(--pulgar)) / 2);
+  border:2px solid var(--texto);border-radius:50%;background:var(--superficie);
+  box-shadow:var(--sombra-boton);
+}
+.riel input::-moz-range-thumb{
+  box-sizing:border-box;width:var(--pulgar);height:var(--pulgar);
+  border:2px solid var(--texto);border-radius:50%;background:var(--superficie);
+  box-shadow:var(--sombra-boton);
+}
+.riel input:focus-visible::-webkit-slider-thumb{
+  box-shadow:0 0 0 2px var(--superficie),0 0 0 4px var(--fuerte);
+}
+.riel input:focus-visible::-moz-range-thumb{
+  box-shadow:0 0 0 2px var(--superficie),0 0 0 4px var(--fuerte);
+}
+.riel .carril{
+  position:absolute;top:15px;height:4px;
+  left:calc(var(--pulgar) / 2);right:calc(var(--pulgar) / 2);
+  border-radius:2px;background:var(--linea);
+}
+.riel .lleno{
+  position:absolute;top:0;bottom:0;left:0;
+  width:calc(var(--paso) / var(--pasos) * 100%);
+  border-radius:2px;background:var(--texto);
+}
+.riel .carril b{
+  position:absolute;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;
+  border-radius:50%;background:var(--fuerte);
+}
+.riel .carril b.dentro{background:var(--texto)}
+.riel .marcas{position:relative;height:22px;margin:0 calc(var(--pulgar) / 2)}
+.riel .marcas button{
+  position:absolute;top:0;transform:translateX(-50%);
+  padding:1px 4px;border:0;background:none;
+  color:var(--tenue);font-size:.8rem;white-space:nowrap;
+}
+.riel .marcas button.actual{color:var(--texto);font-weight:650}
 
 .ultimos-contratos > div{
   padding:13px 0;border-bottom:1px solid var(--linea);
@@ -5513,11 +5563,9 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
 // contratos públicos (0 = todas). Una pyme no quiere ver primero al líder
 // del sector, sino a quien le quita los contratos a su escala. Son los
 // mismos que usa `mi_tamano_competencia` para proponer uno a quien entró
-// con NIF.
-const TAMANOS_COMPETENCIA = [
-  [500000, 'Hasta 500.000 €'], [2000000, 'Hasta 2 M€'],
-  [10000000, 'Hasta 10 M€'], [0, 'Todas'],
-];
+// con NIF. De menos a más: son las paradas del deslizador.
+const TAMANOS_COMPETENCIA = [500000, 2000000, 10000000, 0];
+const textoTamano = t => t ? `Hasta ${eurosRedondos(t)}` : 'Todas';
 
 async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   if (!volviendo) irA('mercado');
@@ -5569,6 +5617,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   let periodoEmp = periodoGuardado(aniosEmp);
   // El tope de tamaño de la competencia. Si no llega, todas: como antes.
   let topeEmp = Number(tam.data?.tope) || 0;
+  // Cambiar el tope repinta la lista entera, deslizador incluido. Quien lo
+  // movía con las flechas perdía el foco a cada paso; así lo recupera.
+  let enfocarTamano = false;
   let repintarVista = null;
   let vueltaEmp = 0;
   selectorPeriodo(document.getElementById('periodo-emp'), aniosEmp, periodoEmp, p => {
@@ -5629,6 +5680,11 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const competencia = comp.data ?? [];
     const seguidas = seg.data ?? [];
     const tope = topeEmp;
+    // Un tope que no está entre las paradas (no debería pasar) cae en
+    // "Todas", que es lo que la base aplica con 0.
+    const ultimo = TAMANOS_COMPETENCIA.length - 1;
+    const paso = TAMANOS_COMPETENCIA.includes(tope)
+      ? TAMANOS_COMPETENCIA.indexOf(tope) : ultimo;
 
     // Tres filas a la vista y el resto detrás de un botón.
     const ASOMAN = 3;
@@ -5683,10 +5739,19 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
           que ganan hasta ${eurosRedondos(tope)} al año en contratos
           públicos, sumando todos sus sectores` : ''}. Pulsa una para ver
         su ficha.</p>
-        <div class="tamanos" role="group" aria-labelledby="tamanos-titulo">
-          <span id="tamanos-titulo">Lo que ganan al año</span>
-          ${TAMANOS_COMPETENCIA.map(([t, texto]) => `<button type="button"
-            data-tope="${t}" aria-pressed="${t === tope}">${texto}</button>`).join('')}
+        <div class="tamanos" style="--paso:${paso};--pasos:${ultimo}">
+          <span class="etiqueta-tamanos" id="tamanos-titulo">Lo que ganan al año</span>
+          <div class="pista-tamanos"><div class="riel">
+            <div class="carril"><i class="lleno"></i>${TAMANOS_COMPETENCIA.map((_, i) =>
+              `<b class="${i <= paso ? 'dentro' : ''}" style="left:${i / ultimo * 100}%"></b>`).join('')}</div>
+            <input type="range" id="tamano-competencia" min="0" max="${ultimo}"
+              step="1" value="${paso}" aria-labelledby="tamanos-titulo"
+              aria-valuetext="${textoTamano(tope)}">
+            <div class="marcas">${TAMANOS_COMPETENCIA.map((t, i) =>
+              `<button type="button" tabindex="-1" data-paso="${i}"
+                class="${i === paso ? 'actual' : ''}" style="left:${i / ultimo * 100}%"
+                >${t ? eurosRedondos(t) : 'Todas'}</button>`).join('')}</div>
+          </div></div>
         </div>
         ${competencia.length ? tabla(competencia, 't-competencia')
           : `<p class="sin-datos">${tope
@@ -5694,18 +5759,41 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
               : 'No hay adjudicaciones de tus sectores en este periodo.'}</p>`}
       </div>`;
 
-    // Elegir un tamaño repinta la lista y se guarda para la próxima vez.
-    // Si no se puede guardar, vale igual mientras siga en la pantalla.
-    // Pulsar el que ya está no guarda nada: así, quien entró con NIF y no
-    // ha tocado nada sigue con el que le corresponde si cambia lo que gana.
-    zona.querySelectorAll('[data-tope]').forEach(b => b.onclick = () => {
-      const elegido = Number(b.dataset.tope);
+    // Al arrastrar solo se mueven la barra y la etiqueta; la lista se pide
+    // al soltar (con el teclado, cada flecha es soltar). Las etiquetas de
+    // debajo también se pulsan.
+    //
+    // Elegir un tamaño se guarda para la próxima vez; si no se puede
+    // guardar, vale igual mientras siga en la pantalla. Volver al que ya
+    // estaba no guarda nada: así, quien entró con NIF y no ha tocado nada
+    // sigue con el que le corresponde si cambia lo que gana.
+    const deslizador = document.getElementById('tamano-competencia');
+    const bloque = deslizador.closest('.tamanos');
+    const marcar = i => {
+      bloque.style.setProperty('--paso', i);
+      bloque.querySelectorAll('.carril b').forEach((b, j) =>
+        b.classList.toggle('dentro', j <= i));
+      bloque.querySelectorAll('.marcas button').forEach((b, j) =>
+        b.classList.toggle('actual', j === i));
+      deslizador.setAttribute('aria-valuetext', textoTamano(TAMANOS_COMPETENCIA[i]));
+    };
+    const elegir = () => {
+      const elegido = TAMANOS_COMPETENCIA[Number(deslizador.value)];
       if (elegido === tope) return;
       topeEmp = elegido;
+      enfocarTamano = document.activeElement === deslizador;
       sb.rpc('cambiar_tamano_competencia', { tope: elegido })
         .then(() => olvidar('mi_tamano_competencia'), () => {});
       verListas();
+    };
+    deslizador.addEventListener('input', () => marcar(Number(deslizador.value)));
+    deslizador.addEventListener('change', elegir);
+    bloque.querySelectorAll('.marcas button').forEach(b => b.onclick = () => {
+      deslizador.value = b.dataset.paso;
+      marcar(Number(b.dataset.paso));
+      elegir();
     });
+    if (enfocarTamano) { enfocarTamano = false; deslizador.focus(); }
 
     zona.querySelectorAll('tr[data-cif]').forEach(f =>
       f.onclick = ev => {
