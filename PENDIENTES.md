@@ -461,7 +461,12 @@ apartado solo de UTEs, y dentro de él:
 
 ---
 
-## 18. UTEs: agrupaciones sin la palabra UTE
+## 18. ~~UTEs: agrupaciones sin la palabra UTE~~ (resuelto 03/10/2026)
+
+Resuelto: revisada una segunda muestra de 30 (28 bien, una UTE de cuatro
+con dos socios identificados, y un falso socio por la palabra genérica
+"SISTEMA", que ahora se descarta). Ejecutado con `--real`: 415
+agrupaciones nuevas, 4.925 parejas, 1.763 empresas socias.
 
 **Qué pasa.** Muchas UTEs llegan sin "UTE" en el nombre y con un número de
 la plataforma en vez de NIF: "MANTENIMIENTO DE INFRAESTRUCTURAS, S.A. -
