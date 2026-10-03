@@ -1636,6 +1636,12 @@ select:focus{
 .enlace-ficha{color:inherit;text-decoration:underline;
   text-decoration-color:var(--fuerte);text-underline-offset:3px}
 .enlace-ficha:hover{text-decoration-color:var(--acento)}
+/* Marca de UTE en las listas de un organismo: discreta, para distinguir
+   una unión temporal de una empresa sin restarle sitio al nombre. */
+.marca-ute{display:inline-block;margin-left:6px;padding:0 5px;border:1px solid var(--linea);
+  border-radius:4px;font-size:.68rem;font-weight:650;letter-spacing:.05em;
+  color:var(--tenue);vertical-align:2px;line-height:1.5}
+.socios-ute{display:block;margin-top:2px;color:var(--tenue);font-size:.82rem}
 
 .apilada{
   display:flex;width:100%;height:34px;border-radius:7px;overflow:hidden;
@@ -2930,6 +2936,16 @@ function duracionTxt(meses) {
     const a = Math.round(m / 12); return `${a} ${a === 1 ? 'año' : 'años'}`; }
   const n = Math.round(m); return `${n} ${n === 1 ? 'mes' : 'meses'}`;
 }
+// "A", "A y B", "A, B y C".
+const enumerar = xs => xs.length < 2 ? xs.join('')
+  : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`;
+
+// Una UTE se reconoce por su NIF (empieza por U), por su nombre, o porque
+// conocemos sus socios (ute_socios). Muchas llegan con un número en vez de
+// NIF y solo el nombre lo dice.
+const esUte = (cif, nombre, socios) => /^U\d{8}$/.test(cif ?? '')
+  || /\bUTE\b|U\.T\.E|UNI[OÓ]N? TEMPORAL/i.test(nombre ?? '') || !!socios?.length;
+
 function importeAnualTxt(importe, meses) {
   const i = Number(importe), m = Number(meses);
   return i > 0 && m > 12 ? `≈ ${euros(i / (m / 12))}/año` : null;
@@ -4843,6 +4859,16 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
     if (el && señalarAhora) señalarAhora(el);
   });
   zona.addEventListener('mouseleave', () => { if (limpiarAhora) limpiarAhora(); });
+  // El nombre de una empresa abre su ficha en Mercado. Solo el nombre: el
+  // resto de la fila sigue señalando sus contratos al pasar o tocar.
+  zona.addEventListener('click', ev => {
+    const a = ev.target.closest('[data-a-mercado]');
+    if (!a) return;
+    ev.preventDefault();
+    irA('mercado', { cif: a.dataset.aMercado, desde: ultimoOrgano });
+    pantallaMercado(perfil, session, true, a.dataset.aMercado);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  });
   zona.addEventListener('click', ev => {
     const b = ev.target.closest('[data-forma]');
     if (!b || !ultimaFicha) return;
@@ -4888,6 +4914,17 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
         </div>`;
       ponerSelector(cual);
       return;
+    }
+    // Las UTEs que se van a enseñar, con sus socios (socios_de_utes,
+    // 20261003100000). Aparte y sin bloquear: si falla, sin marcas.
+    if (UTES_VISIBLE) {
+      const cifs = [...new Set([
+        ...(data.empresas ?? []).slice(0, 10).map(e => e.cif),
+        ...(data.contratos_lista ?? []).flatMap(c => c.cifs ?? [c.cif]),
+      ].filter(Boolean))];
+      const { data: socios } = await sb.rpc('socios_de_utes', { cifs });
+      if (turno !== vueltaFicha) return;
+      data.socios_utes = socios ?? {};
     }
     pintar(cual, data);
   }
@@ -4964,6 +5001,18 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
   function pintar(cual, d) {
     const empresas = d.empresas ?? [];
     const contratos = d.contratos_lista ?? [];
+    const sociosUtes = d.socios_utes ?? {};
+    // Nombre con enlace a su ficha en Mercado y, si es una UTE, la marca y
+    // sus socios. Sin NIF no hay ficha que abrir.
+    const empresaTxt = (cif, nombre, enLinea = false) => {
+      const socios = sociosUtes[cif];
+      const ute = UTES_VISIBLE && esUte(cif, nombre, socios);
+      const quien = socios?.length ? `con ${esc(enumerar(socios.map(s => s.nombre)))}` : '';
+      return `${cif ? `<a href="#" class="enlace-ficha" data-a-mercado="${esc(cif)}">${
+          esc(nombre ?? '—')}</a>` : esc(nombre ?? '—')}${
+        ute ? `<span class="marca-ute" title="Unión temporal de empresas. Cuánto le toca a cada socio no se publica.">UTE</span>` : ''}${
+        quien ? (enLinea ? ` ${quien}` : `<span class="socios-ute">${quien}</span>`) : ''}`;
+    };
 
     zona.innerHTML = `
       <div class="ficha-organo">
@@ -5003,7 +5052,7 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
             <div class="lista-empresas" style="margin-top:18px">
               ${empresas.slice(0, 10).map(e => `
                 <div class="${e.es_mia ? 'mia' : ''}" data-cif="${esc(e.cif ?? '')}">
-                  <span class="quien">${esc(e.nombre ?? '—')}</span>
+                  <span class="quien">${empresaTxt(e.cif, e.nombre)}</span>
                   <span class="cuanto">${e.contratos}
                     <span>${e.importe ? euros(Number(e.importe)) : '—'}</span></span>
                 </div>`).join('')}
@@ -5047,7 +5096,7 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
         ? filtrados.slice(0, 14).map(c => `
             <div class="${c.es_mia ? 'mia' : ''}">
               <p class="que">${esc(c.titulo ?? '')}</p>
-              <span class="quien">${esc(c.empresa ?? '')}${
+              <span class="quien">${c.empresa ? empresaTxt(c.cif, c.empresa, true) : ''}${
                 c.otros ? ` y ${c.otros} más` : ''}${
                 cifra(c) ? ` · ${euros(Number(cifra(c)))}` : ''}</span>
               ${(c.licitadores || c.baja || c.oferta_baja) ? `
@@ -5806,8 +5855,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     // enlace. `desde` deja dicho en el historial de dónde se viene.
     const enlaceEmpresa = (cif, nombre) => `<a href="#" class="enlace-ficha"
       data-ver-cif="${esc(cif)}">${esc(nombre ?? cif)}</a>`;
-    const yLista = xs => xs.length < 2 ? xs.join('')
-      : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`;
+    const yLista = enumerar;
     const etiquetaRaros = utes.length && marcos.length ? 'UTEs y acuerdos marco'
       : utes.length ? 'UTEs' : 'Acuerdos marco';
     const resumenRaros = yLista([
