@@ -1429,68 +1429,113 @@ select:focus{
 .tabla .quien{font-weight:600}
 .tabla .anual-movil{display:none}
 
-/* El tamaño de la competencia: un tope a lo que ganan al año, en una
-   barra con una parada por tope, de menos a más (a la derecha, todas).
-   La barra y sus puntos se dibujan detrás; del deslizador nativo solo se
-   ve el pulgar, que es lo que se arrastra y lo que maneja el teclado. */
+/* El tamaño de la competencia: un tope a lo que ganan al año, con una
+   parada por tope, de menos a más (a la derecha, todas). El pulgar sigue
+   al dedo y, al soltar, encaja en la parada más cercana con un pequeño
+   rebote. La posición es `--pos`, de 0 a 1: el pulgar y el relleno se
+   mueven solos al cambiarla. */
 .tamanos{
-  display:flex;flex-wrap:wrap;align-items:flex-start;gap:2px 20px;
-  margin:0 0 12px;--pulgar:20px;
+  display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 22px;
+  /* Arriba, el hueco de la burbuja: así no tapa la frase. */
+  margin:12px 0 14px;
+  --pulgar:22px;
+  --muelle:cubic-bezier(.34,1.4,.64,1);
 }
 /* A la altura de la barra, no centrada con barra y etiquetas juntas. */
-.tamanos .etiqueta-tamanos{padding-top:7px;color:var(--tenue);font-size:.86rem}
-/* El hueco a los lados es para que quepan centradas las etiquetas de los
-   extremos. */
+.tamanos .etiqueta-tamanos{padding-top:10px;color:var(--tenue);font-size:.86rem}
+/* El hueco a los lados deja sitio a las etiquetas de los extremos. */
 .pista-tamanos{flex:0 1 380px;min-width:250px;padding:0 30px}
-.riel{position:relative}
-.riel input{
-  display:block;position:relative;z-index:1;width:100%;height:34px;margin:0;
-  background:none;-webkit-appearance:none;appearance:none;cursor:pointer;
-}
-/* Sin el recuadro de los campos de texto al enfocarse: aquí el foco se ve
-   en el pulgar. */
-.riel input:focus, .riel input:focus-visible{outline:none;box-shadow:none}
-.riel input::-webkit-slider-runnable-track{height:34px;background:none}
-.riel input::-moz-range-track{background:none}
-.riel input::-webkit-slider-thumb{
-  -webkit-appearance:none;appearance:none;
-  width:var(--pulgar);height:var(--pulgar);margin-top:calc((34px - var(--pulgar)) / 2);
-  border:2px solid var(--texto);border-radius:50%;background:var(--superficie);
-  box-shadow:var(--sombra-boton);
-}
-.riel input::-moz-range-thumb{
-  box-sizing:border-box;width:var(--pulgar);height:var(--pulgar);
-  border:2px solid var(--texto);border-radius:50%;background:var(--superficie);
-  box-shadow:var(--sombra-boton);
-}
-.riel input:focus-visible::-webkit-slider-thumb{
-  box-shadow:0 0 0 2px var(--superficie),0 0 0 4px var(--fuerte);
-}
-.riel input:focus-visible::-moz-range-thumb{
-  box-shadow:0 0 0 2px var(--superficie),0 0 0 4px var(--fuerte);
+/* Más alto que la barra: es la zona que se agarra. Deja pasar el
+   desplazamiento vertical para que en el móvil se pueda seguir bajando
+   con el dedo encima. */
+.riel{
+  position:relative;height:40px;cursor:pointer;
+  touch-action:pan-y;-webkit-user-select:none;user-select:none;
 }
 .riel .carril{
-  position:absolute;top:15px;height:4px;
-  left:calc(var(--pulgar) / 2);right:calc(var(--pulgar) / 2);
-  border-radius:2px;background:var(--linea);
+  position:absolute;left:0;right:0;top:17px;height:6px;
+  border-radius:3px;background:var(--linea);
 }
 .riel .lleno{
-  position:absolute;top:0;bottom:0;left:0;
-  width:calc(var(--paso) / var(--pasos) * 100%);
-  border-radius:2px;background:var(--texto);
+  position:absolute;top:0;bottom:0;left:0;width:calc(var(--pos) * 100%);
+  border-radius:3px;background:var(--texto);
+  transition:width .45s var(--muelle);
 }
 .riel .carril b{
-  position:absolute;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;
-  border-radius:50%;background:var(--fuerte);
+  position:absolute;top:50%;width:6px;height:6px;border-radius:50%;
+  transform:translate(-50%,-50%);
+  background:var(--fuerte);transition:background-color .2s ease;
 }
-.riel .carril b.dentro{background:var(--texto)}
-.riel .marcas{position:relative;height:22px;margin:0 calc(var(--pulgar) / 2)}
-.riel .marcas button{
+.riel .carril b.dentro{background:color-mix(in srgb,var(--superficie) 70%,transparent)}
+.riel .pulgar{
+  position:absolute;top:20px;left:calc(var(--pos) * 100%);
+  width:var(--pulgar);height:var(--pulgar);
+  border:2px solid var(--texto);border-radius:50%;
+  background:var(--superficie);box-shadow:var(--sombra-boton);
+  transform:translate(-50%,-50%);outline:none;
+  transition:left .45s var(--muelle),transform .2s var(--muelle),box-shadow .2s ease;
+}
+.riel:hover .pulgar{
+  box-shadow:var(--sombra-boton),0 0 0 6px color-mix(in srgb,var(--texto) 8%,transparent);
+}
+/* El anillo de foco y la burbuja, solo con el teclado. Al tocarlo con el
+   ratón o el dedo también se enfoca (para seguir con las flechas), pero
+   el navegador lo daba por foco de teclado: `con-puntero` lo distingue. */
+.riel:not(.con-puntero) .pulgar:focus-visible{
+  box-shadow:var(--sombra-boton),0 0 0 3px var(--superficie),0 0 0 5px var(--fuerte);
+}
+/* Arrastrando: pegado al dedo, sin retraso, y algo más grande. */
+.riel.arrastrando{cursor:grabbing}
+.riel.arrastrando .lleno{transition:none}
+.riel.arrastrando .pulgar{
+  transform:translate(-50%,-50%) scale(1.14);
+  box-shadow:var(--sombra-boton-alta),0 0 0 8px color-mix(in srgb,var(--texto) 10%,transparent);
+  transition:transform .2s var(--muelle),box-shadow .2s ease;
+}
+/* Lo que se va a elegir, encima del pulgar: con el dedo encima no se ven
+   las etiquetas de debajo. */
+.riel .globo{
+  position:absolute;left:50%;bottom:calc(100% + 11px);
+  padding:4px 9px;border-radius:7px;
+  background:var(--texto);color:var(--superficie);
+  font-size:.78rem;font-weight:600;line-height:1.3;white-space:nowrap;
+  pointer-events:none;opacity:0;
+  transform:translate(-50%,5px) scale(.9);transform-origin:50% 100%;
+  transition:opacity .15s ease,transform .22s var(--muelle);
+}
+.riel .globo::after{
+  content:'';position:absolute;left:50%;top:100%;
+  border:5px solid transparent;border-top-color:var(--texto);
+  transform:translateX(-50%);
+}
+.riel.arrastrando .globo,
+.riel:not(.con-puntero) .pulgar:focus-visible .globo{opacity:1;transform:translate(-50%,0) scale(1)}
+.tamanos .marcas{position:relative;height:22px}
+.tamanos .marcas button{
   position:absolute;top:0;transform:translateX(-50%);
-  padding:1px 4px;border:0;background:none;
-  color:var(--tenue);font-size:.8rem;white-space:nowrap;
+  padding:2px 6px;border:0;border-radius:6px;background:none;
+  color:var(--tenue);font-size:.8rem;font-weight:600;white-space:nowrap;
+  transition:color .2s ease;
 }
-.riel .marcas button.actual{color:var(--texto);font-weight:650}
+.tamanos .marcas button:hover,
+.tamanos .marcas button.actual{color:var(--texto)}
+
+/* Al cambiar el tope solo cambia la lista: se atenúa mientras llega y las
+   filas nuevas entran escalonadas, así se ve que ha cambiado sin que la
+   página salte. */
+#lista-competencia{transition:opacity .16s ease}
+@keyframes entrarFila{
+  from{opacity:0;transform:translateY(6px)}
+  to{opacity:1;transform:none}
+}
+.tabla.entra tbody tr{
+  animation:entrarFila .38s cubic-bezier(.2,.7,.3,1) both;
+  animation-delay:calc(var(--i, 0) * 45ms);
+}
+@media(prefers-reduced-motion:reduce){
+  .riel .pulgar,.riel .lleno,.riel .globo,.riel .carril b{transition:none}
+  .tabla.entra tbody tr{animation:none}
+}
 
 .ultimos-contratos > div{
   padding:13px 0;border-bottom:1px solid var(--linea);
@@ -5567,6 +5612,120 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
 const TAMANOS_COMPETENCIA = [500000, 2000000, 10000000, 0];
 const textoTamano = t => t ? `Hasta ${eurosRedondos(t)}` : 'Todas';
 
+// El deslizador del tope. Hecho a mano y no con <input type="range">: el
+// nativo salta de parada en parada; este sigue al dedo y, al soltar,
+// encaja en la más cercana. Para el teclado y los lectores de pantalla es
+// un deslizador como cualquier otro (role="slider", flechas, Inicio, Fin).
+function htmlTamanos(paso) {
+  const ultimo = TAMANOS_COMPETENCIA.length - 1;
+  const en = i => `${i / ultimo * 100}%`;
+  return `
+    <div class="tamanos" style="--pos:${paso / ultimo}">
+      <span class="etiqueta-tamanos" id="tamanos-titulo">Lo que ganan al año</span>
+      <div class="pista-tamanos">
+        <div class="riel">
+          <div class="carril"><i class="lleno"></i>${TAMANOS_COMPETENCIA.map((_, i) =>
+            `<b style="left:${en(i)}"></b>`).join('')}</div>
+          <div class="pulgar" role="slider" tabindex="0"
+            aria-labelledby="tamanos-titulo" aria-valuemin="0"
+            aria-valuemax="${ultimo}"><span class="globo"></span></div>
+        </div>
+        <div class="marcas">${TAMANOS_COMPETENCIA.map((t, i) =>
+          `<button type="button" tabindex="-1" data-paso="${i}" style="left:${en(i)}"
+            >${t ? eurosRedondos(t) : 'Todas'}</button>`).join('')}</div>
+      </div>
+    </div>`;
+}
+
+// `alElegir(tope)` llega un poco después de que el pulgar se pare: con
+// varias flechas seguidas, una sola vez, y sin cortar la animación.
+function deslizadorTamanos(bloque, inicial, alElegir) {
+  const ultimo = TAMANOS_COMPETENCIA.length - 1;
+  const riel = bloque.querySelector('.riel');
+  const pulgar = bloque.querySelector('.pulgar');
+  const globo = bloque.querySelector('.globo');
+  const puntos = [...bloque.querySelectorAll('.carril b')];
+  const marcas = [...bloque.querySelectorAll('.marcas button')];
+  let paso = inicial;
+  let espera = null;
+
+  // Pone el pulgar en `pos` (de 0 a 1) y marca la parada más cercana.
+  const pintar = pos => {
+    const cerca = Math.round(pos * ultimo);
+    bloque.style.setProperty('--pos', pos);
+    puntos.forEach((b, i) => b.classList.toggle('dentro', i / ultimo <= pos + 1e-6));
+    marcas.forEach((b, i) => b.classList.toggle('actual', i === cerca));
+    globo.textContent = textoTamano(TAMANOS_COMPETENCIA[cerca]);
+  };
+
+  const fijar = i => {
+    i = Math.max(0, Math.min(ultimo, i));
+    pintar(i / ultimo);
+    pulgar.setAttribute('aria-valuenow', i);
+    pulgar.setAttribute('aria-valuetext', textoTamano(TAMANOS_COMPETENCIA[i]));
+    if (i === paso) return;
+    paso = i;
+    clearTimeout(espera);
+    espera = setTimeout(() => {
+      if (bloque.isConnected) alElegir(TAMANOS_COMPETENCIA[paso]);
+    }, 300);
+  };
+
+  const posDe = ev => {
+    const r = riel.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+  };
+
+  // Un toque lleva el pulgar deslizándose hasta la parada; arrastrar lo
+  // lleva pegado al dedo y encaja al soltar. Por debajo de 4 px es un
+  // toque: un dedo nunca está quieto del todo.
+  let inicio = null;
+  riel.addEventListener('pointerdown', ev => {
+    if (ev.button > 0) return;
+    ev.preventDefault();
+    inicio = ev.clientX;
+    riel.setPointerCapture(ev.pointerId);
+    riel.classList.add('con-puntero');
+    pulgar.focus({ preventScroll: true });
+  });
+  riel.addEventListener('pointermove', ev => {
+    if (inicio == null) return;
+    if (!riel.classList.contains('arrastrando')) {
+      if (Math.abs(ev.clientX - inicio) < 4) return;
+      riel.classList.add('arrastrando');
+    }
+    pintar(posDe(ev));
+  });
+  riel.addEventListener('pointerup', ev => {
+    if (inicio == null) return;
+    inicio = null;
+    riel.classList.remove('arrastrando');
+    fijar(Math.round(posDe(ev) * ultimo));
+  });
+  // Si el navegador se queda el gesto (el dedo se fue hacia arriba para
+  // desplazar la página), vuelve a donde estaba.
+  riel.addEventListener('pointercancel', () => {
+    inicio = null;
+    riel.classList.remove('arrastrando');
+    fijar(paso);
+  });
+
+  pulgar.addEventListener('blur', () => riel.classList.remove('con-puntero'));
+  pulgar.addEventListener('keydown', ev => {
+    riel.classList.remove('con-puntero');
+    const paso1 = { ArrowLeft: -1, ArrowDown: -1, PageDown: -1,
+                    ArrowRight: 1, ArrowUp: 1, PageUp: 1 }[ev.key];
+    if (paso1) fijar(paso + paso1);
+    else if (ev.key === 'Home') fijar(0);
+    else if (ev.key === 'End') fijar(ultimo);
+    else return;
+    ev.preventDefault();
+  });
+  marcas.forEach((b, i) => b.onclick = () => fijar(i));
+
+  fijar(inicial);
+}
+
 async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   if (!volviendo) irA('mercado');
   raiz.className = 'envoltorio ancho';
@@ -5617,9 +5776,6 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   let periodoEmp = periodoGuardado(aniosEmp);
   // El tope de tamaño de la competencia. Si no llega, todas: como antes.
   let topeEmp = Number(tam.data?.tope) || 0;
-  // Cambiar el tope repinta la lista entera, deslizador incluido. Quien lo
-  // movía con las flechas perdía el foco a cada paso; así lo recupera.
-  let enfocarTamano = false;
   let repintarVista = null;
   let vueltaEmp = 0;
   selectorPeriodo(document.getElementById('periodo-emp'), aniosEmp, periodoEmp, p => {
@@ -5647,14 +5803,35 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     pintarFicha(ultimaEmpresa);
   });
 
+  // Elegir un tope se guarda para la próxima vez; si no se puede guardar,
+  // vale igual mientras siga en la pantalla. Volver al que ya estaba no
+  // guarda nada: así, quien entró con NIF y no ha tocado nada sigue con el
+  // que le corresponde si cambia lo que gana.
+  const elegirTope = tope => {
+    if (tope === topeEmp) return;
+    topeEmp = tope;
+    sb.rpc('cambiar_tamano_competencia', { tope })
+      .then(() => olvidar('mi_tamano_competencia'), () => {});
+    verListas({ soloCompetencia: true });
+  };
+
   // ---------- Estado: listas ----------
-  async function verListas() {
+
+  // Tres filas a la vista y el resto detrás de un botón.
+  const ASOMAN = 3;
+
+  // `soloCompetencia`: al mover el tope solo cambia la lista de
+  // competencia. Repintar todo le cortaba la animación al deslizador y le
+  // quitaba el foco; así se queda donde está y la lista cambia debajo.
+  async function verListas({ soloCompetencia = false } = {}) {
     repintarVista = verListas;
     const turno = ++vueltaEmp;
-    esperando('Cargando...');
+    const hueco = soloCompetencia ? document.getElementById('lista-competencia') : null;
+    if (hueco) hueco.classList.add('cambiando');
+    else esperando('Cargando...');
     const [comp, seg] = await Promise.all([
       pedir('competencia_periodo', argsPeriodo(periodoEmp, { tope: topeEmp })),
-      pedir('seguimiento_periodo', argsPeriodo(periodoEmp)),
+      hueco ? { data: null, error: null } : pedir('seguimiento_periodo', argsPeriodo(periodoEmp)),
     ]);
     if (turno !== vueltaEmp) return;
     zona.classList.remove('cambiando');
@@ -5686,13 +5863,10 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const paso = TAMANOS_COMPETENCIA.includes(tope)
       ? TAMANOS_COMPETENCIA.indexOf(tope) : ultimo;
 
-    // Tres filas a la vista y el resto detrás de un botón.
-    const ASOMAN = 3;
-
     // Lo que gana al año va en su columna; en el móvil no cabe y pasa a
     // una línea bajo el nombre.
     const fila = (f, i, sigo) => `<tr data-cif="${esc(f.cif)}"
-        class="${i >= ASOMAN ? 'oculta' : ''}">
+        class="${i >= ASOMAN ? 'oculta' : ''}" style="--i:${Math.min(i, ASOMAN)}">
         <td class="quien">${esc(f.nombre ?? f.cif)}${eurosRedondos(f.anual) ? `
           <span class="anual-movil">Gana ${eurosRedondos(f.anual)} al año</span>` : ''}</td>
         <td class="num">${f.contratos}</td>
@@ -5718,6 +5892,34 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
         data-menos="Ver menos">${filas.length - ASOMAN === 1 ? 'Ver la restante' : `Ver las ${filas.length - ASOMAN} restantes`}
         <span class="flechita">▾</span></button>` : ''}`;
 
+    const frase = `Empresas que han ganado contratos de los mismos códigos
+      que tú${cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}${tope ? `, solo las
+      que ganan hasta ${eurosRedondos(tope)} al año en contratos públicos,
+      sumando todos sus sectores` : ''}. Pulsa una para ver su ficha.`;
+    const listaCompetencia = competencia.length ? tabla(competencia, 't-competencia')
+      : `<p class="sin-datos">${tope
+          ? 'Ninguna empresa de ese tamaño ha ganado contratos de tus sectores en este periodo.'
+          : 'No hay adjudicaciones de tus sectores en este periodo.'}</p>`;
+
+    // Solo la competencia: el deslizador y la lista de seguimiento se
+    // quedan como están. Si mientras tanto se abrió una ficha, ya no hay
+    // hueco y se pinta todo.
+    if (hueco?.isConnected) {
+      hueco.innerHTML = listaCompetencia;
+      hueco.classList.remove('cambiando');
+      document.getElementById('frase-competencia').innerHTML = frase;
+      document.getElementById('cuantas-competencia').textContent = competencia.length;
+      const nueva = hueco.querySelector('.tabla');
+      if (nueva) {
+        nueva.classList.add('entra');
+        // Fuera al terminar: si no, desplegar las restantes las animaría
+        // otra vez.
+        setTimeout(() => nueva.classList.remove('entra'), 700);
+      }
+      enlazar(hueco);
+      return;
+    }
+
     // La lista de seguimiento se enseña SIEMPRE, aunque esté vacía: si no
     // aparece, nadie descubre que existe.
     zona.innerHTML = `
@@ -5732,70 +5934,21 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
       <div class="seccion-mercado">
         <h3>Quién gana más en tus sectores
-          <span class="cuantas">${competencia.length}</span></h3>
-        <p class="guia" style="margin:0 0 14px;font-size:.9rem">Empresas que
-        han ganado contratos de los mismos códigos que tú${
-          cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}${tope ? `, solo las
-          que ganan hasta ${eurosRedondos(tope)} al año en contratos
-          públicos, sumando todos sus sectores` : ''}. Pulsa una para ver
-        su ficha.</p>
-        <div class="tamanos" style="--paso:${paso};--pasos:${ultimo}">
-          <span class="etiqueta-tamanos" id="tamanos-titulo">Lo que ganan al año</span>
-          <div class="pista-tamanos"><div class="riel">
-            <div class="carril"><i class="lleno"></i>${TAMANOS_COMPETENCIA.map((_, i) =>
-              `<b class="${i <= paso ? 'dentro' : ''}" style="left:${i / ultimo * 100}%"></b>`).join('')}</div>
-            <input type="range" id="tamano-competencia" min="0" max="${ultimo}"
-              step="1" value="${paso}" aria-labelledby="tamanos-titulo"
-              aria-valuetext="${textoTamano(tope)}">
-            <div class="marcas">${TAMANOS_COMPETENCIA.map((t, i) =>
-              `<button type="button" tabindex="-1" data-paso="${i}"
-                class="${i === paso ? 'actual' : ''}" style="left:${i / ultimo * 100}%"
-                >${t ? eurosRedondos(t) : 'Todas'}</button>`).join('')}</div>
-          </div></div>
-        </div>
-        ${competencia.length ? tabla(competencia, 't-competencia')
-          : `<p class="sin-datos">${tope
-              ? 'Ninguna empresa de ese tamaño ha ganado contratos de tus sectores en este periodo.'
-              : 'No hay adjudicaciones de tus sectores en este periodo.'}</p>`}
+          <span class="cuantas" id="cuantas-competencia">${competencia.length}</span></h3>
+        <p class="guia" id="frase-competencia"
+          style="margin:0 0 14px;font-size:.9rem">${frase}</p>
+        ${htmlTamanos(paso)}
+        <div id="lista-competencia">${listaCompetencia}</div>
       </div>`;
 
-    // Al arrastrar solo se mueven la barra y la etiqueta; la lista se pide
-    // al soltar (con el teclado, cada flecha es soltar). Las etiquetas de
-    // debajo también se pulsan.
-    //
-    // Elegir un tamaño se guarda para la próxima vez; si no se puede
-    // guardar, vale igual mientras siga en la pantalla. Volver al que ya
-    // estaba no guarda nada: así, quien entró con NIF y no ha tocado nada
-    // sigue con el que le corresponde si cambia lo que gana.
-    const deslizador = document.getElementById('tamano-competencia');
-    const bloque = deslizador.closest('.tamanos');
-    const marcar = i => {
-      bloque.style.setProperty('--paso', i);
-      bloque.querySelectorAll('.carril b').forEach((b, j) =>
-        b.classList.toggle('dentro', j <= i));
-      bloque.querySelectorAll('.marcas button').forEach((b, j) =>
-        b.classList.toggle('actual', j === i));
-      deslizador.setAttribute('aria-valuetext', textoTamano(TAMANOS_COMPETENCIA[i]));
-    };
-    const elegir = () => {
-      const elegido = TAMANOS_COMPETENCIA[Number(deslizador.value)];
-      if (elegido === tope) return;
-      topeEmp = elegido;
-      enfocarTamano = document.activeElement === deslizador;
-      sb.rpc('cambiar_tamano_competencia', { tope: elegido })
-        .then(() => olvidar('mi_tamano_competencia'), () => {});
-      verListas();
-    };
-    deslizador.addEventListener('input', () => marcar(Number(deslizador.value)));
-    deslizador.addEventListener('change', elegir);
-    bloque.querySelectorAll('.marcas button').forEach(b => b.onclick = () => {
-      deslizador.value = b.dataset.paso;
-      marcar(Number(b.dataset.paso));
-      elegir();
-    });
-    if (enfocarTamano) { enfocarTamano = false; deslizador.focus(); }
+    deslizadorTamanos(zona.querySelector('.tamanos'), paso, elegirTope);
+    enlazar(zona);
+  }
 
-    zona.querySelectorAll('tr[data-cif]').forEach(f =>
+  // Filas, botones de seguir y "ver las restantes" de lo que haya dentro de
+  // `raiz`: las dos listas, o solo la de competencia al cambiar el tope.
+  function enlazar(raiz) {
+    raiz.querySelectorAll('tr[data-cif]').forEach(f =>
       f.onclick = ev => {
         // El botón de seguir vive dentro de la fila para que aparezca a su
         // altura; hay que evitar que su clic abra además la ficha.
@@ -5803,7 +5956,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
         verEmpresa(f.dataset.cif);
       });
 
-    zona.querySelectorAll('[data-seguir]').forEach(b => b.onclick = async () => {
+    raiz.querySelectorAll('[data-seguir]').forEach(b => b.onclick = async () => {
       const antes = b.getAttribute('aria-pressed') === 'true';
       // Se pinta al instante y se corrige si el servidor dice otra cosa.
       b.setAttribute('aria-pressed', String(!antes));
@@ -5842,7 +5995,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
     // Alterna: se puede volver a cerrar. Antes el botón desaparecía al
     // pulsarlo y la lista se quedaba abierta para siempre.
-    zona.querySelectorAll('[data-tabla]').forEach(b => {
+    raiz.querySelectorAll('[data-tabla]').forEach(b => {
       const filas = [...document.getElementById(b.dataset.tabla)
         .querySelectorAll('tbody tr')];
       b.onclick = () => {
