@@ -1427,6 +1427,20 @@ select:focus{
 .tabla tbody tr{cursor:pointer;transition:background-color .12s}
 .tabla tbody tr:hover{background:var(--hover)}
 .tabla .quien{font-weight:600}
+.tabla .anual-movil{display:none}
+
+/* El tamaño de la competencia: un tope a lo que ganan al año. */
+.tamanos{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px}
+.tamanos span{margin-right:4px;color:var(--tenue);font-size:.86rem}
+.tamanos button{
+  min-height:34px;padding:5px 12px;
+  border:1px solid var(--fuerte);border-radius:8px;
+  background:var(--superficie);color:var(--texto);
+  font:inherit;font-size:.86rem;cursor:pointer;
+}
+.tamanos button[aria-pressed="true"]{
+  border-color:var(--texto);background:var(--texto);color:var(--superficie);
+}
 
 .ultimos-contratos > div{
   padding:13px 0;border-bottom:1px solid var(--linea);
@@ -1439,6 +1453,9 @@ select:focus{
   /* Cabe menos: se deja el nombre, el importe y el botón. El número de
      contratos se ve al abrir la ficha. */
   .tabla th:nth-child(2), .tabla td:nth-child(2){display:none}
+  .tabla th.anual, .tabla td.anual{display:none}
+  .tabla .anual-movil{display:block;margin-top:2px;color:var(--tenue);
+    font-size:.8rem;font-weight:400}
   .tabla th.num, .tabla td.num{width:92px;padding:9px 8px 9px 4px;text-align:right}
   .tabla th.fin, .tabla td.fin{width:78px}
   .seguir.chico{padding:0 9px;font-size:.76rem}
@@ -2904,6 +2921,15 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
 const euros = n => n == null ? null : new Intl.NumberFormat('es-ES',
   {style:'currency',currency:'EUR',maximumFractionDigits:0,
    useGrouping:'always'}).format(n);
+// Lo que gana una empresa al año, redondeado: es una media de dos años y
+// con todas las cifras parecería exacta.
+function eurosRedondos(n) {
+  const v = Number(n);
+  if (!(v > 0)) return null;
+  if (v >= 1e6) return new Intl.NumberFormat('es-ES',
+    {maximumFractionDigits: v < 1e7 ? 1 : 0}).format(v / 1e6) + ' M€';
+  return v < 1000 ? 'menos de 1.000 €' : euros(Math.round(v / 1000) * 1000);
+}
 const ZONA = 'Europe/Madrid';
 
 // Duración de un contrato y lo que sale por año. El importe adjudicado es
@@ -5483,6 +5509,16 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
   await cargar();
 }
 
+// Topes de tamaño para la competencia: lo que gana la empresa al año en
+// contratos públicos (0 = todas). Una pyme no quiere ver primero al líder
+// del sector, sino a quien le quita los contratos a su escala. Son los
+// mismos que usa `mi_tamano_competencia` para proponer uno a quien entró
+// con NIF.
+const TAMANOS_COMPETENCIA = [
+  [500000, 'Hasta 500.000 €'], [2000000, 'Hasta 2 M€'],
+  [10000000, 'Hasta 10 M€'], [0, 'Todas'],
+];
+
 async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   if (!volviendo) irA('mercado');
   raiz.className = 'envoltorio ancho';
@@ -5528,8 +5564,11 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
   // El periodo vale para las listas y para la ficha: al cambiarlo se
   // repinta lo que haya a la vista.
-  const aniosEmp = await aniosDelSector();
+  const [aniosEmp, tam] = await Promise.all([
+    aniosDelSector(), pedir('mi_tamano_competencia')]);
   let periodoEmp = periodoGuardado(aniosEmp);
+  // El tope de tamaño de la competencia. Si no llega, todas: como antes.
+  let topeEmp = Number(tam.data?.tope) || 0;
   let repintarVista = null;
   let vueltaEmp = 0;
   selectorPeriodo(document.getElementById('periodo-emp'), aniosEmp, periodoEmp, p => {
@@ -5563,7 +5602,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const turno = ++vueltaEmp;
     esperando('Cargando...');
     const [comp, seg] = await Promise.all([
-      pedir('competencia_periodo', argsPeriodo(periodoEmp)),
+      pedir('competencia_periodo', argsPeriodo(periodoEmp, { tope: topeEmp })),
       pedir('seguimiento_periodo', argsPeriodo(periodoEmp)),
     ]);
     if (turno !== vueltaEmp) return;
@@ -5589,15 +5628,20 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
     const competencia = comp.data ?? [];
     const seguidas = seg.data ?? [];
+    const tope = topeEmp;
 
     // Tres filas a la vista y el resto detrás de un botón.
     const ASOMAN = 3;
 
+    // Lo que gana al año va en su columna; en el móvil no cabe y pasa a
+    // una línea bajo el nombre.
     const fila = (f, i, sigo) => `<tr data-cif="${esc(f.cif)}"
         class="${i >= ASOMAN ? 'oculta' : ''}">
-        <td class="quien">${esc(f.nombre ?? f.cif)}</td>
+        <td class="quien">${esc(f.nombre ?? f.cif)}${eurosRedondos(f.anual) ? `
+          <span class="anual-movil">Gana ${eurosRedondos(f.anual)} al año</span>` : ''}</td>
         <td class="num">${f.contratos}</td>
         <td class="num">${f.importe ? euros(Number(f.importe)) : '—'}</td>
+        <td class="num anual">${eurosRedondos(f.anual) ?? '—'}</td>
         <td class="fin"><button class="seguir chico" aria-pressed="${sigo}"
           data-seguir="${esc(f.cif)}" data-nombre="${esc(f.nombre ?? f.cif)}"
           >${sigo ? 'Siguiendo' : 'Seguir'}</button></td>
@@ -5606,7 +5650,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const tabla = (filas, id, todasSeguidas = false) => `
       <table class="tabla" id="${id}">
         <thead><tr><th>Empresa</th><th class="num">Contratos</th>
-          <th class="num">Importe</th><th class="fin"></th></tr></thead>
+          <th class="num">Importe</th>
+          <th class="num anual" title="Media de lo que ha ganado al año en contratos públicos en los dos últimos años, en todos sus sectores">Gana al año</th>
+          <th class="fin"></th></tr></thead>
         <tbody>${filas.map((f, i) =>
           fila(f, i, todasSeguidas || !!f.sigo)).join('')}</tbody>
       </table>
@@ -5633,11 +5679,33 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
           <span class="cuantas">${competencia.length}</span></h3>
         <p class="guia" style="margin:0 0 14px;font-size:.9rem">Empresas que
         han ganado contratos de los mismos códigos que tú${
-          cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}. Pulsa una para ver
+          cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}${tope ? `, solo las
+          que ganan hasta ${eurosRedondos(tope)} al año en contratos
+          públicos, sumando todos sus sectores` : ''}. Pulsa una para ver
         su ficha.</p>
+        <div class="tamanos" role="group" aria-labelledby="tamanos-titulo">
+          <span id="tamanos-titulo">Lo que ganan al año</span>
+          ${TAMANOS_COMPETENCIA.map(([t, texto]) => `<button type="button"
+            data-tope="${t}" aria-pressed="${t === tope}">${texto}</button>`).join('')}
+        </div>
         ${competencia.length ? tabla(competencia, 't-competencia')
-          : '<p class="sin-datos">No hay adjudicaciones de tus sectores en este periodo.</p>'}
+          : `<p class="sin-datos">${tope
+              ? 'Ninguna empresa de ese tamaño ha ganado contratos de tus sectores en este periodo.'
+              : 'No hay adjudicaciones de tus sectores en este periodo.'}</p>`}
       </div>`;
+
+    // Elegir un tamaño repinta la lista y se guarda para la próxima vez.
+    // Si no se puede guardar, vale igual mientras siga en la pantalla.
+    // Pulsar el que ya está no guarda nada: así, quien entró con NIF y no
+    // ha tocado nada sigue con el que le corresponde si cambia lo que gana.
+    zona.querySelectorAll('[data-tope]').forEach(b => b.onclick = () => {
+      const elegido = Number(b.dataset.tope);
+      if (elegido === tope) return;
+      topeEmp = elegido;
+      sb.rpc('cambiar_tamano_competencia', { tope: elegido })
+        .then(() => olvidar('mi_tamano_competencia'), () => {});
+      verListas();
+    });
 
     zona.querySelectorAll('tr[data-cif]').forEach(f =>
       f.onclick = ev => {

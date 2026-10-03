@@ -32,7 +32,7 @@ El código CPV —la clasificación europea de contratos— es demasiado grueso 
 
 **Movimientos** — Quién ha ganado qué en tu sector el último mes. Filtrable por provincia. Muestra el importe, el organismo y si alguna de esas empresas ya la sigues.
 
-**Empresas** — Las veinticinco empresas que más compiten contigo, ordenadas por contratos ganados. Puedes marcarlas para seguirlas o ignorarlas.
+**Empresas** — Las veinticinco empresas que más compiten contigo, ordenadas por contratos ganados, con lo que gana cada una al año. Puedes quedarte solo con las de tu tamaño, para que el líder del sector no tape a quien de verdad se lleva tus contratos, y marcarlas para seguirlas o ignorarlas.
 
 **Organismos** — Los organismos que más licitan en tu sector. Al abrir uno, ves cómo adjudica: baja media, número de licitadores, procedimientos más usados y quién gana con más frecuencia.
 
