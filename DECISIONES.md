@@ -1156,6 +1156,32 @@ gana 276 M€ al año con la administración no es una pyme. Un interruptor
 que dedujera el tamaño fallaría sin que se viera, y quien entra sin NIF
 no tiene nada de lo que deducirlo.
 
+**Por qué esos topes.** Se eligieron a ojo (números redondos, cada uno
+×4-5 el anterior) y se comprobaron después. Lo que gana cada empresa al
+año tiene un solo pico, tanto contando empresas (entre 10.000 y 100.000 €)
+como contando contratos (entre 300.000 € y 3 M€): no hay cortes naturales,
+así que cualquier tope es una convención. Estos se sostienen por dos
+cosas:
+
+- 2 M€ y 10 M€ son los umbrales de facturación de la UE para micro y
+  pequeña empresa. Como lo ganado en contratos públicos no puede pasar de
+  la facturación, quien gana más de 2 M€ al año no es una microempresa, y
+  quien gana más de 10 M€ no es pequeña.
+- Cada parada añade una parte parecida del mercado. De los contratos de
+  los dos últimos años (sin menores ni homologaciones), los ganan
+  empresas de hasta 500.000 €/año el 41 %, hasta 2 M€ el 61 % (+20) y
+  hasta 10 M€ el 79 % (+18); el 21 % restante, las de más. Entre las 8.189
+  empresas con 10 o más contratos en esos dos años (las que pueden salir
+  en la lista), los topes caen cerca de los percentiles 30, 65 y 90.
+
+Lo que sigue a ojo es el valor de partida con NIF: diez veces lo que gana
+la empresa. Se midió con 10× y funcionó; no se probaron otros.
+
+**En reserva.** Una parada en 50 M€, el umbral de la UE de empresa
+mediana. Hoy quien gana más de 1 M€ al año arranca en "todas" y ve a los
+de cientos de millones; con esa parada una mediana arrancaría sin ellos.
+Solo si alguna empresa mediana lo pide.
+
 **Lo que no se cubre, a propósito.** Las empresas cuyos lotes no traen
 importe salen con poco o nada al año y pasan cualquier tope; lo mismo una
 UTE de dos grandes con poco volumen. Son casos raros.
