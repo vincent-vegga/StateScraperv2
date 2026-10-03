@@ -1135,6 +1135,14 @@ un organismo, las UTEs llevan la marca "UTE" y con quién van
 abre su ficha en Mercado ("← Volver a {organismo}"); solo el nombre, para
 que pasar o tocar la fila siga filtrando sus contratos.
 
+**Agrupaciones sin la palabra UTE (03/10/2026).** También cuentan como UTE
+las que traen un número de la plataforma en vez de NIF si en su nombre se
+identifican dos o más sociedades ("MANTENIMIENTO DE INFRAESTRUCTURAS, S.A.
+- SURGE AMBIENTAL S.L."). Un número con más de un nombre distinto se deja
+fuera: no identifica a una sola entidad. Palabras genéricas sueltas
+("SISTEMA", "SERVICIOS"…) no bastan para identificar un socio. Resultado:
+8.262 UTEs, 4.925 parejas, 1.763 empresas socias.
+
 ---
 
 ## Deuda técnica anotada
