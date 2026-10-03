@@ -1145,6 +1145,72 @@ fuera: no identifica a una sola entidad. Palabras genéricas sueltas
 
 ---
 
+## 43. Empresas: la competencia de tu tamaño, por lo que gana al año
+
+**Contexto.** Un betatester con una pyme entraba en Empresas y lo primero
+que veía era al líder del sector, que gana cientos de millones al año y
+contra el que no puede hacer nada. Quiere ver a quien le quita los
+contratos a su escala. La facturación no está en los datos.
+
+Medido con los 21 perfiles con NIF (desde 2024, ránking por contratos en
+sus prefijos):
+
+| Filtro | Qué pasa con las tres primeras |
+|---|---|
+| Por tamaño de contrato (p25/2 – p75×2 de lo que gana el perfil) | Igual o peor en 6 de 7 perfiles pequeños: los grandes también ganan muchos contratos pequeños |
+| Por lo que gana la empresa al año en contratos públicos (10× lo suyo) | En los perfiles de menos de 1 M€/año pasan de empresas de 3-800 M€/año a otras de 10.000 € a 4 M€/año, con 8-140 contratos en su sector. Por encima de 1 M€/año apenas cambia |
+
+**Decisión** (03/10/2026). Encima de la lista, un deslizador con un tope a
+lo que ganan al año y cuatro paradas, de menos a más: hasta 500.000 €,
+2 M€, 10 M€, o todas. La regla va escrita en la frase de la lista, así que
+no hay nada que adivinar: si no cuadra, se mueve y se guarda en el perfil
+(`perfiles.tamano_competencia`). Con NIF y sin haber elegido, el primer
+tope que llega a diez veces lo que gana él (todas, si pasa de 1 M€ al
+año); sin NIF, todas. Las dos tablas ganan la columna "Gana al año" (en
+el móvil, una línea bajo el nombre). Lo que gana al año es la media de
+los dos últimos años, en todos sus sectores, sin menores ni
+homologaciones (`empresas_por_cif.anual`, cada día con
+`refrescar_empresas`). Ver
+`supabase/migrations/20261003100000_competencia_de_tu_tamano.sql`.
+
+**Motivo.** Lo que gana en contratos públicos es lo que importa para saber
+quién te quita contratos, y es una cota inferior de la facturación: quien
+gana 276 M€ al año con la administración no es una pyme. Un interruptor
+que dedujera el tamaño fallaría sin que se viera, y quien entra sin NIF
+no tiene nada de lo que deducirlo.
+
+**Por qué esos topes.** Se eligieron a ojo (números redondos, cada uno
+×4-5 el anterior) y se comprobaron después. Lo que gana cada empresa al
+año tiene un solo pico, tanto contando empresas (entre 10.000 y 100.000 €)
+como contando contratos (entre 300.000 € y 3 M€): no hay cortes naturales,
+así que cualquier tope es una convención. Estos se sostienen por dos
+cosas:
+
+- 2 M€ y 10 M€ son los umbrales de facturación de la UE para micro y
+  pequeña empresa. Como lo ganado en contratos públicos no puede pasar de
+  la facturación, quien gana más de 2 M€ al año no es una microempresa, y
+  quien gana más de 10 M€ no es pequeña.
+- Cada parada añade una parte parecida del mercado. De los contratos de
+  los dos últimos años (sin menores ni homologaciones), los ganan
+  empresas de hasta 500.000 €/año el 41 %, hasta 2 M€ el 61 % (+20) y
+  hasta 10 M€ el 79 % (+18); el 21 % restante, las de más. Entre las 8.189
+  empresas con 10 o más contratos en esos dos años (las que pueden salir
+  en la lista), los topes caen cerca de los percentiles 30, 65 y 90.
+
+Lo que sigue a ojo es el valor de partida con NIF: diez veces lo que gana
+la empresa. Se midió con 10× y funcionó; no se probaron otros.
+
+**En reserva.** Una parada en 50 M€, el umbral de la UE de empresa
+mediana. Hoy quien gana más de 1 M€ al año arranca en "todas" y ve a los
+de cientos de millones; con esa parada una mediana arrancaría sin ellos.
+Solo si alguna empresa mediana lo pide.
+
+**Lo que no se cubre, a propósito.** Las empresas cuyos lotes no traen
+importe salen con poco o nada al año y pasan cualquier tope; lo mismo una
+UTE de dos grandes con poco volumen. Son casos raros.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
