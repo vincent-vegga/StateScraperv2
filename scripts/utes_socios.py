@@ -26,17 +26,6 @@ revisada a mano):
 El cruce exacto acertó 24 de 25. Cobertura: algún socio en el 36 % de las
 UTEs, dos o más en el 11 %.
 
-Agrupaciones sin la palabra UTE (03/10/2026). Muchas llegan con un número
-de la plataforma en vez de NIF y un nombre como "MANTENIMIENTO DE
-INFRAESTRUCTURAS, S.A. - SURGE AMBIENTAL S.L.". Cuentan como UTE solo si en
-el nombre se identifican DOS o más sociedades distintas: con una sola puede
-ser una empresa sin NIF publicado.
-
-Ese número NO identifica a una sola entidad: el mismo sale con nombres de
-empresas distintas ("SANTANA MOTORS, S.L" y una agrupación de otras dos).
-Juntar los socios de todos sus nombres daba UTEs falsas, así que un número
-con más de un nombre distinto (sin forma jurídica) se deja fuera.
-
 Uso:
     python scripts/utes_socios.py            # mide y enseña ejemplos
     python scripts/utes_socios.py --real     # además escribe en la base
@@ -141,17 +130,13 @@ def leer_por_clave(tabla: str, columnas: str, clave: str, filtros: dict) -> list
 
 
 def leer_utes() -> list[dict]:
-    """Adjudicaciones que cuentan (las mismas que `ficha_empresa`) de UTEs y
-    de posibles agrupaciones: las que traen un número en vez de NIF. Cada
-    fila lleva `nombrada`: si su NIF o su nombre dicen que es una UTE."""
+    """Adjudicaciones de UTE que cuentan (las mismas que `ficha_empresa`)."""
     filas, ultimo = [], None
     while True:
         params = {"select": "id_licitacion,cif,nombre", "order": "id_licitacion",
                   "limit": "1000", "es_menor": "eq.false", "es_homologacion": "eq.false",
-                  # Los números van antes que las letras: "0" <= cif < "A" (el número exacto
-                  # lo comprueba CLAVE_UTE; el orden depende de la collation).
                   "or": "(cif.like.U*,nombre.ilike.*UTE*,nombre.ilike.*temporal*,"
-                        "nombre.ilike.*U.T.E*,and(cif.gte.0,cif.lt.A))"}
+                        "nombre.ilike.*U.T.E*)"}
         if ultimo is not None:
             params["id_licitacion"] = f"gt.{ultimo}"
         d = pedir("GET", "adjudicaciones_empresa", params=params).json()
@@ -159,14 +144,9 @@ def leer_utes() -> list[dict]:
         if len(d) < 1000:
             break
         ultimo = d[-1]["id_licitacion"]
-    out = []
-    for a in filas:
-        cif = a["cif"] or ""
-        if not CLAVE_UTE.match(cif):
-            continue
-        a["nombrada"] = cif.startswith("U") or bool(ES_UTE.search(a["nombre"] or ""))
-        out.append(a)
-    return out
+    return [a for a in filas
+            if CLAVE_UTE.match(a["cif"] or "")
+            and ((a["cif"] or "").startswith("U") or ES_UTE.search(a["nombre"] or ""))]
 
 
 # ------------------------------------------------------------
@@ -225,31 +205,24 @@ def main() -> int:
     print(f"{len(adj)} adjudicaciones de UTE; {len(cat.nombre)} sociedades en el catálogo")
 
     nombres: dict[str, set[str]] = collections.defaultdict(set)
-    nombrada: dict[str, bool] = collections.defaultdict(bool)
+    por_ute: collections.Counter = collections.Counter()
     for a in adj:
         nombres[a["cif"]].add(a["nombre"] or "")
-        nombrada[a["cif"]] |= a["nombrada"]
+        por_ute[a["cif"]] += 1
 
     filas = []
     con_socios = collections.Counter()
     for ute, ns in nombres.items():
-        if not ute.startswith("U") and len({nucleo(n) for n in ns}) > 1:
-            continue
         socios: dict[str, tuple[str, str]] = {}
         for n in ns:
             for cif, x in socios_de(n, ute, cat).items():
                 socios.setdefault(cif, x)
-        # Sin "UTE" ni NIF de UTE, solo es agrupación con dos socios o más.
-        if not nombrada[ute] and len(socios) < 2:
-            continue
         con_socios["2+" if len(socios) >= 2 else str(len(socios))] += 1
         for cif, (metodo, trozo) in socios.items():
             filas.append({"ute_cif": ute, "socio_cif": cif, "metodo": metodo,
                           "trozo": trozo, "calculado": inicio.isoformat()})
 
-    total = sum(con_socios.values())
-    print(f"De ellas, agrupaciones sin la palabra UTE: "
-          f"{sum(1 for u in nombres if not nombrada[u] and u in {f['ute_cif'] for f in filas})}")
+    total = len(nombres)
     print(f"UTEs: {total}  ·  con 2+ socios {con_socios['2+']} "
           f"({con_socios['2+'] / total:.0%})  ·  con 1 {con_socios['1']} "
           f"({con_socios['1'] / total:.0%})  ·  sin ninguno {con_socios['0']} "

@@ -458,3 +458,27 @@ apartado solo de UTEs, y dentro de él:
 - en una UTE, decirlo arriba: "UTE formada por X e Y", con enlaces;
 - enlaces con aspecto de enlace (solo el nombre, en color de acento);
 - el botón de volver dice adónde vuelve.
+
+---
+
+## 18. UTEs: agrupaciones sin la palabra UTE
+
+**Qué pasa.** Muchas UTEs llegan sin "UTE" en el nombre y con un número de
+la plataforma en vez de NIF: "MANTENIMIENTO DE INFRAESTRUCTURAS, S.A. -
+SURGE AMBIENTAL S.L." (`326611`). `scripts/utes_socios.py` no las mira, así
+que en Mercado y en Organismos no se marcan como UTE.
+
+**Lo que hay hecho, sin validar.** En el commit `8dd305a` (rama
+`claude/trusting-faraday-7lnnem`), el script las incluye si en el nombre
+se identifican dos o más sociedades distintas. Medido en seco el
+03/10/2026: +415 agrupaciones, 4.928 parejas UTE-socio en total.
+
+**Lo que se aprendió.** El número de la plataforma NO identifica a una sola
+entidad: el mismo sale con nombres de empresas distintas ("SANTANA MOTORS,
+S.L" y otra agrupación). Juntar los socios de todos sus nombres daba UTEs
+falsas; el arreglo (un número con más de un nombre distinto se deja fuera)
+está en ese commit.
+
+**Para cerrarlo.** Revisar a mano una muestra de 30 de las agrupaciones
+nuevas con el arreglo puesto; si sale bien, recuperar el script de ese
+commit y lanzar el workflow `utes-socios.yml`.

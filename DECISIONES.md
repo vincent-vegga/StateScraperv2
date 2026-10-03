@@ -1129,6 +1129,12 @@ el botón de volver dice adónde vuelve y la vista elegida se recuerda al
 volver atrás. La primera versión (01/10, secciones al final de la ficha)
 se apagó por confusa: ver `PENDIENTES.md` §17.
 
+**En Organismos (03/10/2026).** En la lista de empresas y de contratos de
+un organismo, las UTEs llevan la marca "UTE" y con quién van
+(`socios_de_utes`). Las cifras no cambian. El nombre de cualquier empresa
+abre su ficha en Mercado ("← Volver a {organismo}"); solo el nombre, para
+que pasar o tocar la fila siga filtrando sus contratos.
+
 ---
 
 ## Deuda técnica anotada
