@@ -3240,32 +3240,25 @@ function importeAnualTxt(importe, meses) {
 }
 
 // ------------------------------------------------------------
-// VIABILIDAD, GUARDADA EN EL CAJÓN (20/09/2026)
+// VIABILIDAD (fuera del cajón el 04/10/2026)
 //
-// La pantalla funciona y es rápida —incumbencia 370 ms en el peor
-// caso, las convocatorias anteriores 1,9 s—, pero se esconde porque
-// lo que enseña todavía no es de fiar:
+// Se escondió el 20/09/2026 porque "convocatoria anterior" era
+// cualquier contrato del mismo órgano y CPV con el título parecido al
+// 40 %: en grupos grandes pasaba el 90 %, y decía "X ha ganado 8 de
+// las últimas 10 convocatorias" de diez contratos distintos.
 //
-//   · El emparejamiento no discrimina. En grupos grandes de un mismo
-//     órgano y familia CPV, el 90% de los contratos pasa el filtro de
-//     parecido (4.845 de 5.365 medidos). Decir "X ha ganado 8 de las
-//     últimas 10 convocatorias de este contrato" cuando en realidad
-//     son diez contratos distintos es peor que no decir nada.
+// Ahora la serie de un contrato (`serie_de` en la base) pesa cada
+// palabra por lo rara que es en ese organismo, exige 0,6 de
+// semejanza, deja fuera las obras (no se repiten) y los contratos
+// paralelos (muchos casi iguales a la vez, por centros o zonas), y
+// cuenta las convocatorias desiertas. "De este contrato" solo se dice
+// con serie; sin ella se habla del organismo. Ver
+// supabase/migrations/20261004120000_viabilidad_por_series.sql.
 //
-//   · Falta histórico. Hay desde 2021; para ver series de verdad
-//     hacen falta tres o cuatro años más hacia atrás.
-//
-// NO se ha borrado nada: ni pantallaViabilidad, ni las funciones de
-// la base (viabilidad, incumbencia, ediciones_anteriores), ni sus
-// permisos. Poniendo esto en true vuelve tal y como estaba.
-//
-// Al retomarlo, mirar primero `expediente`: el 41,7% de los contratos
-// caen en series identificables por el tronco de su referencia, sin
-// comparar títulos. Los productos del sector emparejan por señales
-// estructurales —órgano, CPV, vencimiento del contrato anterior— y no
-// por parecido del texto. Está anotado en supabase/LEEME.md.
+// Apagado, la pestaña, el botón "Analizar viabilidad" y la vuelta a
+// la pantalla al recargar desaparecen; no se borra nada.
 // ------------------------------------------------------------
-const VIABILIDAD_VISIBLE = false;
+const VIABILIDAD_VISIBLE = true;
 // UTEs en la ficha de empresa (decisión 42). Apagadas el 01/10/2026 (el
 // enlace a otra ficha no subía la página y la ficha de la UTE no decía
 // arriba que lo era) y encendidas el 02/10 con el interruptor
@@ -4831,10 +4824,16 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
             ? ' este mismo contrato' : ' contratos parecidos'}</h3>
           <p class="guia" style="margin:0 0 14px;font-size:.89rem">
             ${inc.por_convocatoria
-              ? `${plural(inc.ediciones, 'convocatoria', 'convocatorias')} en los últimos cuatro años.`
-              : `No hemos encontrado convocatorias anteriores de este contrato
-                 concreto, así que miramos las de su misma familia en este
-                 organismo: ${inc.ediciones} en cuatro años.`}</p>
+              ? `${plural(inc.ediciones, 'convocatoria anterior adjudicada',
+                  'convocatorias anteriores adjudicadas')} de este mismo contrato.`
+              : inc.paralelos
+                ? `Este organismo saca muchos contratos casi iguales a la vez
+                   (por centros, zonas o especialidades), así que no podemos
+                   saber cuál fue el anterior de este. Miramos todos los de su
+                   misma familia: ${inc.ediciones} en cuatro años.`
+                : `No hemos encontrado convocatorias anteriores de este contrato
+                   concreto, así que miramos las de su misma familia en este
+                   organismo: ${inc.ediciones} en cuatro años.`}</p>
           <div class="historial-contrato">
             ${inc.reparto.map((r, i) => `
               <div class="${r.cif === lider.cif ? 'lider' : ''} ${
@@ -4850,17 +4849,20 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         <div class="seccion-mercado" style="margin-top:18px">
           <h3>Las convocatorias anteriores</h3>
           <p class="guia" style="margin:0 0 14px;font-size:.89rem">
-            Los contratos concretos que hemos encontrado detrás de este,
-            del mismo organismo y la misma familia. El de arriba es el que
-            más se parece.</p>
+            Las veces que este organismo ya ha sacado este mismo contrato,
+            de la más reciente a la más antigua.</p>
           <div class="historial-contrato">
             ${ediciones.map(e => `
-              <div class="${e.cif === perfil.cif ? 'mia' : ''}">
+              <div class="${e.cif && e.cif === perfil.cif ? 'mia' : ''}">
                 <span class="quien">
                   ${esc(e.titulo ?? '—')}
                   <span style="display:block;color:var(--tenue);font-size:.85rem;
                                margin-top:3px">
-                    ${esc(e.empresa ?? 'Sin adjudicatario')}${
+                    ${e.desierta
+                      ? ({ desistimiento: 'Desistida: no se adjudicó',
+                           renuncia: 'Renunciada: no se adjudicó' }[e.desierta]
+                         ?? 'Desierta: nadie se la llevó')
+                      : esc(e.empresa ?? 'Sin adjudicatario')}${
                       e.licitadores
                         ? ` · ${e.licitadores} ${e.licitadores === 1
                             ? 'oferta' : 'ofertas'}` : ''}</span>
@@ -4891,6 +4893,19 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         organismo en tu sector.</p></div>`;
     }
 
+    // Una sola adjudicación: ni porcentaje ni reparto, solo quién la
+    // ganó. «100 %» de una sería verdad y no diría nada.
+    if (inc.ediciones === 1) {
+      return `<div class="factor ${esMio ? 'bueno' : ''}">
+        <h4>${inc.por_convocatoria ? 'Quién ganó la anterior' : 'Quién ganó aquí'}</h4>
+        <div class="cifra" style="font-size:1.05rem;line-height:1.3">${
+          esc(lider.nombre ?? '—')}</div>
+        <span class="pie">${inc.por_convocatoria
+          ? 'la única convocatoria anterior de este contrato que hemos encontrado'
+          : 'la única adjudicación de este tipo en este organismo en cuatro años'}</span>
+      </div>`;
+    }
+
     // Nadie destaca: se dice eso, no se señala a uno cualquiera.
     //
     // Con cuatro empresas a una adjudicación cada una, anunciar que
@@ -4905,8 +4920,9 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         <div class="cifra">${inc.empresas}
           <span style="font-size:.9rem;font-weight:400"> ${
             inc.empresas === 1 ? 'empresa' : 'empresas'}</span></div>
-        <span class="pie">se reparten ${inc.ediciones}
-          ${inc.ediciones === 1 ? 'adjudicación' : 'adjudicaciones'}
+        <span class="pie">se reparten ${inc.por_convocatoria
+          ? plural(inc.ediciones, 'convocatoria anterior', 'convocatorias anteriores')
+          : plural(inc.ediciones, 'adjudicación', 'adjudicaciones')}
           <br>ninguna repite más que las demás: no hay proveedor de
           referencia</span>
       </div>`;
@@ -4918,7 +4934,9 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
       <h4>Quién suele ganar</h4>
       <div class="cifra">${cuota} %</div>
       <span class="pie">${esc(lider.nombre ?? '—')}<br>
-        ${lider.veces} de ${plural(inc.ediciones, 'adjudicación', 'adjudicaciones')} ·
+        ${lider.veces} de ${inc.por_convocatoria
+          ? plural(inc.ediciones, 'convocatoria anterior', 'convocatorias anteriores')
+          : plural(inc.ediciones, 'adjudicación', 'adjudicaciones')} ·
         ${plural(inc.empresas, 'empresa distinta', 'empresas distintas')}</span>
     </div>`;
   }

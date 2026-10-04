@@ -1258,6 +1258,75 @@ no acaba en contrato, manda ella: sin ganador, NIF ni importe. Ver
 
 ---
 
+## 45. Viabilidad: la convocatoria anterior por palabras raras del organismo
+
+**Contexto.** Viabilidad se escondió el 20/09/2026. Para ella,
+"convocatoria anterior" era cualquier contrato del mismo órgano y CPV
+principal con el título parecido al 40 %, y en grupos grandes pasaba el
+90 %: decía "X ha ganado 8 de las últimas 10 convocatorias de este
+contrato" de diez contratos distintos.
+
+**Lo medido** (04/10/2026, 300 licitaciones abiertas al azar):
+
+- La fecha de vencimiento del contrato anterior (inicio + duración, en
+  el 97 % de los adjudicados) y el importe anual descartan poco: aún
+  quedaban 49 de 300 con más de tres candidatos.
+- Lo que separa al bueno son las palabras **raras dentro del
+  organismo**. En las vigilancias de Málaga, "servicio de vigilancia y
+  seguridad" sale en todas; "sede, servicios operativos, régimen
+  interior" solo en la buena. Cada palabra pesa su rareza en el grupo
+  órgano + CPV, y la semejanza es el peso compartido sobre el del
+  título nuevo. Con 0,6 o más, revisados a mano, el anterior es el bueno
+  en la práctica totalidad; entre 0,4 y 0,6, la mitad.
+- Las obras (CPV 45) no se repiten: no tienen convocatoria anterior.
+- Un acuerdo marco se emparejaba con sus propios contratos derivados.
+- Hay organismos con contratos **paralelos**: una mutua con 11
+  contratos de diagnóstico por imagen en dos años, uno por localidad y
+  con 11 ganadores distintos.
+
+**Decisión.** La serie de un contrato (`serie_de`) son los contratos
+adjudicados o desiertos del mismo órgano, CPV principal y clase de
+sistema (contrato, marco o basado en un marco), de los últimos seis
+años, con semejanza ≥ 0,6. Sin obras. Si salen más de 4, o 3 en doce
+meses, son paralelos y no se afirma nada. "De este contrato" solo se
+dice con serie; sin ella, el reparto es el del organismo, rotulado así,
+y un proveedor dominante da como mucho "difícil". "Cerrado" pide tres
+convocatorias o más con el mismo ganador en el 60 % y que también ganara
+la más reciente: si la última se la llevó otra empresa, el contrato ha
+cambiado de manos y se dice así (pasó en Girona: 2 de 3 para una, la de
+julio de 2026 para otra). Una convocatoria anterior desierta se dice.
+
+**Motivo.** Es mejor callar que afirmar algo falso, que fue lo que la
+escondió. Con 0,6 se pierde la mitad de los aciertos de la franja
+0,4-0,6, casi todos por idioma (castellano contra catalán o gallego).
+
+**Resultado.** El 22-25 % de las abiertas tiene serie (antes un 39 %,
+con muchos falsos), de 1 a 4 ediciones. `viabilidad` tarda 24 ms de
+mediana y 450 ms como máximo. Comprobado en pantalla con una cuenta de
+prueba (Silex Seguridad): serie de tres, serie con una desierta,
+contratos paralelos, solo desiertas y "Este contrato es tuyo". Ver
+`supabase/migrations/20261004120000_viabilidad_por_series.sql`.
+
+**Revisión antes de encenderla** (mismo día, 120 abiertas al azar):
+
+- "Este contrato es tuyo" salía al ser el líder del reparto, también
+  sin serie (líder del organismo) o habiendo perdido la última. Ahora
+  solo con serie y si ganaste la más reciente.
+- La baja, los licitadores de media y el "solo se presentó una empresa"
+  contaban menores, duplicados y, en un acuerdo marco, sus derivados
+  ("2.212 de 2.337"). Ahora, como el resto de pantallas: adjudicados, sin
+  menores ni duplicados y de su misma clase de sistema. El reparto del
+  organismo, igual.
+- Con una sola adjudicación salía "1 empresas distintas se reparten las
+  1 adjudicaciones". Ahora dice quién la ganó.
+
+Queda: 104 "Tienes opciones", 14 "difícil" y 2 "cerrado" de 120.
+
+**Pendiente.** Títulos en dos idiomas; y con más histórico (hay desde
+2024 en la mayoría de fuentes), series más largas.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
