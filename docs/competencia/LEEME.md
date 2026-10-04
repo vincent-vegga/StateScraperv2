@@ -70,7 +70,10 @@ Le falta:
 - [ ] **Avisar antes.** El cron de "las 06:00 UTC" arranca hacia las
       10:30–11:15 (`PENDIENTES.md`), frente a menos de 1 h en Licitandum.
       Valorar un cron externo o varias pasadas al día.
-- [ ] **Exportar el plazo al calendario** (ICS) desde la ficha.
+- ~~**Exportar el plazo al calendario** (ICS) desde la ficha.~~
+      Descartado el 04/10/2026: demasiado intrusivo. Además, con Google
+      o Outlook en el navegador un .ics solo se descarga, y hacerlo bien
+      pedía enlaces a Google y a Microsoft.
 
 ### 2. Movimientos — la más débil tal como está
 
