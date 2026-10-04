@@ -637,14 +637,21 @@ def procesar_perfil(c: Contexto, perfil: dict, ganados: list[dict], previos: dic
             vistos.add(clave)
             reglas.append(x)
 
-    tareas = []
+    # El ganado que más se parece a cada contrato del grupo, también de los
+    # ya juzgados: la web lo enseña al pulsar «no me interesa» («te lo
+    # enseñamos porque se parece a…»). Sale de los mismos vectores que los
+    # ejemplos del juez, sin llamar al modelo.
+    parecidos, tareas = {}, []
     for idl, _ in grupo:
-        if idl in previos:
-            continue
         f = c.ficha_viva[idl]
         r = c.fila_de_titulo(f["titulo"])
         v = np.asarray(c.emb[r], np.float32) if r is not None else np.zeros(E.shape[1], np.float32)
-        ejemplos = [f"- {c.titulos[filas_propias[j]]}" for j in np.argsort(-(E @ v))[:EJEMPLOS]]
+        orden = np.argsort(-(E @ v))
+        if r is not None and len(orden):
+            parecidos[idl] = c.titulos[filas_propias[orden[0]]]
+        if idl in previos:
+            continue
+        ejemplos = [f"- {c.titulos[filas_propias[j]]}" for j in orden[:EJEMPLOS]]
         cerca = []
         if len(C):
             sc = C @ v
@@ -662,7 +669,8 @@ def procesar_perfil(c: Contexto, perfil: dict, ganados: list[dict], previos: dic
             for (idl, _), res in zip(tareas, ex.map(lambda t: juzgar(t[1], gasto), tareas)):
                 if res:
                     nuevos[idl] = res
-    return {"grupo": grupo, "nuevos": nuevos, "pendientes": len(tareas) - len(nuevos)}
+    return {"grupo": grupo, "nuevos": nuevos, "pendientes": len(tareas) - len(nuevos),
+            "parecidos": parecidos}
 
 
 # ==============================================================
@@ -697,12 +705,13 @@ def previos_reales(perfil_id: str) -> dict:
 
 
 def guardar_real(perfil: dict, grupo: list, veredictos: dict, vivas: list[str],
-                 completo: bool = True) -> int:
+                 completo: bool = True, parecidos: dict | None = None) -> int:
     """Escribe los veredictos del grupo y, la primera vez, retira los del
     sistema anterior para lo vivo (lo vencido se queda como estaba)."""
     en_grupo = [i for i, _ in grupo if i in veredictos]
     filas = [{"id_licitacion": i, "perfil_id": perfil["id"],
               "veredicto": veredictos[i]["veredicto"], "motivo": veredictos[i]["motivo"],
+              "parecido": (parecidos or {}).get(i),
               "criterio_version": perfil.get("criterio_version"), "modelo": VERSION}
              for i in en_grupo]
     for a in range(0, len(filas), 500):
@@ -836,7 +845,8 @@ def main() -> int:
             logging.warning("%s: grupo sin completar; sigue con el sistema anterior", et)
             continue
         else:
-            guardar_real(p, res["grupo"], veredictos, c.vivas, completo=not res["pendientes"])
+            guardar_real(p, res["grupo"], veredictos, c.vivas, completo=not res["pendientes"],
+                         parecidos=res["parecidos"])
         hechos += 1
         if gasto.agotado():
             logging.warning("Tope de gasto de la pasada alcanzado (%.2f $): se sigue mañana.",
