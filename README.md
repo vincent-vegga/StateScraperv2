@@ -216,6 +216,13 @@ select codigo, usos, usos_maximos, caduca from public.codigos_acceso;
 
 ---
 
+## Hoja de ruta de producto
+
+Qué ofrece la competencia y qué le falta a cada pantalla, con las
+prioridades: [docs/competencia/LEEME.md](docs/competencia/LEEME.md).
+
+---
+
 ## Deuda técnica conocida
 
 - Caché de `pendientes_de_perfil` — prioritario: resuelve el problema de entrada vacía
