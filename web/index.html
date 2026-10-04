@@ -1031,6 +1031,21 @@ select:focus{
 }
 .historial-contrato .lider .quien{font-weight:650}
 .historial-contrato .mia .quien{color:var(--si);font-weight:650}
+/* Quién ha ganado aquí: cada empresa se abre para enseñar sus contratos. */
+.historial-contrato > div.con-contratos{display:block}
+.con-contratos summary{
+  display:grid;grid-template-columns:1fr auto;gap:14px;align-items:baseline;
+  cursor:pointer;list-style:none;
+}
+.con-contratos summary::-webkit-details-marker{display:none}
+.con-contratos summary .cuando::after{content:' ▾'}
+.con-contratos details[open] summary .cuando::after{content:' ▴'}
+.contratos-ganados{
+  margin:12px 0 2px;padding:0 0 0 14px;list-style:none;
+  border-left:2px solid var(--linea);display:grid;gap:10px;font-size:.88rem;
+}
+.contratos-ganados .dato{display:block;margin-top:2px;color:var(--tenue);font-size:.8rem}
+.mas-ganados{margin:8px 0 0 16px;color:var(--tenue);font-size:.8rem}
 
 /* Elegir qué contrato analizar. */
 .elige{
@@ -4845,13 +4860,39 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
                    concreto, así que miramos las de su misma familia en este
                    organismo: ${inc.ediciones} en cuatro años.`}</p>
           <div class="historial-contrato">
-            ${inc.reparto.map((r, i) => `
-              <div class="${r.cif === lider.cif ? 'lider' : ''} ${
-                r.cif === perfil.cif ? 'mia' : ''}">
+            ${inc.reparto.map((r, i) => {
+              const clase = `${r.cif === lider.cif ? 'lider' : ''} ${
+                r.cif === perfil.cif ? 'mia' : ''}`;
+              const veces = `${r.veces} ${r.veces === 1 ? 'vez' : 'veces'}`;
+              const suyos = Array.isArray(r.contratos) ? r.contratos : [];
+              // Con serie, los contratos exactos ya salen debajo, en «Las
+              // convocatorias anteriores»: repetirlos aquí sería lo mismo
+              // dos veces. Sin serie, el «N veces» se abre para enseñar
+              // cuáles, con su enlace a la plataforma.
+              if (inc.por_convocatoria || !suyos.length) return `
+              <div class="${clase}">
                 <span class="quien">${esc(r.nombre ?? '—')}</span>
-                <span class="cuando">${r.veces}
-                  ${r.veces === 1 ? 'vez' : 'veces'}</span>
-              </div>`).join('')}
+                <span class="cuando">${veces}</span>
+              </div>`;
+              return `
+              <div class="${clase} con-contratos">
+                <details>
+                  <summary>
+                    <span class="quien">${esc(r.nombre ?? '—')}</span>
+                    <span class="cuando">${veces}</span>
+                  </summary>
+                  <ul class="contratos-ganados">
+                    ${suyos.map(k => `<li>${tituloConEnlace(k.titulo ?? '—', k.enlace)}
+                      <span class="dato">${[
+                        k.fecha ? fechaCorta(k.fecha) : null,
+                        k.importe != null ? euros(Number(k.importe)) : null,
+                      ].filter(Boolean).join(' · ')}</span></li>`).join('')}
+                  </ul>
+                  ${r.veces > suyos.length ? `<p class="mas-ganados">Los
+                    ${suyos.length} más recientes de ${r.veces}.</p>` : ''}
+                </details>
+              </div>`;
+            }).join('')}
           </div>
         </div>` : ''}
 
@@ -4865,7 +4906,7 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
             ${ediciones.map(e => `
               <div class="${e.cif && e.cif === perfil.cif ? 'mia' : ''}">
                 <span class="quien">
-                  ${esc(e.titulo ?? '—')}
+                  ${tituloConEnlace(e.titulo ?? '—', e.enlace)}
                   <span style="display:block;color:var(--tenue);font-size:.85rem;
                                margin-top:3px">
                     ${e.desierta
@@ -4986,12 +5027,27 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
       return `<div class="factor"><h4>A qué precio se cierra</h4>
         <p class="vacio-factor">Sin datos suficientes de este organismo.</p></div>`;
     }
+    // El rango y no solo la media: la mitad central de las adjudicaciones
+    // (del cuartil inferior al superior). Con menos de cinco contratos un
+    // rango no describe nada, y si los dos extremos coinciden, es una cifra.
+    const muestra = `medido en ${org.baja_muestra}
+        ${org.baja_muestra === 1 ? 'contrato' : 'contratos'}`;
+    const conRango = org.baja_muestra >= 5 && org.baja_p25 != null
+      && org.baja_p75 != null && org.baja_p75 > org.baja_p25;
+    if (conRango) {
+      return `<div class="factor ${org.baja_media <= 75 ? 'malo' : ''}">
+        <h4>A qué precio se cierra</h4>
+        <div class="cifra">${org.baja_p25}–${org.baja_p75} %</div>
+        <span class="pie">del presupuesto: la mitad de las adjudicaciones
+          se cerraron en ese tramo<br>
+          media ${org.baja_media} % · ${muestra}</span>
+      </div>`;
+    }
     return `<div class="factor ${org.baja_media <= 75 ? 'malo' : ''}">
       <h4>A qué precio se cierra</h4>
       <div class="cifra">${org.baja_media} %</div>
       <span class="pie">del presupuesto, de media<br>
-        medido en ${org.baja_muestra}
-        ${org.baja_muestra === 1 ? 'contrato' : 'contratos'}</span>
+        ${muestra}</span>
     </div>`;
   }
 

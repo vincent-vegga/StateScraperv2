@@ -126,7 +126,7 @@ pantalla "¿A cuál te presentas?" repite la lista de Contratos.
       probablemente pida precalcularlo en el cribado o de noche.
 - [ ] **Quitar la pestaña** o dejarla solo como destino del botón
       "Analizar viabilidad" de la ficha.
-- [ ] **Dar un rango de precio y no solo la media**: percentiles de la baja
+- [x] **Dar un rango de precio y no solo la media**: percentiles de la baja
       ganadora en ese organismo y familia ("aquí se gana ofertando entre
       el 82 % y el 90 %"), más el umbral aproximado de baja anormal. Es lo
       que vende Sophia.
