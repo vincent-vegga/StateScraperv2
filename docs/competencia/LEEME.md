@@ -129,7 +129,14 @@ pantalla "¿A cuál te presentas?" repite la lista de Contratos.
 - [x] **Dar un rango de precio y no solo la media**: percentiles de la baja
       ganadora en ese organismo y familia ("aquí se gana ofertando entre
       el 82 % y el 90 %"), más el umbral aproximado de baja anormal. Es lo
-      que vende Sophia.
+      que vende Sophia. Hecho el 04/10/2026 el rango (cuartiles, con 5
+      contratos o más; `20261004200000_viabilidad_rango_y_contratos.sql`).
+      Queda el umbral de baja anormal: depende de las ofertas de cada
+      licitación, que no tenemos.
+- [x] **Los contratos exactos, con enlace a la plataforma** (petición del
+      04/10/2026): en "Quién ha ganado aquí", sin serie, cada empresa se
+      abre con sus cinco contratos más recientes; en "Las convocatorias
+      anteriores", el título enlaza al expediente.
 - [ ] **Comprobar la solvencia**: si el pliego pide una facturación de X o
       una clasificación concreta, contrastarlo con el historial de la
       empresa, que ya se conoce. Ningún competidor que hayamos visto lo
