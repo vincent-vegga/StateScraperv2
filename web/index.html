@@ -556,6 +556,11 @@ textarea:focus-visible{
   border-bottom:1px solid var(--linea);
 }
 
+/* Que el bloque de la izquierda pueda estrecharse: sin esto no bajaba de
+   lo que mide la navegación en una línea, y a 320 px "Organismos" se
+   salía de la pantalla en vez de pasar a la línea siguiente. */
+.cabecera-app > div:first-child{min-width:0}
+
 .cabecera-app h1{
   margin:0;
   font-size:1.25rem;
@@ -1359,7 +1364,19 @@ select:focus{
 /* ---------- Mercado ---------- */
 .buscador-cif{display:flex;gap:9px;margin:26px 0 8px;flex-wrap:wrap;
   align-items:center}
-.buscador-cif input{flex:1 1 220px;text-transform:uppercase;letter-spacing:.03em}
+/* Sin mayúsculas forzadas: ahora también se busca por nombre. */
+.buscador-cif input{flex:1 1 220px}
+/* La lista de empresas que coinciden con un nombre. */
+.coincidencias{display:grid;gap:8px;margin-top:8px}
+.coincidencias button{
+  display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+  width:100%;padding:12px 14px;text-align:left;
+  border:1px solid var(--linea);border-radius:8px;background:var(--superficie);
+  color:var(--texto);font:inherit;cursor:pointer;
+  transition:border-color .15s,background-color .15s;
+}
+.coincidencias button:hover{border-color:var(--fuerte);background:var(--hover)}
+.coincidencias .nif{color:var(--tenue);font-size:.86rem;white-space:nowrap}
 .buscador-cif .principal,
 .buscador-cif .secundario{flex:0 0 auto;white-space:nowrap}
 /* Separado del par buscar/CIF: es otra acción, no una variante de la
@@ -1570,6 +1587,14 @@ select:focus{
   transition:opacity .18s,transform .18s;
 }
 .recado.visible{opacity:1;transform:translateX(-50%) translateY(0)}
+/* Con botón ("Deshacer") sí recibe clics, y no se parte en el móvil. */
+.recado.con-accion.visible{pointer-events:auto}
+.recado{max-width:calc(100vw - 32px);text-align:center}
+.accion-recado{
+  margin-left:10px;padding:0;border:0;background:none;
+  color:inherit;font:inherit;font-weight:650;text-decoration:underline;
+  text-underline-offset:3px;cursor:pointer;
+}
 
 /* Campana de avisos. Sin animación: una campana que vibra significa
    "hay algo nuevo", no "el aviso está encendido", y si vibrase siempre
@@ -1677,6 +1702,16 @@ select:focus{
   transform:translateX(17px);background:var(--texto);
 }
 .menu .peligroso{color:var(--no)}
+
+/* Borrar la cuenta: al pie de "Mi cuenta", pequeño y apagado. */
+.borrar-cuenta{margin-top:56px;padding-top:14px;border-top:1px solid var(--linea)}
+.borrar-cuenta > .enlace{padding:0;color:var(--tenue);font-size:.8rem}
+.borrar-cuenta > .enlace:hover{color:var(--no)}
+.borrar-cuenta .aviso{margin-top:14px;max-width:560px;overflow-wrap:anywhere}
+.borrar-cuenta label{text-transform:none;letter-spacing:0;font-size:.9rem}
+.borrar-cuenta input{max-width:240px}
+.principal.peligroso{background:var(--no);border-color:var(--no)}
+.principal.peligroso:disabled{opacity:.45;cursor:not-allowed}
 
 /* ---------- Selector de empresa ----------
    Solo aparece con más de una. Va donde estaba el nombre, entre el
@@ -1888,24 +1923,17 @@ select:focus{
 
 /* Acciones de cada contrato */
 
+/* Siempre a la vista. Escondidos hasta pasar el ratón, en el ordenador
+   no se descubrían: son la acción principal del producto, la que hace
+   que el filtro aprenda. */
 .acciones{
   display:flex;
+  flex-wrap:wrap;
   gap:8px;
   margin-top:11px;
-  opacity:0;
-  transition:opacity .15s;
 }
 
-.fila-envoltorio:hover .acciones,
-.fila-envoltorio:focus-within .acciones{
-  opacity:1;
-}
-
-@media(hover:none),(pointer:coarse){
-  .acciones{
-    opacity:1;
-  }
-}
+.accion{white-space:nowrap}
 
 .accion{
   min-height:29px;
@@ -2297,8 +2325,18 @@ select:focus{
   transition:background-color .15s;
 }
 
-.fila:hover{
-  background:var(--hover);
+/* Solo con ratón: en el móvil el "hover" se queda pegado tras tocar, y
+   la fila seguía resaltada y subrayada al volver a ella. */
+@media(hover:hover){
+  .fila:hover{
+    background:var(--hover);
+  }
+
+  .fila:hover .t{
+    text-decoration:underline;
+    text-decoration-thickness:1px;
+    text-underline-offset:3px;
+  }
 }
 
 .fila:focus-visible{
@@ -2308,10 +2346,18 @@ select:focus{
   outline-offset:-3px;
 }
 
-.fila:hover .t{
-  text-decoration:underline;
-  text-decoration-thickness:1px;
-  text-underline-offset:3px;
+/* Títulos de hasta diez líneas ocupaban la pantalla entera del móvil.
+   Cuatro en la lista; al desplegar la fila, entero. */
+.fila .t{
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:4;
+  overflow:hidden;
+}
+
+.fila[aria-expanded="true"] .t{
+  display:block;
+  -webkit-line-clamp:unset;
 }
 
 @keyframes entrar{
@@ -2519,7 +2565,16 @@ select:focus{
   box-shadow:var(--sombra-flotante);
 }
 
+.dialogo{position:relative}
+.cerrar-dialogo{
+  position:absolute;top:12px;right:12px;
+  width:32px;height:32px;padding:0;border:0;border-radius:6px;
+  background:none;color:var(--tenue);font-size:1.3rem;line-height:1;cursor:pointer;
+}
+.cerrar-dialogo:hover{background:var(--hover);color:var(--texto)}
+
 .dialogo h3{
+  padding-right:30px;
   margin:0 0 10px;
   font-size:1.14rem;
   font-weight:650;
@@ -2684,6 +2739,27 @@ select:focus{
   }
 }
 
+/* Los móviles más estrechos (320-380 px). La pestaña "Organismos" se
+   salía por la derecha, los botones de corrección se partían en dos
+   líneas y la fecha se comía un tercio del ancho. */
+@media(max-width:380px){
+  /* La barra se desplaza en horizontal (ver max-width:720px), pero a
+     320 px nada lo indicaba y "Organismos" se veía cortado: así caben
+     las cuatro. */
+  .principales{gap:9px}
+  .principales button{font-size:.8rem}
+
+  .fila{
+    grid-template-columns:66px minmax(0,1fr);
+    gap:12px;
+  }
+
+  .fecha{padding:0 6px}
+  .fecha .dia{font-size:1.05rem}
+
+  .accion{padding:4px 8px}
+}
+
 @media(prefers-reduced-motion:reduce){
   *,
   *::before,
@@ -2844,6 +2920,19 @@ const alPulsar = (id, hacer) => {
   else console.warn(`Falta el elemento #${id}`);
 };
 
+// Oyentes del documento que pertenecen a UNA pantalla (cerrar un menú al
+// pulsar fuera, Escape...). Se colgaban en cada visita y no se quitaban
+// nunca: tras un rato navegando había decenas, todos apuntando a
+// pantallas que ya no existían. Ahora van con esta señal y se sueltan
+// todos juntos al montar la pantalla siguiente (ver activarMenu, por la
+// que pasan todas las pantallas de la aplicación al pintarse).
+let oyentesPantalla = new AbortController();
+function estrenarPantalla() {
+  oyentesPantalla.abort();
+  oyentesPantalla = new AbortController();
+}
+const dePantalla = () => ({ signal: oyentesPantalla.signal });
+
 // "1 contrato", "3 contratos". Con el número delante siempre: repetir
 // el ternario en cada sitio acababa olvidándose y salía "1 contratos".
 // Por qué una adjudicación sale sin importe. Una sola línea: los saltos
@@ -2894,9 +2983,15 @@ const argsPeriodo = (p, extra = {}) => ({ desde: p.desde, hasta: p.hasta, ...ext
 
 // Para meterlo dentro de una frase: "66 contratos en 2025", "entre 2024
 // y 2025", "en todo el histórico (2024–2026)".
+// El año en curso está a medias, y por defecto es el que se enseña: sin
+// decirlo, "2 contratos en 2026" en octubre parece un organismo parado.
+const anioEnCurso = () => Number(new Intl.DateTimeFormat('en-CA',
+  {timeZone:ZONA, year:'numeric'}).format(new Date()));
+
 function enPeriodo(p, anios) {
   if (p.desde == null) return '';
-  if (p.desde === p.hasta) return `en ${p.desde}`;
+  if (p.desde === p.hasta)
+    return p.desde === anioEnCurso() ? `en lo que va de ${p.desde}` : `en ${p.desde}`;
   const todos = anios.length > 1 && p.desde === anios[0].anio
     && p.hasta === anios.at(-1).anio;
   return todos ? `en todo el histórico (${p.desde}–${p.hasta})`
@@ -2904,7 +2999,8 @@ function enPeriodo(p, anios) {
 }
 
 function textoPeriodo(p, anios) {
-  if (p.desde === p.hasta) return String(p.desde);
+  if (p.desde === p.hasta)
+    return p.desde === anioEnCurso() ? `${p.desde} · hasta hoy` : String(p.desde);
   const todos = anios.length > 1 && p.desde === anios[0].anio
     && p.hasta === anios.at(-1).anio;
   return `${todos ? 'Todos los años · ' : ''}${p.desde}–${p.hasta}`;
@@ -2927,6 +3023,12 @@ function selectorPeriodo(hueco, anios, periodo, alCambiar, volumen = null) {
   if (!hueco || !anios.length) return;
   const cuanto = a => (volumen ? volumen[a.anio] : a.contratos) ?? 0;
   const maximo = Math.max(1, ...anios.map(cuanto));
+  // Lo del sector cuenta filas de adjudicación (un lote, un adjudicatario),
+  // no contratos: llamarlo "contratos" no cuadraba con Movimientos, que
+  // cuenta cada expediente una vez aunque tenga varios lotes.
+  const cuantoTxt = a => volumen
+    ? plural(numero(cuanto(a)), 'contrato', 'contratos')
+    : plural(numero(cuanto(a)), 'adjudicación registrada', 'adjudicaciones registradas');
   const tactil = matchMedia('(hover:none),(pointer:coarse)').matches;
   let actual = { ...periodo };
 
@@ -2934,7 +3036,7 @@ function selectorPeriodo(hueco, anios, periodo, alCambiar, volumen = null) {
     <div class="periodo">
       <div class="pista-periodo" role="group" aria-label="Años del periodo">
         ${anios.map(a => `<button type="button" class="anio" data-anio="${a.anio}"
-            aria-label="${a.anio}: ${plural(cuanto(a), 'contrato', 'contratos')}">
+            aria-label="${a.anio}: ${cuantoTxt(a)}" title="${cuantoTxt(a)} en ${a.anio}">
           <span class="volumen"><i style="height:${
             Math.max(8, Math.round(cuanto(a) / maximo * 100))}%"></i></span>
           <span class="numero">${a.anio}</span></button>`).join('')}
@@ -3056,6 +3158,48 @@ function tituloConEnlace(titulo, enlace) {
 const euros = n => n == null ? null : new Intl.NumberFormat('es-ES',
   {style:'currency',currency:'EUR',maximumFractionDigits:0,
    useGrouping:'always'}).format(n);
+// Cifras sueltas ("1.831 adjudicaciones") con el mismo criterio que los
+// euros: sin `useGrouping: 'always'` salía "1831" al lado de "12.583".
+const numero = n => new Intl.NumberFormat('es-ES', {useGrouping:'always'})
+  .format(Number(n) || 0);
+// Importes muy grandes, para leerlos de un vistazo: "3.563 M€" en vez de
+// "3.563.165.513 €". La cifra exacta va en el texto flotante.
+const eurosCortos = n => {
+  const v = Number(n);
+  if (!(v >= 1e7)) return euros(v);
+  return `${new Intl.NumberFormat('es-ES', {maximumFractionDigits:0,
+    useGrouping:'always'}).format(v / 1e6)} M€`;
+};
+const eurosConDetalle = n => {
+  const corto = eurosCortos(n), largo = euros(Number(n));
+  return corto === largo ? corto : `<span title="${esc(largo)}">${corto}</span>`;
+};
+// Para buscar como busca la gente: sin tildes y sin mayúsculas.
+const sinTildes = s => String(s ?? '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+// Lo que alguien escribe en un buscador se compara palabra a palabra, y no
+// como un solo trozo: "ayuntamiento malaga" tiene que encontrar "Junta de
+// Gobierno del Ayuntamiento de Málaga" aunque falte el "de".
+//
+// Y el nombre del organismo va en la lengua de quien lo publica: quien
+// escribe "ayuntamiento" también busca "Ajuntament", "Concello" o "Udala".
+const EQUIVALENTES = [
+  ['ayuntamiento', 'ajuntament', 'concello', 'udala', 'ayto'],
+  ['diputacion', 'diputacio', 'deputacion', 'aldundia'],
+  ['consejeria', 'conselleria', 'departament', 'departamento'],
+  ['generalitat', 'generalidad'],
+];
+function coincide(texto, consulta) {
+  const donde = sinTildes(texto);
+  return sinTildes(consulta).split(/\s+/).filter(Boolean).every(palabra => {
+    // Con cuatro letras como mínimo: "de" empieza igual que "deputacion"
+    // y convertía cualquier búsqueda en una de diputaciones.
+    const familia = palabra.length >= 4 && EQUIVALENTES.find(f =>
+      f.some(x => x.startsWith(palabra) || palabra.startsWith(x)));
+    return familia ? familia.some(x => donde.includes(x)) || donde.includes(palabra)
+                   : donde.includes(palabra);
+  });
+}
 // Lo que gana una empresa al año, redondeado: es una media de dos años y
 // con todas las cifras parecería exacta.
 function eurosRedondos(n) {
@@ -3133,6 +3277,14 @@ const partes = iso => {
     .formatToParts(new Date(iso)).forEach(p => v[p.type] = p.value);
   return v;
 };
+// "1 oct 2026", con las mismas abreviaturas que la lista de contratos:
+// `toLocaleDateString` pone "sept", y en una pantalla salía "sep" y en la
+// otra "sept".
+const fechaCorta = iso => {
+  if (!iso) return '';
+  const p = partes(iso);
+  return `${p.day} ${MESES[+p.month - 1]} ${p.year}`;
+};
 // Días de CALENDARIO peninsular, no tramos de 24 horas. Dividiendo la
 // diferencia en milisegundos, un plazo de mañana a las 10:00 consultado
 // hoy a las 20:00 daba 0 y la fila decía "22 sep · hoy": por la tarde
@@ -3142,9 +3294,22 @@ const partes = iso => {
 // calendario saldría "hoy" cuando ya no se puede presentar nada.
 const diaPeninsular = d => new Intl.DateTimeFormat('en-CA',
   {timeZone:ZONA, year:'numeric', month:'2-digit', day:'2-digit'}).format(d);
+// Un plazo a las 00:00 en punto es el final del día ANTERIOR. Casi siempre
+// es un organismo que publicó solo la fecha, sin hora, y el lector la deja
+// a medianoche. Contado tal cual, la fila decía "5 oct · mañana" cuando lo
+// que había era hasta esta noche: alguien podía dejarlo para el día
+// siguiente y llegar tarde. Se cuenta como las 23:59 del día de antes, que
+// es lo que vale de verdad.
+const esMedianoche = iso => {
+  const p = partes(iso);
+  // "24" lo devuelven algunos navegadores para la medianoche.
+  return (p.hour === '00' || p.hour === '24') && p.minute === '00';
+};
+const plazoEfectivo = iso => esMedianoche(iso)
+  ? new Date(new Date(iso).getTime() - 60_000).toISOString() : iso;
 const diasHasta = iso => {
   if (!iso) return null;
-  const plazo = new Date(iso), ahora = new Date();
+  const plazo = new Date(plazoEfectivo(iso)), ahora = new Date();
   if (plazo < ahora) return -1;
   // Las dos fechas se leen como medianoche UTC, así que la resta es un
   // número exacto de días, sin horario de verano de por medio.
@@ -4942,9 +5107,6 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
       : `Busca entre ${cuantos} organismos de tu sector`;
   })();
 
-  const sinAcentos = s => String(s ?? '')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-
   // Lo que el servidor encuentra fuera de la lista cargada se añade a
   // ella, así la siguiente búsqueda ya lo tiene a mano.
   let esperaServidor;
@@ -4953,8 +5115,11 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
     const texto = campo.value.trim();
     if (!cortada || texto.length < 3) return;
     esperaServidor = setTimeout(async () => {
+      // El servidor busca el texto de corrido: se le manda la palabra más
+      // larga, que es la que más acota, y el resto lo filtra `buscar`.
+      const palabra = texto.split(/\s+/).sort((a, b) => b.length - a.length)[0];
       const { data, error } = await sb.rpc('buscar_organismo',
-        { texto, salto: 0, cuantos: 40 });
+        { texto: palabra, salto: 0, cuantos: 40 });
       if (!error && data?.length) {
         const ya = new Set(TODOS.map(o => o.organo));
         TODOS = TODOS.concat(data.filter(o => !ya.has(o.organo)));
@@ -4968,13 +5133,13 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
 
   function buscar(preguntarAlServidor = true) {
     if (preguntarAlServidor) buscarEnServidor();
-    const q = sinAcentos(campo.value.trim());
-    const filas = (q ? TODOS.filter(o => sinAcentos(o.organo).includes(q)) : TODOS)
-      .slice(0, 40);
-
-    const total = q
-      ? TODOS.filter(o => sinAcentos(o.organo).includes(q)).length
-      : TODOS.length;
+    // Palabra a palabra y en las lenguas de los organismos (ver
+    // `coincide`): "ayuntamiento barcelona" encuentra "Ajuntament de
+    // Barcelona".
+    const q = campo.value.trim();
+    const encontrados = q ? TODOS.filter(o => coincide(o.organo, q)) : TODOS;
+    const filas = encontrados.slice(0, 40);
+    const total = encontrados.length;
 
     caja.innerHTML = (filas.length
       // Solo el nombre y la provincia, que distingue organismos con el
@@ -5005,7 +5170,7 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
   });
   document.addEventListener('click', ev => {
     if (!ev.target.closest('.buscar-organo')) caja.hidden = true;
-  });
+  }, dePantalla());
 
   // ---------- Ficha ----------
   // El periodo es el de toda la sesión; las barritas del selector, en
@@ -5265,7 +5430,8 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
                 <span class="detalle-contrato">
                   ${c.licitadores ? `<span><strong>${c.licitadores}</strong>
                     ${c.licitadores === 1 ? 'licitador' : 'licitadores'}</span>` : ''}
-                  ${c.baja ? `<span>al <strong>${c.baja} %</strong></span>` : ''}
+                  ${c.baja ? `<span>adjudicado al <strong>${c.baja} %</strong>
+                    del presupuesto</span>` : ''}
                   ${c.oferta_baja && c.oferta_alta
                     && Number(c.oferta_alta) > Number(c.oferta_baja)
                     ? `<span>de ${euros(Number(c.oferta_baja))} a ${
@@ -5421,17 +5587,23 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
     cargar();
   });
 
-  const fecha = s => s ? new Date(s).toLocaleDateString('es-ES',
-    { timeZone: ZONA, day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const fecha = fechaCorta;
 
   // Cada petición lleva su número: si el cliente cambia de periodo dos
   // veces seguidas, la respuesta lenta de la primera no pisa la segunda.
   let vuelta = 0;
 
-  async function cargar() {
+  // Cuántas de las más recientes se piden. Empieza en 300 (lo mismo que
+  // precarga la pestaña) y "Ver más" lo sube de 300 en 300 hasta un techo:
+  // más allá, la consulta se acerca a los 8 s que corta la API.
+  const TANDA_MOV = 300, TECHO_MOV = 1200;
+  let topeMov = TANDA_MOV;
+
+  async function cargar(mas = false) {
     const turno = ++vuelta;
     const datos = document.getElementById('datos-mov');
     if (!datos) return;
+    if (!mas) topeMov = TANDA_MOV;
     datos.classList.add('cambiando');
 
     // Cifras y rankings sobre el periodo ENTERO, calculados en la base.
@@ -5439,7 +5611,7 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
     const extra = { provincia_elegida: provincia };
     const [res, mov] = await Promise.all([
       pedir('resumen_periodo', argsPeriodo(periodo, extra)),
-      pedir('movimientos_periodo', argsPeriodo(periodo, { ...extra, tope: 300 })),
+      pedir('movimientos_periodo', argsPeriodo(periodo, { ...extra, tope: topeMov })),
     ]);
     if (turno !== vuelta || !document.getElementById('datos-mov')) return;
     datos.classList.remove('cambiando');
@@ -5461,7 +5633,7 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
             <button class="secundario" id="reintentar">Reintentar</button>
           </div>
         </div>`;
-      alPulsar('reintentar', cargar);
+      alPulsar('reintentar', () => cargar());
       return;
     }
     pintarDatos(res.data ?? {}, mov.data ?? []);
@@ -5505,7 +5677,7 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
                 <span class="cual">${esc(f.nombre)}${
                   f.provincia && id === 'organos'
                     ? `<span class="cuanto"> · ${esc(f.provincia)}</span>` : ''}</span>
-                <span class="cuanto">${f.n} · ${euros_ ? euros(euros_) : 'sin importe'}</span>
+                <span class="cuanto">${numero(f.n)} · ${euros_ ? eurosConDetalle(euros_) : 'sin importe'}</span>
               </div>
               <div class="barra-tramos">
                 ${tramos.map((c, j) => `<button class="tramo"
@@ -5621,28 +5793,9 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
 
     const cuando = textoPeriodo(periodo, anios);
 
+    // La provincia va ARRIBA, antes de las cifras: es un filtro de todo lo
+    // que viene después, y debajo del resumen pasaba por un dato más.
     document.getElementById('datos-mov').innerHTML = `
-      <div class="pulso">
-        <h4>${esc(cuando)} en tu sector${provincia ? ` · ${esc(provincia)}` : ''}</h4>
-        <dl>
-          <div><dt>Adjudicaciones</dt><dd>${cuantos}</dd></div>
-          <div><dt>Importe total</dt><dd>${
-            Number(r.importe) ? euros(Number(r.importe)) : '—'}</dd></div>
-          <div><dt>Empresas distintas</dt><dd>${r.empresas ?? 0}</dd></div>
-          ${Number(r.importe_mediano) ? `<div><dt>Importe mediano</dt>
-            <dd>${euros(Number(r.importe_mediano))}</dd></div>` : ''}
-          ${r.mias ? `<div><dt>Las has ganado tú</dt>
-            <dd>${r.mias}</dd></div>` : ''}
-          <p class="destacado">Cada contrato cuenta una vez aunque tenga
-          varios lotes o varias empresas ganadoras. El importe mediano es el
-          del contrato de en medio: la mitad se adjudicó por menos y la
-          mitad por más, y unos pocos contratos enormes no lo mueven. Cada
-          contrato cuenta en el año en que se formalizó, y los contratos
-          menores no entran. En «Quién más ha facturado», cada empresa suma solo su
-          parte.</p>
-        </dl>
-      </div>
-
       ${provincias.length > 1 ? `
         <div class="filtro-provincia">
           <label for="f-provincia">Ver solo</label>
@@ -5653,6 +5806,27 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
           </select>
         </div>` : ''}
 
+      <div class="pulso">
+        <h4>En tu sector${provincia ? ` · ${esc(provincia)}` : ''} · ${esc(cuando)}</h4>
+        <dl>
+          <div><dt>Adjudicaciones</dt><dd>${numero(cuantos)}</dd></div>
+          <div><dt>Importe total</dt><dd>${
+            Number(r.importe) ? eurosConDetalle(r.importe) : '—'}</dd></div>
+          <div><dt>Empresas distintas</dt><dd>${numero(r.empresas ?? 0)}</dd></div>
+          ${Number(r.importe_mediano) ? `<div><dt>Importe mediano</dt>
+            <dd>${euros(Number(r.importe_mediano))}</dd></div>` : ''}
+          ${r.mias ? `<div><dt>Las has ganado tú</dt>
+            <dd>${numero(r.mias)}</dd></div>` : ''}
+          <p class="destacado">Cada contrato cuenta una vez aunque tenga
+          varios lotes o varias empresas ganadoras. El importe mediano es el
+          del contrato de en medio: la mitad se adjudicó por menos y la
+          mitad por más, y unos pocos contratos enormes no lo mueven. Cada
+          contrato cuenta en el año en que se formalizó, y los contratos
+          menores no entran. En «Quién más ha facturado», cada empresa suma solo su
+          parte.</p>
+        </dl>
+      </div>
+
       ${(r.por_empresa?.length || r.por_organo?.length) ? `
       <div class="dos-columnas">
         ${bloqueRanking(r.por_empresa, 'Quién más ha facturado', 'empresas')}
@@ -5661,11 +5835,24 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
 
       <div style="margin-top:32px">
         ${cuantos > lista.length ? `<p class="guia" style="font-size:.88rem">
-          Las ${lista.length} adjudicaciones más recientes de ${
-          new Intl.NumberFormat('es-ES').format(cuantos)}. Las cifras y los
-          rankings de arriba cuentan todas.</p>` : ''}
+          Las ${numero(lista.length)} adjudicaciones más recientes de ${
+          numero(cuantos)}. Las cifras y los rankings de arriba cuentan
+          todas.</p>` : ''}
         ${cuerpo}
+        ${cuantos > lista.length && topeMov < TECHO_MOV ? `
+          <button class="mas" id="mas-mov">Ver ${TANDA_MOV} más
+            <span class="flechita">▾</span></button>` : ''}
       </div>`;
+
+    // Antes no había forma de pasar de las 300 más recientes.
+    const masMov = document.getElementById('mas-mov');
+    if (masMov) masMov.onclick = () => {
+      const boton = masMov;
+      boton.disabled = true;
+      boton.firstChild.textContent = 'Cargando... ';
+      topeMov = Math.min(TECHO_MOV, topeMov + TANDA_MOV);
+      cargar(true);
+    };
 
     // El nombre de la empresa abre su ficha en Mercado y el del organismo
     // la suya en Organismos. preventDefault evita que, dentro de un grupo
@@ -5866,13 +6053,14 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
     <h1 style="margin-top:26px">Quién gana en tu sector</h1>
     <p class="guia">Los contratos públicos son datos abiertos: quién los
-    gana, por cuánto y de qué organismo. Mira tu propio historial, busca
-    una empresa por su NIF, o averigua quién se lleva los contratos de tus
-    sectores.</p>
+    gana, por cuánto y de qué organismo. ${perfil.cif ? 'Mira tu propio historial, busca'
+      : 'Busca'} una empresa por su nombre o su NIF, o averigua quién se lleva
+    los contratos de tus sectores.</p>
 
+    <!-- Por nombre también: casi nadie se sabe el NIF de su competencia. -->
     <div class="buscador-cif">
-      <input type="text" id="cif-buscar" placeholder="NIF de una empresa"
-             autocomplete="off">
+      <input type="search" id="cif-buscar" placeholder="Nombre o NIF de una empresa"
+             autocomplete="off" aria-label="Nombre o NIF de una empresa">
       <button class="principal" id="buscar-cif">Buscar</button>
       ${perfil.cif ? `<button class="secundario" id="ver-mia">Ver mi
         empresa</button>` : ''}
@@ -5901,6 +6089,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   // El tope de tamaño de la competencia. Si no llega, todas: como antes.
   let topeEmp = Number(tam.data?.tope) || 0;
   let repintarVista = null;
+  let repintarSeguimiento = null;
   let vueltaEmp = 0;
   selectorPeriodo(document.getElementById('periodo-emp'), aniosEmp, periodoEmp, p => {
     periodoEmp = p;
@@ -6023,7 +6212,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const frase = `Empresas que han ganado contratos de los mismos códigos
       que tú${cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}${tope ? `, solo las
       que ganan hasta ${eurosRedondos(tope)} al año en contratos públicos,
-      sumando todos sus sectores` : ''}. Pulsa una para ver su ficha.`;
+      sumando todos sus sectores` : ''}. Contratos e importe cuentan solo lo
+      que han ganado en tus sectores; en su ficha, que se abre al pulsarla,
+      está todo lo suyo.`;
     const listaCompetencia = competencia.length ? tabla(competencia, 't-competencia')
       : `<p class="sin-datos">${tope
           ? 'Ninguna empresa de ese tamaño ha ganado contratos de tus sectores en este periodo.'
@@ -6050,14 +6241,30 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
     // La lista de seguimiento se enseña SIEMPRE, aunque esté vacía: si no
     // aparece, nadie descubre que existe.
-    zona.innerHTML = `
-      <div class="seccion-mercado">
+    const htmlSeguimiento = lista => `
         <h3>Tu lista de seguimiento
-          <span class="cuantas">${seguidas.length || 'vacía'}</span></h3>
-        ${seguidas.length ? tabla(seguidas, 't-seguimiento', true) : `
+          <span class="cuantas">${lista.length || 'vacía'}</span></h3>
+        ${lista.length ? tabla(lista, 't-seguimiento', true) : `
           <p class="vacio-seguimiento">Todavía no sigues a ninguna empresa.
-          Busca una por su NIF o elígela de la lista de abajo, y pulsa
-          <strong>Seguir</strong> en su ficha para tenerla aquí a mano.</p>`}
+          Búscala por su nombre o su NIF, o elígela de la lista de abajo, y
+          pulsa <strong>Seguir</strong> para tenerla aquí a mano.</p>`}`;
+
+    // Al seguir una desde la competencia, sube aquí. Antes no se repintaba
+    // nada y arriba seguía diciendo "vacía" justo después de "Añadida a tu
+    // lista de seguimiento".
+    repintarSeguimiento = async () => {
+      const caja = document.getElementById('sec-seguimiento');
+      if (!caja) return;
+      const { data, error } = await pedir('seguimiento_periodo',
+        argsPeriodo(periodoEmp), { alVuelo: false });
+      if (error || !caja.isConnected) return;
+      caja.innerHTML = htmlSeguimiento(data ?? []);
+      enlazar(caja);
+    };
+
+    zona.innerHTML = `
+      <div class="seccion-mercado" id="sec-seguimiento">
+        ${htmlSeguimiento(seguidas)}
       </div>
 
       <div class="seccion-mercado">
@@ -6085,13 +6292,21 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       });
 
     raiz.querySelectorAll('[data-seguir]').forEach(b => b.onclick = async () => {
+      // Quieto mientras responde el servidor: `seguir` alterna, así que
+      // un doble clic seguía y dejaba de seguir.
+      if (b.disabled) return;
       const antes = b.getAttribute('aria-pressed') === 'true';
       // Se pinta al instante y se corrige si el servidor dice otra cosa.
       b.setAttribute('aria-pressed', String(!antes));
       b.textContent = !antes ? 'Siguiendo' : 'Seguir';
+      b.disabled = true;
       try {
-        const { data } = await sb.rpc('seguir', {
+        // Supabase no lanza: devuelve `{ error }`. Sin mirarlo, un fallo
+        // acababa en "Quitada de tu lista de seguimiento".
+        const { data, error } = await sb.rpc('seguir', {
           cif_empresa: b.dataset.seguir, nombre_empresa: b.dataset.nombre });
+        if (error) throw error;
+        b.disabled = false;
         b.setAttribute('aria-pressed', String(!!data));
         b.textContent = data ? 'Siguiendo' : 'Seguir';
         recado(data
@@ -6104,8 +6319,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
         // en la lista de seguimiento y saldría dos veces. Si deja de
         // seguirla, vuelve a aparecer al recargar.
         //
-        // La lista de seguimiento NO se repinta: hacerlo movería lo que
-        // el cliente está mirando. Se pone al día al volver a entrar.
+        // Dejar de seguir desde la propia lista de seguimiento NO la
+        // repinta: la fila se iría de debajo del cursor. Se pone al día al
+        // volver a entrar.
         const enCompetencia = b.closest('#t-competencia');
         if (data && enCompetencia) {
           const suya = b.closest('tr');
@@ -6113,8 +6329,12 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
           const escondida = enCompetencia.querySelector('tbody tr.oculta');
           if (escondida) escondida.classList.remove('oculta');
           suya.remove();
+          const cuenta = document.getElementById('cuantas-competencia');
+          if (cuenta) cuenta.textContent = enCompetencia.querySelectorAll('tbody tr').length;
+          repintarSeguimiento?.();
         }
       } catch {
+        b.disabled = false;
         b.setAttribute('aria-pressed', String(antes));
         b.textContent = antes ? 'Siguiendo' : 'Seguir';
         recado('No se ha podido guardar. Inténtalo de nuevo.');
@@ -6205,7 +6425,10 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
 
   function pintarFicha(e) {
     const sectores = e.sectores ?? [];
-    const organos = e.organos ?? [];
+    // La base trae los 8 con más contratos, pero los empates (todos con uno,
+    // a menudo) llegaban en cualquier orden: a igualdad, el de más importe.
+    const organos = [...(e.organos ?? [])].sort((a, b) =>
+      (b.contratos - a.contratos) || ((Number(b.importe) || 0) - (Number(a.importe) || 0)));
     const ultimos = e.ultimos ?? [];
     const marcos = e.marcos ?? [];
     const utes = e.utes ?? [];
@@ -6298,7 +6521,10 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
         ${organos.length ? `
           <h4 style="margin:0 0 12px;font-size:.83rem;font-weight:650;
                      color:var(--tenue);letter-spacing:.05em;
-                     text-transform:uppercase">A quién le vende</h4>
+                     text-transform:uppercase">${organos.length >= 8
+                       // La base corta en 8: con 14 contratos y 8 organismos
+                       // parecía que faltaban cifras.
+                       ? 'Los 8 organismos a los que más vende' : 'A quién le vende'}</h4>
           <table class="tabla"><tbody>
             ${organos.map(o => `<tr style="cursor:default">
               <td class="quien"><a href="#" class="enlace-ficha"
@@ -6395,8 +6621,22 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
 
     alPulsar('seguir', async () => {
       const b = document.getElementById('seguir');
-      const { data } = await sb.rpc('seguir', {
-        cif_empresa: b.dataset.cif, nombre_empresa: b.dataset.nombre });
+      // Como en las listas: quieto mientras responde, y un fallo se dice
+      // como fallo (sin mirar `error`, salía "Quitada de tu lista").
+      if (b.disabled) return;
+      b.disabled = true;
+      let respuesta;
+      try {
+        respuesta = await sb.rpc('seguir', {
+          cif_empresa: b.dataset.cif, nombre_empresa: b.dataset.nombre });
+      } catch (error) { respuesta = { error }; }
+      b.disabled = false;
+      if (respuesta.error) {
+        recado('No se ha podido guardar. Inténtalo de nuevo.');
+        return;
+      }
+      const data = respuesta.data;
+      e.sigo = !!data;
       b.setAttribute('aria-pressed', String(!!data));
       b.textContent = data ? 'Siguiendo' : 'Seguir';
       recado(data
@@ -6408,9 +6648,52 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
     });
   }
 
+  // Un NIF abre la ficha directamente; cualquier otra cosa se busca por
+  // nombre con la misma búsqueda del alta (tabla `empresas`, por
+  // trigramas), y se elige de la lista.
+  const pareceNif = t => /^([A-Z]\d{7}[A-Z0-9]|\d{8}[A-Z]|[XYZ]\d{7}[A-Z]|U\d{8})$/
+    .test(t.replace(/[^a-zA-Z0-9]/g, '').toUpperCase());
+  const mensajeBusqueda = html => {
+    repintarVista = null;
+    zona.classList.remove('cambiando');
+    zona.innerHTML = `<button class="volver-listas" id="volver-busqueda">
+      ← Volver a las listas</button>${html}`;
+    alPulsar('volver-busqueda', () => { campo.value = ''; verListas(); });
+  };
+  async function buscarPorNombre(texto) {
+    const turno = ++vueltaEmp;
+    esperando('Buscando...');
+    let r;
+    try { r = await llamar('buscar_empresa', { empresa: texto }); }
+    catch {
+      if (turno !== vueltaEmp) return;
+      return mensajeBusqueda(`<div class="aviso mal">No hemos podido buscar.
+        Inténtalo de nuevo.</div>`);
+    }
+    if (turno !== vueltaEmp) return;
+    const empresas = r.empresas ?? [];
+    if (empresas.length === 1) return verEmpresa(empresas[0].cif);
+    if (!empresas.length) return mensajeBusqueda(`<div class="aviso">Ninguna
+      empresa con contratos públicos se llama así. Prueba con una parte del
+      nombre o con su NIF.</div>`);
+    mensajeBusqueda(`
+      <p class="guia" style="margin:10px 0 4px">${plural(empresas.length,
+        'empresa coincide', 'empresas coinciden')} con «${esc(texto)}»:</p>
+      <div class="coincidencias">${empresas.map(e => `
+        <button data-elige-cif="${esc(e.cif)}">
+          <strong>${esc(e.nombre ?? e.cif)}</strong>
+          <span class="nif">${esc(e.cif)}${e.contratos != null
+            ? ` · ${plural(numero(e.contratos), 'contrato', 'contratos')}` : ''}</span>
+        </button>`).join('')}</div>`);
+    zona.querySelectorAll('[data-elige-cif]').forEach(b =>
+      b.onclick = () => verEmpresa(b.dataset.eligeCif));
+  }
+
   alPulsar('buscar-cif', () => {
-    const cif = campo.value.trim();
-    if (cif.length >= 8) verEmpresa(cif);
+    const texto = campo.value.trim();
+    if (pareceNif(texto)) verEmpresa(texto);
+    else if (texto.length >= 3) buscarPorNombre(texto);
+    else campo.focus();
   });
   campo.addEventListener('keydown', ev => {
     if (ev.key === 'Enter') document.getElementById('buscar-cif').click();
@@ -6438,11 +6721,32 @@ const SECCIONES = {
   avisos: 'Mis avisos',
 };
 
+// Los diálogos retienen el foco mientras están abiertos, y Escape los
+// cierra. Sin esto, el tabulador se iba a la lista de detrás, que ni se ve.
+function atraparFoco(velo, alEscapar = null) {
+  velo.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && alEscapar) { ev.preventDefault(); alEscapar(); return; }
+    if (ev.key !== 'Tab') return;
+    const enfocables = [...velo.querySelectorAll(
+      'button:not([disabled]), textarea, input, a[href], [tabindex="0"]')];
+    if (!enfocables.length) return;
+    const primero = enfocables[0], ultimo = enfocables.at(-1);
+    if (ev.shiftKey && document.activeElement === primero) {
+      ev.preventDefault(); ultimo.focus();
+    } else if (!ev.shiftKey && document.activeElement === ultimo) {
+      ev.preventDefault(); primero.focus();
+    }
+  });
+}
+
 // Confirmación efímera. Se usa donde la acción no deja rastro visible
 // por sí sola, como la campana: un icono que cambia de forma no explica
 // qué ha pasado.
+//
+// `accion` ({ texto, hacer }) añade un botón, como el "Deshacer" de un
+// descarte; entonces dura lo que se le diga, que es lo que hay para pulsarlo.
 let recadoTemporizador;
-function recado(texto) {
+function recado(texto, accion = null, duracion = 3200) {
   let caja = document.getElementById('recado');
   if (!caja) {
     caja = document.createElement('div');
@@ -6452,9 +6756,23 @@ function recado(texto) {
     document.body.appendChild(caja);
   }
   caja.textContent = texto;
+  if (accion) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'accion-recado';
+    b.textContent = accion.texto;
+    b.onclick = () => {
+      clearTimeout(recadoTemporizador);
+      caja.classList.remove('visible');
+      accion.hacer();
+    };
+    caja.append(' ', b);
+  }
+  // Sin la clase, un recado sin botón no recibe clics: no tapa lo de debajo.
+  caja.classList.toggle('con-accion', !!accion);
   requestAnimationFrame(() => caja.classList.add('visible'));
   clearTimeout(recadoTemporizador);
-  recadoTemporizador = setTimeout(() => caja.classList.remove('visible'), 3200);
+  recadoTemporizador = setTimeout(() => caja.classList.remove('visible'), duracion);
 }
 
 // La campana enciende y apaga el correo diario. Va suelta y no dentro
@@ -6545,6 +6863,10 @@ function menuCuenta(actual = null) {
 }
 
 function activarMenu(perfil, session) {
+  // Cada pantalla de la aplicación pasa por aquí una vez al pintarse: es
+  // el momento de soltar los oyentes de la anterior.
+  estrenarPantalla();
+
   const menu = document.getElementById('menu');
   const abrir = document.getElementById('abrir-menu');
   if (!menu || !abrir) return;
@@ -6560,10 +6882,10 @@ function activarMenu(perfil, session) {
   };
   document.addEventListener('click', ev => {
     if (!ev.target.closest('.menu-envoltorio')) cerrar();
-  });
+  }, dePantalla());
   document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape') cerrar();
-  });
+  }, dePantalla());
 
   menu.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => {
     cerrar();
@@ -6613,7 +6935,12 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
       <div class="bloque">
         <h3>Tu empresa</h3>
         <dl>
-          <dt>Nombre</dt><dd>${esc(p.empresa ?? '—')}</dd>
+          <dt>Nombre</dt><dd>${p.cif ? esc(p.empresa ?? '—') : `
+            <!-- Sin NIF el nombre no sale de ningún contrato: lo pone el
+                 cliente. Si no, arriba se veía su correo en su lugar. -->
+            <span id="nombre-empresa">${esc(p.empresa || 'Sin nombre')}</span>
+            <button class="enlace" id="cambiar-nombre"
+              style="padding:0 0 0 8px">${p.empresa ? 'Cambiar' : 'Ponerle nombre'}</button>`}</dd>
           <dt>NIF</dt><dd>${esc(p.cif ?? '—')}</dd>
           <dt>Actividad</dt><dd>${esc(p.actividad ?? '—')}</dd>
           <dt>Correo</dt><dd>${esc(p.email ?? '—')}</dd>
@@ -6634,6 +6961,13 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
             p.importe_ganado ? euros(Number(p.importe_ganado)) : '—'}</dd>
           <dt>Contratos abiertos que te mostramos</dt><dd>${p.oportunidades ?? 0}</dd>
         </dl>
+      </div>
+      <!-- Borrar la cuenta: al final de todo y como un enlace discreto, a
+           propósito. No es algo que se haga sin buscarlo, y dos pasos
+           (aviso y escribir BORRAR) evitan hacerlo sin querer. -->
+      <div class="borrar-cuenta">
+        <button class="enlace" id="borrar-cuenta" aria-expanded="false">Borrar mi cuenta</button>
+        <div id="zona-borrar" hidden></div>
       </div>`,
 
     filtro: `
@@ -6643,7 +6977,16 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
         <ul class="filtro-lista">
           ${buscamos.map(f => `<li>${esc(f)}</li>`).join('')}
         </ul>
-      </div>` : ''}
+      </div>` : `
+      <!-- Sin historial no hay lista de lo que buscamos: se enseña lo que
+           el cliente contó y los sectores que salieron de ahí. Antes esta
+           pantalla no decía nada de su filtro. -->
+      <div class="bloque">
+        <h3>Qué buscamos por ti</h3>
+        ${p.actividad ? `<p class="guia" style="margin:0 0 12px">Lo que nos
+          contaste: «${esc(p.actividad)}»</p>` : ''}
+        <ul class="filtro-lista" id="sectores-filtro"></ul>
+      </div>`}
       <div class="bloque">
         <h3>Cómo va aprendiendo</h3>
         <dl>
@@ -6653,8 +6996,8 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
           <dt>Última actualización</dt><dd>${fecha(p.criterio_fecha)}</dd>
         </dl>
         <p class="guia" style="margin:18px 0 0;font-size:.88rem">
-        Marca en tu lista los contratos que no te interesan y ajustamos el
-        filtro automáticamente.</p>
+        Marca en tu lista los contratos que te interesan y los que no, y
+        ajustamos el filtro automáticamente.</p>
         <div id="recuperar"></div>
       </div>
       <div class="bloque peligro">
@@ -6703,6 +7046,116 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
   activarCampana(p.avisos);
   if (seccion === 'avisos') montarAvisos(perfil, p.avisos !== false);
 
+  // Los sectores de quien no tiene historial, en "Mi filtro".
+  const listaSectores = document.getElementById('sectores-filtro');
+  if (listaSectores) cargarSectores(perfil).then(sectores => {
+    if (!listaSectores.isConnected) return;
+    if (sectores.length) listaSectores.innerHTML = sectores
+      .map(s => `<li>${esc(s.nombre)}</li>`).join('');
+    else listaSectores.remove();
+  });
+
+  // ---------- Nombre de la empresa (solo sin NIF) ----------
+  // Sin alPulsar: el botón solo existe en "Mi cuenta" y sin NIF, y en las
+  // demás secciones dejaba un aviso de que faltaba.
+  const botonNombre = document.getElementById('cambiar-nombre');
+  if (botonNombre) botonNombre.onclick = () => {
+    const hueco = document.getElementById('nombre-empresa').parentElement;
+    hueco.innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="campo-nombre" maxlength="120"
+          value="${esc(perfil.empresa ?? '')}" aria-label="Nombre de tu empresa"
+          placeholder="Nombre de tu empresa" style="flex:1 1 200px">
+        <button class="principal" id="guardar-nombre">Guardar</button>
+        <button class="enlace" id="cancelar-nombre">Cancelar</button>
+      </div>`;
+    const campo = document.getElementById('campo-nombre');
+    campo.focus();
+    campo.onkeydown = ev => {
+      if (ev.key === 'Enter') document.getElementById('guardar-nombre').click();
+      if (ev.key === 'Escape') pantallaPanel(perfil, session, true, seccion);
+    };
+    alPulsar('cancelar-nombre', () => pantallaPanel(perfil, session, true, seccion));
+    alPulsar('guardar-nombre', async () => {
+      const nombre = campo.value.trim();
+      if (!nombre) { campo.focus(); return; }
+      const boton = document.getElementById('guardar-nombre');
+      boton.disabled = true;
+      const { error } = await sb.from('perfiles').update({ empresa: nombre })
+        .eq('id', perfil.id);
+      if (error) {
+        boton.disabled = false;
+        recado('No se ha podido guardar. Inténtalo de nuevo.');
+        return;
+      }
+      // El mismo objeto que guarda PERFILES: así la cabecera y el selector
+      // de empresas lo enseñan ya en todas las pantallas.
+      perfil.empresa = nombre;
+      recado('Nombre guardado');
+      pantallaPanel(perfil, session, true, seccion);
+    });
+  };
+
+  // ---------- Borrar la cuenta ----------
+  //
+  // Primero un aviso que dice qué se pierde; el botón no se activa hasta
+  // escribir BORRAR. El servidor lo vuelve a comprobar (accion
+  // `borrar_cuenta` en la función de alta).
+  const botonBorrar = document.getElementById('borrar-cuenta');
+  if (botonBorrar) botonBorrar.onclick = () => {
+    const zona = document.getElementById('zona-borrar');
+    const abierta = !zona.hidden;
+    zona.hidden = abierta;
+    botonBorrar.setAttribute('aria-expanded', String(!abierta));
+    if (abierta) { zona.innerHTML = ''; return; }
+    zona.innerHTML = `
+      <div class="aviso mal">
+        <strong>Esto no se puede deshacer.</strong> Se borra tu cuenta
+        (${esc(p.email ?? 'este correo')}) con ${PERFILES.length > 1
+          ? `sus ${PERFILES.length} empresas` : 'tu empresa'}: el filtro, las
+        correcciones que has hecho, las empresas que sigues y tus avisos.
+        Dejarás de recibir el correo diario y, para volver, haría falta un
+        código de acceso nuevo.
+        <label for="confirmar-borrar" style="display:block;margin:14px 0 6px">
+          Escribe <strong>BORRAR</strong> para confirmarlo:</label>
+        <input type="text" id="confirmar-borrar" autocomplete="off"
+               autocapitalize="characters" spellcheck="false">
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="secundario" id="no-borrar">Cancelar</button>
+          <button class="principal peligroso" id="si-borrar" disabled>Borrar mi cuenta para siempre</button>
+        </div>
+        <div id="resultado-borrar"></div>
+      </div>`;
+    const campo = document.getElementById('confirmar-borrar');
+    const si = document.getElementById('si-borrar');
+    campo.focus();
+    campo.oninput = () => { si.disabled = campo.value.trim().toUpperCase() !== 'BORRAR'; };
+    document.getElementById('no-borrar').onclick = () => botonBorrar.click();
+    si.onclick = async () => {
+      si.disabled = true;
+      si.textContent = 'Borrando...';
+      try {
+        await llamar('borrar_cuenta', { confirmacion: 'BORRAR' });
+      } catch {
+        si.disabled = false;
+        si.textContent = 'Borrar mi cuenta para siempre';
+        document.getElementById('resultado-borrar').innerHTML = `<p style="margin:12px 0 0">
+          No se ha podido borrar. Inténtalo de nuevo o escríbenos.</p>`;
+        return;
+      }
+      // Lo que este navegador recordaba de la cuenta: filtros, empresa
+      // activa, explicación oculta. Ya no tiene a quién pertenecer.
+      try {
+        Object.keys(localStorage).filter(k => /^(filtros-contratos:|empresa-activa$|sin-explicacion$)/.test(k))
+          .forEach(k => localStorage.removeItem(k));
+        sessionStorage.clear();
+      } catch { /* modo privado */ }
+      // Solo en local: en el servidor la sesión ya no existe.
+      await sb.auth.signOut({ scope: 'local' }).catch(() => {});
+      recado('Tu cuenta se ha borrado');
+    };
+  };
+
   // Si ocultó la explicación de la lista, aquí puede recuperarla.
   const hueco = document.getElementById('recuperar');
   let oculta = false;
@@ -6746,7 +7199,7 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
     const zona = document.getElementById('resultado');
     zona.innerHTML = `
       <div class="aviso">¿Seguro? Se borrará tu filtro actual y volverás a
-      empezar desde tu NIF.
+      empezar ${p.cif ? 'desde tu NIF' : 'el alta: tu NIF, si ya tienes contratos, o a qué te dedicas'}.
       <div style="margin-top:14px;display:flex;gap:10px">
         <button class="secundario" id="no">Cancelar</button>
         <button class="principal" id="si">Sí, rehacerlo</button>
@@ -6795,15 +7248,20 @@ async function montarAvisos(perfil, encendido) {
     (porComunidad[z.comunidad] ??= []).push(z.provincia);
     comunidadDe[z.provincia] = z.comunidad;
   });
-  const comunidades = Object.keys(porComunidad).sort((a, b) => a.localeCompare(b, 'es'));
   // "Comunidad de Madrid" con Madrid dentro: se enseña solo la provincia.
   const plano = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const uniprovincial = c => porComunidad[c].length === 1
     && plano(c).includes(plano(porComunidad[c][0]));
+  // Por el nombre que SE VE: ordenando por el de la comunidad, "Madrid"
+  // caía entre Ceuta y Comunidad Valenciana, y "Murcia" al final.
+  const rotuloZona = c => uniprovincial(c) ? porComunidad[c][0] : c;
+  const comunidades = Object.keys(porComunidad)
+    .sort((a, b) => rotuloZona(a).localeCompare(rotuloZona(b), 'es'));
 
   zona.innerHTML = `
-    ${encendido ? '' : `<div class="aviso">El aviso diario está desactivado.
-      Actívalo con la campana de arriba para recibirlo.</div>`}
+    ${encendido ? '' : `<div class="aviso aviso-apagado">El aviso diario está
+      desactivado. Al guardar se activa, o puedes activarlo con la campana de
+      arriba.</div>`}
     ${sectores.length > 1 ? `
     <div class="bloque">
       <h3>Sectores</h3>
@@ -6846,7 +7304,10 @@ async function montarAvisos(perfil, encendido) {
     </div>
     <div class="bloque resumen-avisos">
       <p id="avisos-cuenta"></p>
-      <button class="principal" id="guardar-avisos">Guardar mis avisos</button>
+      <!-- Con la campana apagada, guardar sin encenderla dejaba a alguien
+           configurando un correo que nunca le iba a llegar. -->
+      <button class="principal" id="guardar-avisos">${encendido
+        ? 'Guardar mis avisos' : 'Guardar y activar el aviso diario'}</button>
       <div id="avisos-resultado"></div>
     </div>`;
 
@@ -6935,7 +7396,20 @@ async function montarAvisos(perfil, encendido) {
       return;
     }
     resultado.innerHTML = '';
-    recado('Avisos guardados');
+    if (encendido) { recado('Avisos guardados'); return; }
+
+    let activar;
+    try { activar = await sb.rpc('cambiar_avisos', { quiero: true }); }
+    catch (fallo) { activar = { error: fallo }; }
+    if (activar.error) {
+      recado('Avisos guardados, pero no hemos podido activarlos. Usa la campana de arriba.');
+      return;
+    }
+    encendido = true;
+    document.getElementById('campana')?.setAttribute('aria-pressed', 'true');
+    zona.querySelector('.aviso-apagado')?.remove();
+    boton.textContent = 'Guardar mis avisos';
+    recado('Avisos guardados. Te llegarán cada mañana por correo');
   });
 
   pintarZona();
@@ -6975,14 +7449,30 @@ function pantallaBienvenida(perfil, session) {
         filtro</strong> y dejas de ver lo que no es para ti.</p>
       </div>
       <div class="entra">
+        <!-- El aviso nace apagado (20260922180000) y la portada promete
+             "cada mañana te enviamos...": sin preguntarlo aquí, un cliente
+             nuevo no recibía nada hasta descubrir la campana tachada. -->
+        <label class="casilla-linea" style="justify-content:center;margin:0 0 18px">
+          <input type="checkbox" id="quiero-aviso" checked>
+          <span>Avisarme cada mañana por correo de los contratos nuevos</span>
+        </label>
         <button class="principal" id="empezar">Ver mis contratos</button>
       </div>
     </div>`;
 
-  alPulsar('empezar', () => {
+  alPulsar('empezar', async () => {
     // Se marca antes de salir: si falla la escritura, peor es repetirla
     // que perder la lista.
     sb.rpc('marcar_bienvenida').then(() => {}, () => {});
+    // El aviso, en cambio, se espera: la campana de la lista lee su estado
+    // al pintarse, y leído antes de guardarlo saldría apagada.
+    if (document.getElementById('quiero-aviso')?.checked) {
+      document.getElementById('empezar').disabled = true;
+      let r;
+      try { r = await sb.rpc('cambiar_avisos', { quiero: true }); }
+      catch (error) { r = { error }; }
+      if (r.error) recado('No hemos podido activar el aviso. Actívalo con la campana.');
+    }
     pantallaOportunidades({ ...perfil, vio_bienvenida: true }, session);
   });
 }
@@ -6990,6 +7480,46 @@ function pantallaBienvenida(perfil, session) {
 // ============================================================
 // 9 · Sus oportunidades
 // ============================================================
+
+// Descartes que esperan a enviarse, por id de licitación: { perfilId,
+// motivo, temporizador }. Viven fuera de la pantalla para sobrevivir a un
+// cambio de pestaña mientras corre la cuenta atrás (ver `corregir`).
+const DESCARTES_PENDIENTES = new Map();
+const ESPERA_DESHACER = 6000;
+
+// Envía ya un descarte pendiente. Por fetch y no por la librería por dos
+// motivos: con la empresa del descarte fija en `x-perfil` (si entre medias
+// se cambia de empresa, la librería mandaría la nueva), y con keepalive,
+// que es lo único que llega a salir cuando se está cerrando la pestaña.
+//
+// Devuelve { data, error } como `sb.rpc`.
+async function enviarDescarte(id, alSalir = false) {
+  const p = DESCARTES_PENDIENTES.get(id);
+  if (!p) return { data: null, error: null };
+  DESCARTES_PENDIENTES.delete(id);
+  clearTimeout(p.temporizador);
+  let token = p.token;
+  if (!alSalir) {
+    const { data: { session } } = await sb.auth.getSession();
+    token = session?.access_token ?? token;
+  }
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/corregir`, {
+      method: 'POST', keepalive: alSalir,
+      headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${token}`,
+                 'Content-Type': 'application/json', 'x-perfil': p.perfilId },
+      body: JSON.stringify({ licitacion: id, le_interesa: false,
+                             por_que: p.motivo ?? null }),
+    });
+    if (!r.ok) return { data: null, error: new Error(`HTTP ${r.status}`) };
+    return { data: await r.json().catch(() => null), error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+}
+window.addEventListener('pagehide', () => {
+  for (const id of [...DESCARTES_PENDIENTES.keys()]) enviarDescarte(id, true);
+});
 
 async function pantallaOportunidades(perfil, session, volviendo = false,
                                      pestanaInicial = 'todo') {
@@ -7003,12 +7533,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const { data, error } = await pedirContratos(perfil.id, nuevos => {
     // Si algo cambió por detrás, se repinta sin que el cliente
     // haya tenido que esperar.
-    if (!vigente()) return;
-    DATOS.length = 0;
-    (nuevos ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
-      .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9))
-      .forEach(o => DATOS.push(o));
-    if (document.getElementById('lista')) pintar();
+    if (!vigente() || !document.getElementById('lista')) return;
+    ponerDatos(nuevos);
   });
   // Mientras llegaban los datos se ha abierto otra lista: esa manda.
   if (!vigente()) return;
@@ -7018,22 +7544,41 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     return;
   }
 
-  const DATOS = (data ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
-    .sort((a,b) => (a.dias ?? 9e9) - (b.dias ?? 9e9));
+  const preparar = filas => (filas ?? [])
+    // Lo descartado que aún espera a enviarse (ver `corregir`) no vuelve
+    // a salir porque llegue un refresco.
+    .filter(o => !DESCARTES_PENDIENTES.has(o.id_licitacion))
+    .map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
+    .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9));
+  const DATOS = preparar(data);
+
+  // Datos nuevos llegados por detrás (refresco de la caché o cribado de
+  // fondo). Antes solo se repintaba la lista: el contador de la pestaña y
+  // las cifras del selector de provincias se quedaban con los de la
+  // primera carga y no cuadraban con lo que se veía.
+  function ponerDatos(nuevos) {
+    const vistas = new Set(DATOS.filter(o => !o.es_novedad).map(o => o.id_licitacion));
+    DATOS.length = 0;
+    preparar(nuevos).forEach(o => {
+      // Lo que ya se ha dado por visto en esta sesión no vuelve a ser
+      // novedad por refrescar.
+      if (yaVistas && vistas.has(o.id_licitacion)) o.es_novedad = false;
+      DATOS.push(o);
+    });
+    indexarZonas();
+    pintarContadores();
+    pintarEtiquetas();
+    if (!panel.hidden) pintarOpciones();
+    pintar();
+  }
 
   // Para el cribado de fondo del arranque: cuando termina, pide la lista
   // de nuevo y la repinta aquí mismo, conservando pestaña y filtros.
   refrescarListaAbierta = async () => {
     olvidar('contratos');
     const { data: nuevos, error: fallo } = await pedirContratos(perfil.id);
-    if (fallo || !document.getElementById('lista')) return;
-    DATOS.length = 0;
-    (nuevos ?? []).map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
-      .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9))
-      .forEach(o => DATOS.push(o));
-    const cuenta = document.getElementById('c-todo');
-    if (cuenta) cuenta.textContent = DATOS.length;
-    pintar();
+    if (fallo || !vigente() || !document.getElementById('lista')) return;
+    ponerDatos(nuevos);
   };
 
   raiz.innerHTML = `
@@ -7062,7 +7607,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       <select id="f-sector" aria-label="Filtrar por sector" hidden>
         <option value="">Todos los sectores</option>
       </select>
-      <input type="search" id="f-texto" placeholder="Buscar por título u órgano">
+      <input type="search" id="f-texto" placeholder="Buscar por título u órgano"
+             aria-label="Buscar por título u órgano">
       <div class="selector">
         <button type="button" class="campo-geo" id="campo-geo"
                 aria-haspopup="listbox" aria-expanded="false" aria-controls="panel-geo"
@@ -7111,13 +7657,19 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
   const bloqueFecha = o => {
     if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo</span></div>`;
-    const p = partes(o.fecha_limite);
+    // El día que vale de verdad: un plazo a las 00:00 es el final del
+    // anterior (ver `plazoEfectivo`).
+    const p = partes(plazoEfectivo(o.fecha_limite));
     // Corto para que quepa en una línea: con "quedan 5 días" la celda
     // crecía a dos y rompía el ritmo de la lista. La fecha está justo
     // encima, así que "hoy" o "en 5 días" se entiende igual.
+    //
+    // De otro año, el año en vez de la cuenta: "6 feb · en 1221 días" no
+    // decía de qué año era, y una cifra así no se lee de un vistazo.
     const c = o.dias < 0 ? 'vencido'
             : o.dias === 0 ? 'hoy'
             : o.dias === 1 ? 'mañana'
+            : +p.year !== anioEnCurso() ? `de ${p.year}`
             : `en ${o.dias} días`;
     // Tres días, no siete. Con siete se marcaba media lista, y un aviso
     // que sale en la mayoría de las filas deja de avisar: se convierte
@@ -7131,6 +7683,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     {timeZone:ZONA, day:'numeric', month:'long', year:'numeric'}) : '—';
   const plazoLargo = s => {
     if (!s) return 'sin plazo publicado';
+    // "5 de octubre, a las 00:00" se leía como que quedaba todo el día 5.
+    if (esMedianoche(s))
+      return `${fechaLarga(plazoEfectivo(s))}, hasta medianoche (hora peninsular)`;
     const p = partes(s);
     return `${fechaLarga(s)}, a las ${p.hour}:${p.minute} (hora peninsular)`;
   };
@@ -7145,19 +7700,29 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // y los filtros de debajo. La misma función en dos sitios confunde
   // más de lo que ayuda, y quien usa esto es un profesional que sabe
   // lo que busca.
-  function pintarTitular(lista) {
+  //
+  // `total` es lo que hay en la pestaña sin filtros. Con filtros puestos se
+  // dice "N de M": "Hay 3 contratos abiertos para ti" con 182 detrás de un
+  // filtro recordado de hace días se leía como que solo había 3.
+  function pintarTitular(lista, total) {
     const n = lista.length;
     const titular = document.getElementById('titular');
+    const filtrado = hayFiltros() && total > n;
     if (n > 0) {
-      titular.textContent =
-        `Hay ${n} ${n === 1 ? 'contrato abierto' : 'contratos abiertos'} para ti`;
+      titular.textContent = filtrado
+        ? `${numero(n)} de ${plural(numero(total), 'contrato abierto', 'contratos abiertos')} con estos filtros`
+        : `Hay ${plural(numero(n), 'contrato abierto', 'contratos abiertos')} para ti`;
       return;
     }
     // Sin nada que enseñar, el motivo importa: no es lo mismo estar al
-    // día en novedades que no tener ningún contrato abierto.
-    titular.textContent = pestana === 'hoy'
-      ? 'No hay novedades para ti'
-      : 'Ahora mismo no hay contratos abiertos para ti';
+    // día en novedades que no tener ningún contrato abierto, ni que lo
+    // escondan los filtros.
+    titular.textContent = filtrado
+      ? (pestana === 'hoy' ? 'Ninguna novedad con estos filtros'
+                           : 'Ningún contrato con estos filtros')
+      : pestana === 'hoy'
+        ? 'No hay novedades para ti'
+        : 'Ahora mismo no hay contratos abiertos para ti';
   }
 
   // Provincias elegidas. Vacío es "toda España", no "ninguna": es lo que
@@ -7247,15 +7812,17 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     guardarFiltros();
     document.getElementById('quitar-filtros').hidden = !hayFiltros();
     const ver = document.getElementById('f-veredicto').value;
-    const txt = document.getElementById('f-texto').value.toLowerCase().trim();
+    // Sin tildes y palabra a palabra, como en Organismos: "jardineria"
+    // encontraba 3 contratos y "jardinería", 12.
+    const txt = document.getElementById('f-texto').value.trim();
     const campoSector = document.getElementById('f-sector');
     const sector = SECTORES[campoSector.value];
-    const vistos = DATOS.filter(o =>
-      (pestana === 'todo' || o.es_novedad) &&
+    const enPestana = DATOS.filter(o => pestana === 'todo' || o.es_novedad);
+    const vistos = enPestana.filter(o =>
       enZona(o) &&
       (!ver || o.veredicto === ver) &&
       (!sector || enSector(o, sector)) &&
-      (!txt || `${o.titulo} ${o.organo}`.toLowerCase().includes(txt)));
+      (!txt || coincide(`${o.titulo} ${o.organo}`, txt)));
 
     // Cuántos hay en cada sector con la pestaña actual: elegir uno que
     // resulta vacío es un clic perdido y parece un fallo.
@@ -7267,10 +7834,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       op.textContent = `${s.nombre} (${n})`;
     });
 
-    pintarTitular(vistos);
+    pintarTitular(vistos, enPestana.length);
+    // La fila es un `div` con papel de botón y no un <button>: dentro van
+    // los dos botones de corrección, y un botón no puede llevar otros. Con
+    // <span> por botones no se llegaba a ellos con el teclado y el lector
+    // de pantalla los leía como texto suelto.
     document.getElementById('lista').innerHTML = vistos.length ? vistos.map((o,i) => `
       <div class="fila-envoltorio">
-      <button class="fila" data-i="${i}">
+      <div class="fila" data-i="${i}" role="button" tabindex="0"
+           aria-expanded="false" aria-controls="d${i}">
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
           <p class="meta">${esc([o.organo, lugar(o)].filter(Boolean).join(' · '))}</p>
@@ -7280,14 +7852,14 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           ${o.correccion
             ? `<span class="confirmado">Confirmado como tuyo</span>`
             : `<span class="acciones">
-                 <span class="accion si" data-si="${esc(o.id_licitacion)}">Sí me interesa</span>
-                 <span class="accion no" data-no="${esc(o.id_licitacion)}">No me interesa</span>
+                 <button type="button" class="accion si" data-si="${esc(o.id_licitacion)}">Sí me interesa</button>
+                 <button type="button" class="accion no" data-no="${esc(o.id_licitacion)}">No me interesa</button>
                </span>`}
 
         </div>
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
-      </button>
+      </div>
       <section class="detalle" id="d${i}">
         <!-- El motivo del cribado NO se enseña.
              Es el razonamiento interno del clasificador —"mantenimiento de
@@ -7310,7 +7882,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           <dt>Plazo</dt><dd>${plazoLargo(o.fecha_limite)}</dd>
           <dt>Códigos CPV</dt><dd>${esc((o.cpvs || []).join(', ')) || '—'}</dd>
           <dt>Último movimiento</dt><dd>${
-            o.dias_sin_verificar === 0 ? 'hoy'
+            o.dias_sin_verificar == null ? '—'
+            : o.dias_sin_verificar === 0 ? 'hoy'
             : o.dias_sin_verificar === 1 ? 'ayer'
             : `hace ${o.dias_sin_verificar} días`}${
             o.dias_sin_verificar > 90
@@ -7320,10 +7893,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
                 style="margin-right:10px">Analizar viabilidad</button>` : ''}
         ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
       </section></div>`).join('')
-      : pestana === 'hoy'
+      // En Novedades, "estás al día" solo si de verdad no hay ninguna: si
+      // las esconden los filtros, se dice eso y se da la salida.
+      : pestana === 'hoy' && !(hayFiltros() && enPestana.length)
         ? `<p class="vacio">Estás al día. Aquí aparecerá lo que entre
            a partir de ahora.</p>`
-        : `<p class="vacio">Ningún contrato encaja con estos filtros.${
+        : `<p class="vacio">${pestana === 'hoy'
+            ? `${plural(numero(enPestana.length), 'novedad', 'novedades')}, pero
+               ninguna encaja con estos filtros.`
+            : 'Ningún contrato encaja con estos filtros.'}${
             hayFiltros() ? `<button type="button" class="quitar-filtros"
               data-quitar-filtros>Quitar filtros</button>` : ''}</p>`;
     // Con los filtros recordados, una lista vacía puede venir de algo
@@ -7346,18 +7924,32 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       });
     }
 
-    raiz.querySelectorAll('.fila').forEach(f => f.onclick = ev => {
-      // Los botones de corrección viven dentro de la fila para que
-      // aparezcan al pasar por encima. Hay que evitar que su clic
-      // despliegue también el detalle.
-      const accion = ev.target.closest('.accion');
-      if (accion) {
-        ev.stopPropagation();
-        if (accion.dataset.si) corregir(accion.dataset.si, true);
-        else pedirMotivo(accion.dataset.no);
-        return;
-      }
-      document.getElementById('d' + f.dataset.i).classList.toggle('abierto');
+    raiz.querySelectorAll('.fila').forEach(f => {
+      const alternar = () => {
+        const abierta = document.getElementById('d' + f.dataset.i)
+          .classList.toggle('abierto');
+        // Lo dice al lector de pantalla y, por CSS, deja el título entero.
+        f.setAttribute('aria-expanded', String(abierta));
+      };
+      f.onclick = ev => {
+        // Los botones de corrección viven dentro de la fila para que
+        // aparezcan a su altura. Hay que evitar que su clic despliegue
+        // también el detalle.
+        const accion = ev.target.closest('.accion');
+        if (accion) {
+          ev.stopPropagation();
+          if (accion.dataset.si) corregir(accion.dataset.si, true);
+          else pedirMotivo(accion.dataset.no, accion);
+          return;
+        }
+        alternar();
+      };
+      // Lo que un <button> traía de serie: Intro y espacio la despliegan.
+      f.onkeydown = ev => {
+        if (ev.target !== f || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+        ev.preventDefault();
+        alternar();
+      };
     });
   }
 
@@ -7387,6 +7979,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     }
     repintar();
 
+    // Vuelve a poner la fila donde estaba.
+    const devolver = () => {
+      if (!antes || !vigente()) return;
+      const j = DATOS.findIndex(o => o.id_licitacion === id);
+      if (j >= 0) DATOS[j] = antes;
+      else DATOS.splice(Math.min(i, DATOS.length), 0, antes);
+      repintar();
+    };
+
     // Si no se guarda, se deshace y se dice.
     //
     // Antes el error se tragaba: la librería de Supabase no lanza, devuelve
@@ -7395,36 +7996,65 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     // al recargar el contrato volvía a salir, sin que nada lo reintentara.
     // Y el cliente que se toma la molestia de corregir es justo el que más
     // se fija en si le hacemos caso.
-    let respuesta;
-    try {
-      respuesta = await sb.rpc('corregir', {
-        licitacion: id, le_interesa: interesa, por_que: motivo ?? null,
-      });
-    } catch (error) {
-      respuesta = { error };
-    }
-    if (respuesta.error) {
-      if (antes) {
-        const j = DATOS.findIndex(o => o.id_licitacion === id);
-        if (j >= 0) DATOS[j] = antes;
-        else DATOS.splice(Math.min(i, DATOS.length), 0, antes);
-        repintar();
+    const tras = respuesta => {
+      if (respuesta.error) {
+        devolver();
+        recado('No se ha podido guardar tu respuesta. Inténtalo de nuevo.');
+        return;
       }
-      recado('No se ha podido guardar tu respuesta. Inténtalo de nuevo.');
-      return;
+      if (vigente() && respuesta.data?.pendientes >= CORRECCIONES_PARA_AJUSTAR)
+        ajustarFiltro();
+    };
+
+    if (interesa) {
+      let respuesta;
+      try {
+        respuesta = await sb.rpc('corregir', {
+          licitacion: id, le_interesa: true, por_que: motivo ?? null,
+        });
+      } catch (error) {
+        respuesta = { error };
+      }
+      return tras(respuesta);
     }
-    if (respuesta.data?.pendientes >= CORRECCIONES_PARA_AJUSTAR) ajustarFiltro();
+
+    // Un descarte se puede deshacer: la fila se va al instante, pero no se
+    // envía hasta que pasa el plazo del "Deshacer". Un toque en el botón
+    // equivocado, en el móvil y con la lista moviéndose, ya no es un
+    // contrato perdido. Si se cierra la pestaña antes, sale igual (ver
+    // `enviarDescarte`, en pagehide).
+    const { data: { session: ahora } } = await sb.auth.getSession();
+    DESCARTES_PENDIENTES.set(id, {
+      perfilId: perfil.id, motivo, token: ahora?.access_token,
+      temporizador: setTimeout(async () => tras(await enviarDescarte(id)),
+                               ESPERA_DESHACER),
+    });
+    recado('Contrato descartado', {
+      texto: 'Deshacer',
+      hacer: () => {
+        const p = DESCARTES_PENDIENTES.get(id);
+        if (!p) return;
+        clearTimeout(p.temporizador);
+        DESCARTES_PENDIENTES.delete(id);
+        devolver();
+      },
+    }, ESPERA_DESHACER);
   }
 
-  function pedirMotivo(id) {
+  // `origen` es el botón que lo abrió: al cancelar, el foco vuelve a él y
+  // no al principio de la página.
+  function pedirMotivo(id, origen = null) {
     const velo = document.createElement('div');
     velo.className = 'velo';
     velo.innerHTML = `
-      <div class="dialogo">
-        <h3>¿Por qué no te interesa?</h3>
+      <div class="dialogo" role="dialog" aria-modal="true" aria-labelledby="titulo-motivo">
+        <button type="button" class="cerrar-dialogo" id="cancelar-motivo"
+                aria-label="Cancelar, no descartar">×</button>
+        <h3 id="titulo-motivo">¿Por qué no te interesa?</h3>
         <p>Con una frase basta, y nos ayuda mucho más que el descarte solo.
         Puedes saltártelo.</p>
-        <textarea id="por-que" placeholder="Por ejemplo: no trabajo con vestuario que no sea de cuerpos de seguridad"></textarea>
+        <textarea id="por-que" aria-labelledby="titulo-motivo"
+          placeholder="Por ejemplo: es demasiado grande para nosotros, o no trabajamos en esa zona"></textarea>
         <div class="botonera">
           <button class="enlace" id="saltar">Descartar sin explicar</button>
           <button class="principal" id="enviar">Enviar</button>
@@ -7434,13 +8064,16 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const campo = velo.querySelector('#por-que');
     campo.focus();
 
+    const quitar = () => { velo.remove(); origen?.isConnected && origen.focus(); };
     const cerrar = motivo => { velo.remove(); corregir(id, false, motivo); };
     velo.querySelector('#saltar').onclick = () => cerrar(null);
     velo.querySelector('#enviar').onclick = () => cerrar(campo.value.trim() || null);
-    velo.onclick = ev => { if (ev.target === velo) velo.remove(); };
+    // Antes solo se salía tocando fuera, y en el móvil no se adivinaba.
+    velo.querySelector('#cancelar-motivo').onclick = quitar;
+    velo.onclick = ev => { if (ev.target === velo) quitar(); };
+    atraparFoco(velo, quitar);
     campo.onkeydown = ev => {
       if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) cerrar(campo.value.trim() || null);
-      if (ev.key === 'Escape') velo.remove();
     };
   }
 
@@ -7448,8 +8081,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const aviso = document.createElement('div');
     aviso.className = 'velo';
     aviso.innerHTML = `
-      <div class="dialogo">
-        <h3>Estamos ajustando tu filtro</h3>
+      <div class="dialogo" role="dialog" aria-modal="true" aria-live="polite"
+           aria-labelledby="titulo-ajuste">
+        <h3 id="titulo-ajuste">Estamos ajustando tu filtro</h3>
         <p>Con lo que nos has dicho. Después volveremos a revisar todos
         tus contratos con el filtro nuevo, así que tardará un momento.</p>
       </div>`;
@@ -7485,6 +8119,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         contratos con el filtro nuevo.</p>
         <div class="botonera"><button class="principal" id="ver">Ver la lista</button></div>`;
       aviso.querySelector('#ver').onclick = () => location.reload();
+      aviso.querySelector('#ver').focus();
     } catch {
       // Las correcciones ya están guardadas: lo que ha fallado es rehacer
       // el filtro con ellas, y se vuelve a intentar en la siguiente.
@@ -7496,6 +8131,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   let temporizador;
   const repintar = () => {
     const lista = document.getElementById('lista');
+    // Un "Deshacer" o un fallo de envío pueden llegar con otra pantalla
+    // delante: no hay lista que repintar.
+    if (!lista || !vigente()) return;
     lista.classList.add('cambiando');
     clearTimeout(temporizador);
     temporizador = setTimeout(() => {
@@ -7510,14 +8148,11 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // Cataluña quiere las cuatro provincias, no ir marcándolas de una en
   // una. Y las uniprovinciales aparecen a nivel raíz: repetir "Madrid"
   // como comunidad y como provincia solo confunde.
-  const porComunidad = {};
-  DATOS.forEach(o => {
-    if (!o.provincia) return;
-    const c = o.comunidad || 'Sin comunidad';
-    (porComunidad[c] ??= new Set()).add(o.provincia);
-  });
-  const cuantasPor = {};
-  DATOS.forEach(o => { if (o.provincia) cuantasPor[o.provincia] = (cuantasPor[o.provincia] ?? 0) + 1; });
+  //
+  // Todo se calcula en `indexarZonas`, que se repite cuando llegan datos
+  // nuevos: calculado una sola vez, las cifras del selector se quedaban
+  // con las de la primera carga.
+  let porComunidad, cuantasPor, comunidadDe, sinPrecisarPor, comunidades;
 
   // Contratos sin provincia precisa. No se esconden al filtrar.
   //
@@ -7531,23 +8166,36 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   //
   // Y si no se sabe ni la comunidad, aparece siempre: es preferible uno
   // de más que perder uno.
-  const comunidadDe = {};
-  DATOS.forEach(o => { if (o.provincia && o.comunidad) comunidadDe[o.provincia] = o.comunidad; });
-  const sinPrecisarPor = {};
-  DATOS.forEach(o => {
-    if (!o.provincia && o.comunidad)
-      sinPrecisarPor[o.comunidad] = (sinPrecisarPor[o.comunidad] ?? 0) + 1;
-  });
+  function indexarZonas() {
+    porComunidad = {}; cuantasPor = {}; comunidadDe = {}; sinPrecisarPor = {};
+    DATOS.forEach(o => {
+      if (o.provincia) {
+        (porComunidad[o.comunidad || 'Sin comunidad'] ??= new Set()).add(o.provincia);
+        cuantasPor[o.provincia] = (cuantasPor[o.provincia] ?? 0) + 1;
+        if (o.comunidad) comunidadDe[o.provincia] = o.comunidad;
+      } else if (o.comunidad) {
+        sinPrecisarPor[o.comunidad] = (sinPrecisarPor[o.comunidad] ?? 0) + 1;
+      }
+    });
+    // Ordenadas por el nombre que SE VE: la uniprovincial se enseña con
+    // el de su provincia (ver `visibles`), y ordenando por el de la
+    // comunidad "Madrid" caía entre Cataluña y Comunidad Valenciana, y
+    // "Murcia" la última.
+    comunidades = Object.entries(porComunidad)
+      .map(([nombre, provs]) => {
+        const lista = [...provs].sort((a,b) => a.localeCompare(b,'es'));
+        const uni = lista.length === 1 && sinTildes(nombre).includes(sinTildes(lista[0]));
+        return { nombre, provs: lista, rotulo: uni ? lista[0] : nombre };
+      })
+      .sort((a,b) => a.rotulo.localeCompare(b.rotulo,'es'));
+  }
+  indexarZonas();
 
   function enZona(o) {
     if (elegidas.size === 0 || elegidas.has(o.provincia)) return true;
     if (o.provincia) return false;
     return !o.comunidad || [...elegidas].some(p => comunidadDe[p] === o.comunidad);
   }
-
-  const comunidades = Object.entries(porComunidad)
-    .map(([nombre, provs]) => ({ nombre, provs: [...provs].sort((a,b) => a.localeCompare(b,'es')) }))
-    .sort((a,b) => a.nombre.localeCompare(b.nombre,'es'));
 
   const campo = document.getElementById('campo-geo');
   const buscador = document.getElementById('buscador-geo');
@@ -7701,10 +8349,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // la página. `closest` no encontraba el selector y cerraba el panel.
   document.addEventListener('click', ev => {
     if (!ev.composedPath().some(n => n.classList?.contains('selector'))) cerrar();
-  });
+  }, dePantalla());
   document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape' && !panel.hidden) cerrar(true);
-  });
+  }, dePantalla());
 
   // ---------- Pestañas ----------
   // Los contadores ignoran los filtros: dicen cuánto hay en total en cada
@@ -7712,9 +8360,16 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // salto a ciegas.
   // Sin número cuando no hay ninguna: un cero al lado de "Novedades"
   // ocupa sitio para decir que no hay nada que ver.
-  const nuevas = DATOS.filter(o => o.es_novedad).length;
-  document.getElementById('c-hoy').textContent = nuevas || '';
-  document.getElementById('c-todo').textContent = DATOS.length;
+  function pintarContadores() {
+    const nuevas = DATOS.filter(o => o.es_novedad).length;
+    document.getElementById('c-hoy').textContent = nuevas ? numero(nuevas) : '';
+    document.getElementById('c-todo').textContent = numero(DATOS.length);
+  }
+  pintarContadores();
+
+  // Si ya ha salido de Novedades en esta visita, lo que vio deja de ser
+  // novedad aunque llegue un refresco (ver `ponerDatos`).
+  let yaVistas = false;
 
   function cambiarPestana(cual, volviendo = false) {
     // Al salir de novedades se marca la visita: lo que ha visto deja de
@@ -7726,6 +8381,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       // que el contador seguía diciendo 23 hasta recargar la página:
       // marcaba como pendiente algo que el cliente acababa de ver.
       DATOS.forEach(o => o.es_novedad = false);
+      yaVistas = true;
       document.getElementById('c-hoy').textContent = '';
     }
     pestana = cual;
@@ -7754,7 +8410,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   setTimeout(marcarLaVisita, 4000);
 
   // Y al cerrar, por si se va antes de esos segundos.
-  window.addEventListener('beforeunload', marcarLaVisita);
+  window.addEventListener('beforeunload', marcarLaVisita, dePantalla());
 
   // Lo recordado, antes del primer pintado. Un valor que ya no existe en
   // el selector se descarta en vez de dejar una lista vacía sin motivo.

@@ -487,8 +487,56 @@ def limpiar_nombre_adjudicatario(nombre: str) -> str:
     el ranking de competidores. Solo se toca ese caso: otras repeticiones
     al principio son legítimas ("GARCIA GARCIA ALICIA", "FRIO FRIO
     INSTALACIONES").
+
+    También repara un "&" roto en origen: la plataforma gallega publica
+    "EQUIPO MULTIDISCIPLINAR X &' || ' OUTROS", con el trozo de SQL con
+    que alguien concatenó el nombre.
     """
-    return re.sub(r"^\s*(UTE\s+)+(?=UTE\b)", "", nombre or "", flags=re.IGNORECASE).strip()
+    nombre = (nombre or "").replace("&' || '", "& ")
+    nombre = re.sub(r"\s{2,}", " ", nombre)
+    return re.sub(r"^\s*(UTE\s+)+(?=UTE\b)", "", nombre, flags=re.IGNORECASE).strip()
+
+
+# Lo que algunos órganos escriben en la casilla del adjudicatario cuando no
+# ponen a nadie: no es una empresa y no debe convertirse en una.
+NO_ES_EMPRESA = re.compile(
+    r"^\W*$|^DESIERT|^DESERT|SEG[UÚ]N RESOLUCI|VER RESOLUCI|"
+    r"VARIOS ADJUDICATARIOS|^\d+ EMPRESAS ADJUDICATARIAS",
+    re.IGNORECASE)
+
+
+def codigo_sin_nif(nombre: str) -> str:
+    """
+    Un identificador estable para quien gana sin NIF publicado.
+
+    Hay UTEs (sobre todo gallegas) y empresas extranjeras que llegan con
+    nombre y sin ningún identificador. Sin él no entraban en ninguna ficha
+    ni ranking: 214 contratos y 927 M€ medidos el 04/10/2026. "SN" + diez
+    cifras hexadecimales del MD5 del nombre, solo letras y números ASCII,
+    en mayúsculas: doce caracteres, así que no puede coincidir con un NIF.
+
+    La base tiene la misma fórmula (`public.codigo_sin_nif`) para el
+    relleno: si se cambia aquí, hay que cambiarla allí.
+    """
+    if NO_ES_EMPRESA.search(nombre or ""):
+        return ""
+    limpio = re.sub(r"[^A-Za-z0-9]", "", nombre or "").upper()
+    if not limpio:
+        return ""
+    return "SN" + hashlib.md5(limpio.encode()).hexdigest()[:10].upper()
+
+
+# Resultado de cada lote (`TenderResultCode`, lista CODICE 2.09). La
+# Plataforma llama "Resuelta" igual a lo formalizado y a lo desierto; esto
+# los distingue. Los que no acaban en contrato no traen ganador: comprobado
+# el 04/10/2026 en la primera página de los dos feeds, 425 lotes sin una
+# sola excepción. Lo lee la base con `public.sin_contrato`.
+RESULTADOS = {
+    "1": "adjudicado", "2": "adjudicado", "8": "adjudicado",
+    "9": "formalizado", "11": "formalizado", "10": "mejor_valorado",
+    "3": "desierto", "6": "desierto", "7": "desierto",
+    "4": "desistimiento", "5": "renuncia",
+}
 
 
 def extraer_duracion(entrada: etree._Element) -> dict[str, Any]:
@@ -608,9 +656,14 @@ def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
         if bruto.isdigit():
             licitadores = int(bruto)
 
+        nombre = limpiar_nombre_adjudicatario(nombre)
+        if nombre and not cif:
+            cif = codigo_sin_nif(nombre)
+
         adjudicaciones.append({
             "lote": numero,
-            "adjudicatario": limpiar_nombre_adjudicatario(nombre),
+            "resultado": RESULTADOS.get(primer_texto(resultado, "ResultCode"), ""),
+            "adjudicatario": nombre,
             "cif": cif,
             "importe": sin_iva,
             "importe_con_iva": con_iva,
