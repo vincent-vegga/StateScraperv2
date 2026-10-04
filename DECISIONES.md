@@ -1211,6 +1211,53 @@ UTE de dos grandes con poco volumen. Son casos raros.
 
 ---
 
+## 44. Ganadores sin NIF con código propio; desiertos distinguidos
+
+**Contexto.** Revisión de huecos del 04/10/2026, sin menores. Todos los
+tipos de contrato llegan a las métricas, salvo dos casos:
+
+- Lotes con el nombre del ganador y sin ningún identificador, sobre todo
+  UTEs gallegas y empresas extranjeras. `reparto_adjudicacion` los
+  descartaba: 214 contratos sin ninguna fila de empresa, 927 M€.
+- La Plataforma llama "Resuelta" igual a lo formalizado y a lo desierto.
+  ~47.000 expedientes en ADJ/RES no acabaron en contrato y no se podían
+  distinguir. No inflaban ninguna cifra (todas parten del ganador), pero
+  viabilidad necesita saberlo.
+
+**Decisión.** Quien gana sin NIF recibe un código sacado del nombre:
+"SN" + diez cifras hexadecimales del MD5 del nombre en letras y números
+ASCII y en mayúsculas. Tiene doce caracteres, así que no puede coincidir
+con un NIF. Está igual en el lector y en la base (`codigo_sin_nif`). Los
+nombres que no son empresa ("SEGUN RESOLUCION", "Ver Resolución
+Adjunta", "18 empresas adjudicatarias"…) no reciben código. El lector
+guarda además el código de resultado de cada lote (`resultado`:
+adjudicado, formalizado, desierto, desistimiento, renuncia…) y la base
+deduce el del expediente con `sin_contrato(adjudicaciones)`. Para lo
+anterior a hoy basta con no tener ganador: en los feeds van siempre
+juntos (425 lotes comprobados, sin excepción).
+
+**Motivo.** Un código por nombre parte en dos a la misma UTE si se
+escribe distinto, pero es mejor que no contarla. Una función, y no una
+columna, porque añadir una columna generada reescribe los 2,5 GB de
+`licitaciones`, y una columna normal obligaba a tocar cinco rutas de
+escritura. Ver
+`supabase/migrations/20261004100000_ganadores_sin_nif_y_sin_contrato.sql`.
+
+**Resultado.** 368 contratos y 1.212 M€ recuperados en
+`adjudicaciones_empresa`. 47.112 desiertos, 92 renuncias y 83
+desistimientos identificados.
+
+**Ganadores fantasma (mismo día).** Al cruzar `sin_contrato` con la
+columna principal salieron 638 expedientes desiertos que conservaban el
+ganador de una versión adjudicada anterior: 391 M€ que contaban sin
+haberse contratado. `completar_explicacion` hacía `coalesce(nuevo,
+viejo)` y una versión desierta no trae ganador. Ahora, si la versión nueva
+no acaba en contrato, manda ella: sin ganador, NIF ni importe. Ver
+`supabase/migrations/20261004110000_ganadores_fantasma.sql` y
+`PENDIENTES.md` §19.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
