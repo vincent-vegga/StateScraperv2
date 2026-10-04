@@ -3178,12 +3178,6 @@ function selectorPeriodo(hueco, anios, periodo, alCambiar, volumen = null) {
   pintar(actual);
 }
 
-// Sin NIF, las correcciones que más afinan la lista: el aviso de encima
-// de la lista las cuenta («llevas 3 de 10»). PROVISIONAL: la cifra tiene
-// que salir de la medición de correcciones (corrN_nuevo en
-// scripts/medir_sintetico.py, rama simulacion-web), no de una intuición.
-const CORRECCIONES_PARA_AFINAR = 10;
-
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -7540,7 +7534,7 @@ function pantallaBienvenida(perfil, session) {
         <p class="lema">Verás estos botones en cada contrato. Úsalos cuando
         algo no encaje: a las pocas correcciones <strong>ajustamos tu
         filtro</strong> y dejas de ver lo que no es para ti.${perfil.cif ? '' : `
-        Las primeras ${CORRECCIONES_PARA_AFINAR} son las que más lo afinan.`}</p>
+        Las primeras son las que más lo afinan.`}</p>
       </div>
       <div class="entra">
         <!-- El aviso nace apagado (20260922180000) y la portada promete
@@ -7740,7 +7734,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     ajustamos y vuelves a ver la lista con lo que de verdad te encaja.` : `Tu
     lista sale de lo que nos contaste de tu empresa, así que al principio
     falla más que la de quien ya ha ganado contratos. <strong>Lo que más la
-    afina son tus primeras ${CORRECCIONES_PARA_AFINAR} correcciones</strong>:
+    afina son tus primeras correcciones</strong>:
     marca <strong>no me interesa</strong> en lo que no es tuyo y
     <strong>sí me interesa</strong> en lo que sí.
     <span id="llevas-afinar"></span>`}
@@ -7766,17 +7760,18 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     try { localStorage.setItem('sin-explicacion', '1'); } catch { /* nada */ }
   });
 
-  // Sin NIF, cuántas correcciones lleva de las primeras que más afinan.
+  // Sin NIF, cuántas correcciones lleva. Sin meta: en la medición del
+  // 04/10 la lista mejora a partir de unas 10 y sigue mejorando a las 20,
+  // sin un punto en el que pare, y pedir una cifra así asusta.
   // Se cuentan en la base (no en el navegador: puede corregir desde el
   // móvil) y se suma en el momento al corregir, sin volver a preguntar.
   let correccionesHechas = null;
   const pintarLlevas = () => {
     const sitio = document.getElementById('llevas-afinar');
     if (!sitio || correccionesHechas == null) return;
-    sitio.textContent = correccionesHechas >= CORRECCIONES_PARA_AFINAR
-      ? `Ya llevas ${correccionesHechas}: tu lista sigue aprendiendo con cada una.`
-      : correccionesHechas === 0 ? 'Aún no has hecho ninguna.'
-      : `Llevas ${correccionesHechas} de ${CORRECCIONES_PARA_AFINAR}.`;
+    sitio.textContent = correccionesHechas === 0 ? 'Aún no has hecho ninguna.'
+      : correccionesHechas === 1 ? 'Llevas una.'
+      : `Llevas ${correccionesHechas}.`;
   };
   if (!perfil.cif && explica?.isConnected) {
     sb.from('correcciones').select('id', { count: 'exact', head: true })
