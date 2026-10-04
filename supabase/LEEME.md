@@ -187,9 +187,18 @@ Y en el panel, los timeouts se ven en **Logs → Postgres**, buscando
 
 ---
 
+## Viabilidad: fuera del cajón (04/10/2026)
+
+Vuelve encendida con el emparejamiento por series (`serie_de`,
+decisión 45, `migrations/20261004120000_viabilidad_por_series.sql`):
+palabras raras dentro del organismo, semejanza ≥ 0,6, sin obras y sin
+contratos paralelos. `ediciones_anteriores` ya no recibe el umbral de
+parecido y dice si cada edición quedó desierta. Lo que sigue es la
+historia de por qué se guardó, y vale para entender el cambio.
+
 ## Viabilidad, guardada en el cajón (20/09/2026)
 
-La pestaña está **escondida, no borrada**. El interruptor es
+La pestaña estaba **escondida, no borrada**. El interruptor es
 `VIABILIDAD_VISIBLE` en `web/index.html`, junto a `ZONA`. Poniéndolo en
 `true` vuelve exactamente como estaba.
 

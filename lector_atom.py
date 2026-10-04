@@ -487,8 +487,109 @@ def limpiar_nombre_adjudicatario(nombre: str) -> str:
     el ranking de competidores. Solo se toca ese caso: otras repeticiones
     al principio son legítimas ("GARCIA GARCIA ALICIA", "FRIO FRIO
     INSTALACIONES").
+
+    También repara un "&" roto en origen: la plataforma gallega publica
+    "EQUIPO MULTIDISCIPLINAR X &' || ' OUTROS", con el trozo de SQL con
+    que alguien concatenó el nombre.
     """
-    return re.sub(r"^\s*(UTE\s+)+(?=UTE\b)", "", nombre or "", flags=re.IGNORECASE).strip()
+    nombre = (nombre or "").replace("&' || '", "& ")
+    nombre = re.sub(r"\s{2,}", " ", nombre)
+    return re.sub(r"^\s*(UTE\s+)+(?=UTE\b)", "", nombre, flags=re.IGNORECASE).strip()
+
+
+# Lo que algunos órganos escriben en la casilla del adjudicatario cuando no
+# ponen a nadie: no es una empresa y no debe convertirse en una.
+NO_ES_EMPRESA = re.compile(
+    r"^\W*$|^DESIERT|^DESERT|SEG[UÚ]N RESOLUCI|VER RESOLUCI|"
+    r"VARIOS ADJUDICATARIOS|^\d+ EMPRESAS ADJUDICATARIAS",
+    re.IGNORECASE)
+
+
+def codigo_sin_nif(nombre: str) -> str:
+    """
+    Un identificador estable para quien gana sin NIF publicado.
+
+    Hay UTEs (sobre todo gallegas) y empresas extranjeras que llegan con
+    nombre y sin ningún identificador. Sin él no entraban en ninguna ficha
+    ni ranking: 214 contratos y 927 M€ medidos el 04/10/2026. "SN" + diez
+    cifras hexadecimales del MD5 del nombre, solo letras y números ASCII,
+    en mayúsculas: doce caracteres, así que no puede coincidir con un NIF.
+
+    La base tiene la misma fórmula (`public.codigo_sin_nif`) para el
+    relleno: si se cambia aquí, hay que cambiarla allí.
+    """
+    if NO_ES_EMPRESA.search(nombre or ""):
+        return ""
+    limpio = re.sub(r"[^A-Za-z0-9]", "", nombre or "").upper()
+    if not limpio:
+        return ""
+    return "SN" + hashlib.md5(limpio.encode()).hexdigest()[:10].upper()
+
+
+# Resultado de cada lote (`TenderResultCode`, lista CODICE 2.09). La
+# Plataforma llama "Resuelta" igual a lo formalizado y a lo desierto; esto
+# los distingue. Los que no acaban en contrato no traen ganador: comprobado
+# el 04/10/2026 en la primera página de los dos feeds, 425 lotes sin una
+# sola excepción. Lo lee la base con `public.sin_contrato`.
+RESULTADOS = {
+    "1": "adjudicado", "2": "adjudicado", "8": "adjudicado",
+    "9": "formalizado", "11": "formalizado", "10": "mejor_valorado",
+    "3": "desierto", "6": "desierto", "7": "desierto",
+    "4": "desistimiento", "5": "renuncia",
+}
+
+
+def extraer_duracion(entrada: etree._Element) -> dict[str, Any]:
+    """
+    Duración del contrato, en meses, y texto de las prórrogas.
+
+    Sale del `PlannedPeriod` del contrato (no del de cada lote): lo
+    publica el 90 % de los expedientes, con `DurationMeasure` y una
+    unidad CODICE (MON meses, ANN años, DAY días, WEE semanas). Otro 10 %
+    solo trae `StartDate` y `EndDate`; de ahí se deduce y se marca como
+    tal. Si no hay ninguna de las dos, queda a None: mejor un hueco que
+    una cifra inventada, igual que con los importes.
+
+    Las prórrogas llegan como texto libre ("3 años adicionales", "dos
+    prórrogas de 12 meses") y no se interpretan: se guardan tal cual.
+    """
+    vacio = {"duracion_meses": None, "duracion_origen": None,
+             "prorrogas_texto": None}
+    proyectos = []
+    for estado in buscar_todos(entrada, "ContractFolderStatus"):
+        proyectos += buscar_hijos(estado, "ProcurementProject")
+    periodos = [p for pr in proyectos for p in buscar_hijos(pr, "PlannedPeriod")]
+    if not periodos:
+        return vacio
+
+    meses = origen = None
+    por_unidad = {"MON": 1.0, "ANN": 12.0, "DAY": 12.0 / 365.25,
+                  "WEE": 12.0 / 52.18}
+    for periodo in periodos:
+        for medida in buscar_hijos(periodo, "DurationMeasure"):
+            n = a_numero(texto_limpio(medida.text))
+            factor = por_unidad.get((medida.get("unitCode") or "").upper())
+            if n is not None and factor and n > 0:
+                meses, origen = round(n * factor, 2), "publicada"
+                break
+        if meses is None:
+            inicio = a_fecha(primer_texto(periodo, "StartDate", solo_hijos=True))
+            fin = a_fecha(primer_texto(periodo, "EndDate", solo_hijos=True))
+            if inicio and fin and fin > inicio:
+                meses = round((fin - inicio).days / 30.4375, 1)
+                origen = "fechas"
+        if meses is not None:
+            break
+    # Más de cien años es un error de tecleo (años en la casilla de días).
+    if meses is not None and not 0 < meses <= 1200:
+        meses = origen = None
+
+    prorrogas = " | ".join(filter(None, (
+        texto_limpio(d.text)
+        for e in buscar_todos(entrada, "ContractExtension")
+        for d in buscar_todos(e, "Description"))))
+    return {"duracion_meses": meses, "duracion_origen": origen,
+            "prorrogas_texto": prorrogas[:500] or None}
 
 
 def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
@@ -555,9 +656,14 @@ def extraer_adjudicaciones(entrada: etree._Element) -> list[dict[str, Any]]:
         if bruto.isdigit():
             licitadores = int(bruto)
 
+        nombre = limpiar_nombre_adjudicatario(nombre)
+        if nombre and not cif:
+            cif = codigo_sin_nif(nombre)
+
         adjudicaciones.append({
             "lote": numero,
-            "adjudicatario": limpiar_nombre_adjudicatario(nombre),
+            "resultado": RESULTADOS.get(primer_texto(resultado, "ResultCode"), ""),
+            "adjudicatario": nombre,
             "cif": cif,
             "importe": sin_iva,
             "importe_con_iva": con_iva,
@@ -772,6 +878,16 @@ def es_enlace_de_pruebas(enlace: str) -> bool:
 
 def extraer_enlace(entrada: etree._Element) -> str:
     """URL pública del expediente."""
+    return _sin_concatenacion(_enlace_en_bruto(entrada))
+
+
+def _sin_concatenacion(enlace: str) -> str:
+    # Navarra y Bilbao publican la URL con un resto de concatenación SQL
+    # pegado (`&' || 'Ticket=…`) que la rompe.
+    return enlace.replace("' || '", "")
+
+
+def _enlace_en_bruto(entrada: etree._Element) -> str:
     for nodo in buscar_hijos(entrada, "link"):
         href = nodo.get("href")
         if href:
@@ -1296,6 +1412,7 @@ def extraer_placsp(entrada: etree._Element, fuente: str) -> dict[str, Any] | Non
         "presupuesto_base": extraer_presupuesto_detallado(entrada)[0],
         "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
         "sistema": extraer_sistema(entrada),
+        **extraer_duracion(entrada),
         **extraer_criterios(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
         **resumir_adjudicaciones(
@@ -1454,6 +1571,7 @@ def extraer_catalunya(entrada: etree._Element, fuente: str) -> dict[str, Any] | 
         "presupuesto_base": extraer_presupuesto_detallado(entrada)[0],
         "valor_estimado": extraer_presupuesto_detallado(entrada)[1],
         "sistema": extraer_sistema(entrada),
+        **extraer_duracion(entrada),
         **extraer_criterios(entrada),
         "adjudicaciones": extraer_adjudicaciones(entrada),
         **resumir_adjudicaciones(
@@ -2385,6 +2503,9 @@ def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
             "presupuesto_base": item.get("presupuesto_base"),
             "valor_estimado": item.get("valor_estimado"),
             "sistema": item.get("sistema") or None,
+            "duracion_meses": item.get("duracion_meses"),
+            "duracion_origen": item.get("duracion_origen"),
+            "prorrogas_texto": item.get("prorrogas_texto"),
             "peso_objetivo": item.get("peso_objetivo"),
             "peso_subjetivo": item.get("peso_subjetivo"),
             "criterios": item.get("criterios") or None,

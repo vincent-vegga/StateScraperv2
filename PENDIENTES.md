@@ -385,3 +385,131 @@ pero el cribado de contratos de frontera ("quizás" o "no") puede variar:
 **Cómo cerrarlo, si molesta.** Copiar los veredictos de otro perfil con el
 mismo NIF y el mismo criterio en vez de volver a cribar. Además sería más
 barato.
+
+---
+
+## 16. Organismos: enseñar lo que le interesa a la empresa, no solo su CPV (opción A, en reserva)
+
+**Qué pasa.** La ficha de organismo solo cuenta contratos cuyo CPV
+**principal** está en `perfiles.cpv_prefijos`. No pasa por ningún juez.
+Con perfiles como el de una empresa de IA para atención ciudadana por voz
+(alta sin NIF, 26/09/2026), sus CPV son todos de la familia 72 (software).
+Deja fuera lo que de verdad le interesa: 7951 (centro de llamadas), 7934
+(atención omnicanal), 6421 (contact center) o 4800 (plataformas de IA). Y
+cuenta como suyo mucho software genérico: el juez de mercado
+(`veredictos_mercado`) marcó como ajenos 108 de 120 contratos recientes de
+sus CPV (a SOLTEC, 131 de 180).
+
+**No se puede arreglar ampliando `cpv_prefijos`**: alimenta avisos,
+cribado, Empresas y Movimientos, y en las altas con NIF no se toca.
+
+**Opción A (guardada 28/09/2026).** En cada ficha, además de lo de ahora,
+ordenar **todos** los contratos adjudicados del organismo, de cualquier
+CPV, por parecido de título (huellas, `huellas.py`) con los contratos de
+referencia del perfil. Son los mismos que usa `puntuador.py`: los ganados
+en las altas con NIF, los sintéticos (`perfiles.ganados_sinteticos`) en
+las altas por descripción. Enseñar los más cercanos como "contratos
+parecidos a los tuyos".
+
+- Igual para las dos vías de alta, y solo lee lo que ya genera el
+  puntuador: no toca el sistema del NIF.
+- Riesgo: en las altas sin NIF depende de cómo se generen los sintéticos,
+  que se está rehaciendo. Si deja de haber "unos títulos de referencia",
+  hay que adaptarla.
+- Las huellas viven en Storage (~1,1 M vectores), no en Postgres: el
+  cálculo tendría que hacerse fuera (GitHub Actions) y guardarse por
+  perfil y organismo, o limitarse a los organismos que se abran.
+
+**Antes de construir:** medirla con dos perfiles (el de atención
+ciudadana y SOLTEC) en un par de organismos, y ver qué contratos quedan
+arriba.
+
+**Lo que no arregla:** lo que el organismo compra por contratos menores o
+por centrales de compras (acuerdos marco del CCDL, la FEMP o la DGRCC)
+sigue sin estar en la base (ver §6 y §12).
+
+---
+
+## 17. ~~UTEs en la web: rehacerlas como apartado propio de Mercado~~ (resuelto 02/10/2026)
+
+Resuelto con un interruptor en la ficha de empresa (decisión 42).
+
+**Estado (01/10/2026).** Los datos están en producción y se mantienen
+solos: `ute_socios` (4.057 parejas, 1.603 empresas socias), la función
+`utes_y_socios` y el workflow semanal `utes-socios.yml` (decisión 42). En
+la web están **apagadas** (`UTES_VISIBLE = false` en `web/index.html`): la
+ficha de empresa es la de antes.
+
+**Por qué se apagaron.** Las secciones al final de la ficha de empresa
+confundían:
+
+- Al pulsar una UTE, la página no subía: te quedabas al final de la ficha
+  nueva, sin ver el título.
+- La ficha de una UTE parecía la de cualquier empresa; quién la forma
+  estaba al final de todo.
+- "← Volver a las listas" devolvía a la ficha anterior, no a las listas.
+- Todo el nombre era un enlace, sin aspecto de enlace.
+
+**Idea para retomarlo.** Un botón dentro de Mercado que lleve a un
+apartado solo de UTEs, y dentro de él:
+
+- subir arriba al abrir otra ficha desde un enlace (no al cambiar el
+  periodo);
+- en una UTE, decirlo arriba: "UTE formada por X e Y", con enlaces;
+- enlaces con aspecto de enlace (solo el nombre, en color de acento);
+- el botón de volver dice adónde vuelve.
+
+---
+
+## 18. ~~UTEs: agrupaciones sin la palabra UTE~~ (resuelto 03/10/2026)
+
+Resuelto: revisada una segunda muestra de 30 (28 bien, una UTE de cuatro
+con dos socios identificados, y un falso socio por la palabra genérica
+"SISTEMA", que ahora se descarta). Ejecutado con `--real`: 415
+agrupaciones nuevas, 4.925 parejas, 1.763 empresas socias.
+
+**Qué pasa.** Muchas UTEs llegan sin "UTE" en el nombre y con un número de
+la plataforma en vez de NIF: "MANTENIMIENTO DE INFRAESTRUCTURAS, S.A. -
+SURGE AMBIENTAL S.L." (`326611`). `scripts/utes_socios.py` no las mira, así
+que en Mercado y en Organismos no se marcan como UTE.
+
+**Lo que hay hecho, sin validar.** En el commit `8dd305a` (rama
+`claude/trusting-faraday-7lnnem`), el script las incluye si en el nombre
+se identifican dos o más sociedades distintas. Medido en seco el
+03/10/2026: +415 agrupaciones, 4.928 parejas UTE-socio en total.
+
+**Lo que se aprendió.** El número de la plataforma NO identifica a una sola
+entidad: el mismo sale con nombres de empresas distintas ("SANTANA MOTORS,
+S.L" y otra agrupación). Juntar los socios de todos sus nombres daba UTEs
+falsas; el arreglo (un número con más de un nombre distinto se deja fuera)
+está en ese commit.
+
+**Para cerrarlo.** Revisar a mano una muestra de 30 de las agrupaciones
+nuevas con el arreglo puesto; si sale bien, recuperar el script de ese
+commit y lanzar el workflow `utes-socios.yml`.
+
+---
+
+## 19. ~~Ganadores fantasma en expedientes desiertos~~ (resuelto 04/10/2026)
+
+Resuelto en `supabase/migrations/20261004110000_ganadores_fantasma.sql`
+(decisión 44).
+
+**Qué pasaba.** 638 expedientes tenían todos los lotes sin ganador
+(`sin_contrato` no nulo), pero conservaban ganador, NIF e importe en la
+columna principal. Contaban en todas las pantallas de mercado: 391 M€. Se
+comprobaron cinco en la Plataforma y ninguno llegó a contrato: tres
+desiertos (uno "se niega a firmar el contrato"), una renuncia y una
+anulación de lotes.
+
+**La causa.** `completar_explicacion` aplica la versión más nueva del
+histórico con `coalesce(nuevo, viejo)`. Una versión desierta no trae
+ganador, así que se quedaba el de la versión adjudicada anterior. Todos
+venían del histórico; el feed escribe todos los campos.
+
+**Arreglo.** Si la versión nueva trae lotes y ninguno acaba en contrato,
+la función vacía el ganador, el NIF, los importes y el número de
+adjudicatarios. Los 638 se limpiaron; el disparador borró sus filas de
+`adjudicaciones_empresa`. Probado dentro de una transacción deshecha:
+una versión desierta posterior deja el expediente sin ganador y sin
+filas de empresa.

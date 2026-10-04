@@ -1086,6 +1086,247 @@ muy por encima del criterio en prosa (32 % de media).
 
 ---
 
+## 42. UTEs: quién las forma, sin repartir el dinero
+
+**Contexto.** Desde 2024 (sin menores), 7.730 UTEs ganaron 12.781
+adjudicaciones por 42.100 M€, el 17 % del dinero. La plataforma publica el
+nombre, el NIF y el importe de la UTE; no publica los socios ni cuánto le
+toca a cada uno (va en su contrato privado, y las UTE no se inscriben en el
+Registro Mercantil). Ningún competidor revisado lo reparte: Civio ("¿Quién
+cobra la obra?", 2016) y Gobierto enseñan la UTE como entidad y, en cada
+empresa, las UTEs en las que participa.
+
+**Decisión.** El mismo modelo. La UTE sigue siendo una entidad con sus
+contratos e importe, como hasta ahora, y además:
+
+- Ficha de empresa: "UTEs en las que participa", con el importe de **toda**
+  la UTE rotulado así. No cuenta en las cifras de la empresa.
+- Ficha de UTE: "Empresas que forman esta UTE".
+
+Los socios se sacan del nombre de la UTE (`scripts/utes_socios.py`, tabla
+`ute_socios`, función `utes_y_socios`, workflow semanal `utes-socios.yml`),
+solo con cruces fiables: el NIF del socio escrito en el nombre, o un trozo
+del nombre que coincide sin forma jurídica con una única sociedad del
+catálogo. Revisado a mano: 24 de 25 bien. Se descartaron el cruce por el
+principio del nombre (~72 %) y por contenido (~60 %): confunden filiales
+("Telefónica Móviles" con "Telefónica SA") y topónimos.
+
+**Cobertura** (01/10/2026). 7.867 UTEs: dos o más socios en el 12 %, uno en
+el 25 %, ninguno en el 63 %. 4.057 parejas, 1.603 empresas socias. Lo que
+queda fuera son siglas ("UTE INCOPE-CYGSA"), nombres de proyecto ("UTE 3
+XEMENEIES") y socios que nunca han ganado solos y no están en el catálogo.
+
+**Lo que no cambia.** El historial de las altas con NIF (`puntuador.py`,
+`ultimos_ganados`) sigue sin incluir lo ganado en UTE: es el sistema del
+NIF y no se toca.
+
+**En la web (02/10/2026).** La ficha de empresa tiene un interruptor
+"Contratos / UTEs y acuerdos marco · N". Por defecto, contratos; si en el
+periodo solo tiene UTEs o marcos, abre en esos. Los acuerdos marco se
+mudaron ahí desde el final de la ficha. En una UTE, quién la forma va
+arriba, bajo el nombre. Al abrir otra ficha desde un enlace se sube arriba,
+el botón de volver dice adónde vuelve y la vista elegida se recuerda al
+volver atrás. La primera versión (01/10, secciones al final de la ficha)
+se apagó por confusa: ver `PENDIENTES.md` §17.
+
+**En Organismos (03/10/2026).** En la lista de empresas y de contratos de
+un organismo, las UTEs llevan la marca "UTE" y con quién van
+(`socios_de_utes`). Las cifras no cambian. El nombre de cualquier empresa
+abre su ficha en Mercado ("← Volver a {organismo}"); solo el nombre, para
+que pasar o tocar la fila siga filtrando sus contratos.
+
+**Agrupaciones sin la palabra UTE (03/10/2026).** También cuentan como UTE
+las que traen un número de la plataforma en vez de NIF si en su nombre se
+identifican dos o más sociedades ("MANTENIMIENTO DE INFRAESTRUCTURAS, S.A.
+- SURGE AMBIENTAL S.L."). Un número con más de un nombre distinto se deja
+fuera: no identifica a una sola entidad. Palabras genéricas sueltas
+("SISTEMA", "SERVICIOS"…) no bastan para identificar un socio. Resultado:
+8.262 UTEs, 4.925 parejas, 1.763 empresas socias.
+
+---
+
+## 43. Empresas: la competencia de tu tamaño, por lo que gana al año
+
+**Contexto.** Un betatester con una pyme entraba en Empresas y lo primero
+que veía era al líder del sector, que gana cientos de millones al año y
+contra el que no puede hacer nada. Quiere ver a quien le quita los
+contratos a su escala. La facturación no está en los datos.
+
+Medido con los 21 perfiles con NIF (desde 2024, ránking por contratos en
+sus prefijos):
+
+| Filtro | Qué pasa con las tres primeras |
+|---|---|
+| Por tamaño de contrato (p25/2 – p75×2 de lo que gana el perfil) | Igual o peor en 6 de 7 perfiles pequeños: los grandes también ganan muchos contratos pequeños |
+| Por lo que gana la empresa al año en contratos públicos (10× lo suyo) | En los perfiles de menos de 1 M€/año pasan de empresas de 3-800 M€/año a otras de 10.000 € a 4 M€/año, con 8-140 contratos en su sector. Por encima de 1 M€/año apenas cambia |
+
+**Decisión** (03/10/2026). Encima de la lista, un deslizador con un tope a
+lo que ganan al año y cuatro paradas, de menos a más: hasta 500.000 €,
+2 M€, 10 M€, o todas. La regla va escrita en la frase de la lista, así que
+no hay nada que adivinar: si no cuadra, se mueve y se guarda en el perfil
+(`perfiles.tamano_competencia`). Con NIF y sin haber elegido, el primer
+tope que llega a diez veces lo que gana él (todas, si pasa de 1 M€ al
+año); sin NIF, todas. Las dos tablas ganan la columna "Gana al año" (en
+el móvil, una línea bajo el nombre). Lo que gana al año es la media de
+los dos últimos años, en todos sus sectores, sin menores ni
+homologaciones (`empresas_por_cif.anual`, cada día con
+`refrescar_empresas`). Ver
+`supabase/migrations/20261003100000_competencia_de_tu_tamano.sql`.
+
+**Motivo.** Lo que gana en contratos públicos es lo que importa para saber
+quién te quita contratos, y es una cota inferior de la facturación: quien
+gana 276 M€ al año con la administración no es una pyme. Un interruptor
+que dedujera el tamaño fallaría sin que se viera, y quien entra sin NIF
+no tiene nada de lo que deducirlo.
+
+**Por qué esos topes.** Se eligieron a ojo (números redondos, cada uno
+×4-5 el anterior) y se comprobaron después. Lo que gana cada empresa al
+año tiene un solo pico, tanto contando empresas (entre 10.000 y 100.000 €)
+como contando contratos (entre 300.000 € y 3 M€): no hay cortes naturales,
+así que cualquier tope es una convención. Estos se sostienen por dos
+cosas:
+
+- 2 M€ y 10 M€ son los umbrales de facturación de la UE para micro y
+  pequeña empresa. Como lo ganado en contratos públicos no puede pasar de
+  la facturación, quien gana más de 2 M€ al año no es una microempresa, y
+  quien gana más de 10 M€ no es pequeña.
+- Cada parada añade una parte parecida del mercado. De los contratos de
+  los dos últimos años (sin menores ni homologaciones), los ganan
+  empresas de hasta 500.000 €/año el 41 %, hasta 2 M€ el 61 % (+20) y
+  hasta 10 M€ el 79 % (+18); el 21 % restante, las de más. Entre las 8.189
+  empresas con 10 o más contratos en esos dos años (las que pueden salir
+  en la lista), los topes caen cerca de los percentiles 30, 65 y 90.
+
+Lo que sigue a ojo es el valor de partida con NIF: diez veces lo que gana
+la empresa. Se midió con 10× y funcionó; no se probaron otros.
+
+**En reserva.** Una parada en 50 M€, el umbral de la UE de empresa
+mediana. Hoy quien gana más de 1 M€ al año arranca en "todas" y ve a los
+de cientos de millones; con esa parada una mediana arrancaría sin ellos.
+Solo si alguna empresa mediana lo pide.
+
+**Lo que no se cubre, a propósito.** Las empresas cuyos lotes no traen
+importe salen con poco o nada al año y pasan cualquier tope; lo mismo una
+UTE de dos grandes con poco volumen. Son casos raros.
+
+---
+
+## 44. Ganadores sin NIF con código propio; desiertos distinguidos
+
+**Contexto.** Revisión de huecos del 04/10/2026, sin menores. Todos los
+tipos de contrato llegan a las métricas, salvo dos casos:
+
+- Lotes con el nombre del ganador y sin ningún identificador, sobre todo
+  UTEs gallegas y empresas extranjeras. `reparto_adjudicacion` los
+  descartaba: 214 contratos sin ninguna fila de empresa, 927 M€.
+- La Plataforma llama "Resuelta" igual a lo formalizado y a lo desierto.
+  ~47.000 expedientes en ADJ/RES no acabaron en contrato y no se podían
+  distinguir. No inflaban ninguna cifra (todas parten del ganador), pero
+  viabilidad necesita saberlo.
+
+**Decisión.** Quien gana sin NIF recibe un código sacado del nombre:
+"SN" + diez cifras hexadecimales del MD5 del nombre en letras y números
+ASCII y en mayúsculas. Tiene doce caracteres, así que no puede coincidir
+con un NIF. Está igual en el lector y en la base (`codigo_sin_nif`). Los
+nombres que no son empresa ("SEGUN RESOLUCION", "Ver Resolución
+Adjunta", "18 empresas adjudicatarias"…) no reciben código. El lector
+guarda además el código de resultado de cada lote (`resultado`:
+adjudicado, formalizado, desierto, desistimiento, renuncia…) y la base
+deduce el del expediente con `sin_contrato(adjudicaciones)`. Para lo
+anterior a hoy basta con no tener ganador: en los feeds van siempre
+juntos (425 lotes comprobados, sin excepción).
+
+**Motivo.** Un código por nombre parte en dos a la misma UTE si se
+escribe distinto, pero es mejor que no contarla. Una función, y no una
+columna, porque añadir una columna generada reescribe los 2,5 GB de
+`licitaciones`, y una columna normal obligaba a tocar cinco rutas de
+escritura. Ver
+`supabase/migrations/20261004100000_ganadores_sin_nif_y_sin_contrato.sql`.
+
+**Resultado.** 368 contratos y 1.212 M€ recuperados en
+`adjudicaciones_empresa`. 47.112 desiertos, 92 renuncias y 83
+desistimientos identificados.
+
+**Ganadores fantasma (mismo día).** Al cruzar `sin_contrato` con la
+columna principal salieron 638 expedientes desiertos que conservaban el
+ganador de una versión adjudicada anterior: 391 M€ que contaban sin
+haberse contratado. `completar_explicacion` hacía `coalesce(nuevo,
+viejo)` y una versión desierta no trae ganador. Ahora, si la versión nueva
+no acaba en contrato, manda ella: sin ganador, NIF ni importe. Ver
+`supabase/migrations/20261004110000_ganadores_fantasma.sql` y
+`PENDIENTES.md` §19.
+
+---
+
+## 45. Viabilidad: la convocatoria anterior por palabras raras del organismo
+
+**Contexto.** Viabilidad se escondió el 20/09/2026. Para ella,
+"convocatoria anterior" era cualquier contrato del mismo órgano y CPV
+principal con el título parecido al 40 %, y en grupos grandes pasaba el
+90 %: decía "X ha ganado 8 de las últimas 10 convocatorias de este
+contrato" de diez contratos distintos.
+
+**Lo medido** (04/10/2026, 300 licitaciones abiertas al azar):
+
+- La fecha de vencimiento del contrato anterior (inicio + duración, en
+  el 97 % de los adjudicados) y el importe anual descartan poco: aún
+  quedaban 49 de 300 con más de tres candidatos.
+- Lo que separa al bueno son las palabras **raras dentro del
+  organismo**. En las vigilancias de Málaga, "servicio de vigilancia y
+  seguridad" sale en todas; "sede, servicios operativos, régimen
+  interior" solo en la buena. Cada palabra pesa su rareza en el grupo
+  órgano + CPV, y la semejanza es el peso compartido sobre el del
+  título nuevo. Con 0,6 o más, revisados a mano, el anterior es el bueno
+  en la práctica totalidad; entre 0,4 y 0,6, la mitad.
+- Las obras (CPV 45) no se repiten: no tienen convocatoria anterior.
+- Un acuerdo marco se emparejaba con sus propios contratos derivados.
+- Hay organismos con contratos **paralelos**: una mutua con 11
+  contratos de diagnóstico por imagen en dos años, uno por localidad y
+  con 11 ganadores distintos.
+
+**Decisión.** La serie de un contrato (`serie_de`) son los contratos
+adjudicados o desiertos del mismo órgano, CPV principal y clase de
+sistema (contrato, marco o basado en un marco), de los últimos seis
+años, con semejanza ≥ 0,6. Sin obras. Si salen más de 4, o 3 en doce
+meses, son paralelos y no se afirma nada. "De este contrato" solo se
+dice con serie; sin ella, el reparto es el del organismo, rotulado así,
+y un proveedor dominante da como mucho "difícil". "Cerrado" pide tres
+convocatorias o más con el mismo ganador en el 60 % y que también ganara
+la más reciente: si la última se la llevó otra empresa, el contrato ha
+cambiado de manos y se dice así (pasó en Girona: 2 de 3 para una, la de
+julio de 2026 para otra). Una convocatoria anterior desierta se dice.
+
+**Motivo.** Es mejor callar que afirmar algo falso, que fue lo que la
+escondió. Con 0,6 se pierde la mitad de los aciertos de la franja
+0,4-0,6, casi todos por idioma (castellano contra catalán o gallego).
+
+**Resultado.** El 22-25 % de las abiertas tiene serie (antes un 39 %,
+con muchos falsos), de 1 a 4 ediciones. `viabilidad` tarda 24 ms de
+mediana y 450 ms como máximo. Comprobado en pantalla con una cuenta de
+prueba (Silex Seguridad): serie de tres, serie con una desierta,
+contratos paralelos, solo desiertas y "Este contrato es tuyo". Ver
+`supabase/migrations/20261004120000_viabilidad_por_series.sql`.
+
+**Revisión antes de encenderla** (mismo día, 120 abiertas al azar):
+
+- "Este contrato es tuyo" salía al ser el líder del reparto, también
+  sin serie (líder del organismo) o habiendo perdido la última. Ahora
+  solo con serie y si ganaste la más reciente.
+- La baja, los licitadores de media y el "solo se presentó una empresa"
+  contaban menores, duplicados y, en un acuerdo marco, sus derivados
+  ("2.212 de 2.337"). Ahora, como el resto de pantallas: adjudicados, sin
+  menores ni duplicados y de su misma clase de sistema. El reparto del
+  organismo, igual.
+- Con una sola adjudicación salía "1 empresas distintas se reparten las
+  1 adjudicaciones". Ahora dice quién la ganó.
+
+Queda: 104 "Tienes opciones", 14 "difícil" y 2 "cerrado" de 120.
+
+**Pendiente.** Títulos en dos idiomas; y con más histórico (hay desde
+2024 en la mayoría de fuentes), series más largas.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.

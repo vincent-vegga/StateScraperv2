@@ -1,0 +1,48 @@
+# ============================================================
+# SOCIOS DE LAS UTE · rellena `ute_socios`
+# ============================================================
+# Saca del nombre de cada UTE qué sociedades la forman (ver
+# scripts/utes_socios.py y la migración 20261001120000_utes_socios.sql).
+# Lee ~15.000 adjudicaciones y ~220.000 empresas: 1-2 minutos.
+#
+# Semanal: las UTE nuevas son pocas y una semana de retraso en saber sus
+# socios no cambia nada. A mano, con `real` = false, solo mide.
+# ============================================================
+
+name: Socios de las UTE
+
+on:
+  schedule:
+    - cron: '17 15 * * 1'   # lunes, después de los agregados de pg_cron
+  workflow_dispatch:
+    inputs:
+      real:
+        description: "true = escribir en la base; false = solo medir"
+        required: false
+        default: "true"
+
+concurrency:
+  group: utes-socios
+  cancel-in-progress: false
+
+jobs:
+  socios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      - name: Calcular socios
+        run: >
+          python scripts/utes_socios.py
+          ${{ (github.event_name == 'schedule' || inputs.real == 'true') && '--real' || '' }}
