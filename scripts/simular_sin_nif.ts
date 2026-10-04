@@ -336,7 +336,16 @@ async function lineasComoCliente(actividad: string): Promise<string[]> {
 // secreto del repositorio: el repositorio es público y no pueden estar
 // en el código. Ni la dirección ni el texto salen en el registro.
 
-const WEBS: Record<string, string> = JSON.parse(Deno.env.get("SIM_WEBS") || "{}");
+// Sin el BOM que añade PowerShell al guardar el secreto. Si no se puede
+// leer, se para sin citarlo: el error de JSON.parse enseña su principio,
+// y el registro es público.
+const WEBS: Record<string, string> = (() => {
+  try {
+    return JSON.parse((Deno.env.get("SIM_WEBS") || "{}").replace(/^﻿/, "").trim());
+  } catch {
+    throw new Error("SIM_WEBS no es JSON válido");
+  }
+})();
 
 // La portada y hasta seis páginas suyas que por la dirección o el texto
 // del enlace parecen contar qué hace: lo que leería el alta en producción.
