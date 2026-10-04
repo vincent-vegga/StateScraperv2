@@ -825,6 +825,16 @@ def es_enlace_de_pruebas(enlace: str) -> bool:
 
 def extraer_enlace(entrada: etree._Element) -> str:
     """URL pública del expediente."""
+    return _sin_concatenacion(_enlace_en_bruto(entrada))
+
+
+def _sin_concatenacion(enlace: str) -> str:
+    # Navarra y Bilbao publican la URL con un resto de concatenación SQL
+    # pegado (`&' || 'Ticket=…`) que la rompe.
+    return enlace.replace("' || '", "")
+
+
+def _enlace_en_bruto(entrada: etree._Element) -> str:
     for nodo in buscar_hijos(entrada, "link"):
         href = nodo.get("href")
         if href:

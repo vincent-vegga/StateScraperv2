@@ -1748,6 +1748,14 @@ select:focus{
 .enlace-ficha{color:inherit;text-decoration:underline;
   text-decoration-color:var(--fuerte);text-underline-offset:3px}
 .enlace-ficha:hover{text-decoration-color:var(--acento)}
+/* Título de un contrato que abre su expediente fuera de la app: sin
+   subrayado fijo (no es otra ficha) y con ↗ para que se note que sale. */
+.enlace-expediente{color:inherit;text-decoration:none}
+.enlace-expediente:hover{text-decoration:underline;
+  text-decoration-color:var(--acento);text-underline-offset:3px}
+.enlace-expediente .externo{color:var(--tenue);font-size:.85em;white-space:nowrap}
+.solo-lector{position:absolute;width:1px;height:1px;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap}
 /* Marca de UTE en las listas de un organismo: discreta, para distinguir
    una unión temporal de una empresa sin restarle sitio al nombre. */
 .marca-ute{display:inline-block;margin-left:6px;padding:0 5px;border:1px solid var(--linea);
@@ -3027,6 +3035,21 @@ function selectorPeriodo(hueco, anios, periodo, alCambiar, volumen = null) {
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// El título de un contrato como enlace a su expediente en la plataforma
+// de contratación, en otra pestaña. Si no hay un enlace utilizable, el
+// título queda como texto: sin http(s), con restos de concatenación o el
+// de Madrid que no lleva identificador (solo es la portada).
+function tituloConEnlace(titulo, enlace) {
+  const t = esc(titulo ?? '');
+  const ok = /^https?:\/\//i.test(enlace ?? '')
+    && !String(enlace).includes("' || '")
+    && !/\/contrato-publico\/?$/.test(enlace);
+  return ok
+    ? `<a class="enlace-expediente" href="${esc(enlace)}" target="_blank"
+         rel="noopener noreferrer" title="Abrir el expediente en la plataforma de contratación">${t}<span class="externo" aria-hidden="true"> ↗</span><span class="solo-lector"> (se abre en otra pestaña)</span></a>`
+    : t;
+}
 // `useGrouping: 'always'`: en español, Intl no separa los miles de los
 // números de cuatro cifras por defecto, y salía "3524 €" al lado de
 // "12.583 €" en la misma lista.
@@ -5216,7 +5239,7 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
       cajaContratos.innerHTML = filtrados.length
         ? filtrados.slice(0, 14).map(c => `
             <div class="${c.es_mia ? 'mia' : ''}">
-              <p class="que">${esc(c.titulo ?? '')}</p>
+              <p class="que">${tituloConEnlace(c.titulo, c.enlace)}</p>
               <span class="quien">${c.empresa ? empresaTxt(c.cif, c.empresa, true) : ''}${
                 c.otros ? ` y ${c.otros} más` : ''}${
                 cifra(c) ? ` · ${euros(Number(cifra(c)))}` : ''}</span>
@@ -5514,6 +5537,8 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
     // Con varios ganadores: la principal "y 12 más". Si entre los demás
     // está tu empresa o una que sigues, se dice cuál y qué se llevó: es
     // lo único de esos doce que le importa.
+    const enlaceOrgano = o => o ? `<a href="#" class="enlace-ficha"
+      data-a-organismo="${esc(o)}">${esc(o)}</a>` : '';
     const unaLinea = m => {
       const [principal, ...resto] = m.ganadores;
       const destacados = resto.filter(g => g.es_mia || g.la_sigo);
@@ -5523,11 +5548,14 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
         : m.la_sigo ? 'una que sigues' : '';
       return `<div class="movimiento ${m.es_mia ? 'mia' : m.la_sigo ? 'sigo' : ''}">
         <div>
-          <p class="gano">${esc(m.empresa ?? '—')}${
+          <p class="gano">${principal?.cif
+            ? `<a href="#" class="enlace-ficha" data-a-mercado="${esc(principal.cif)}">${esc(m.empresa ?? '—')}</a>`
+            : esc(m.empresa ?? '—')}${
             resto.length ? ` <span class="cuanto">y ${resto.length} más</span>` : ''}${
             marca ? `<span class="marca-mia">${marca}</span>` : ''}</p>
-          <p class="que">${esc(m.titulo ?? '')}</p>
-          <span class="donde">${esc([m.organo, m.provincia].filter(Boolean).join(' · '))}</span>
+          <p class="que">${tituloConEnlace(m.titulo, m.enlace)}</p>
+          <span class="donde">${enlaceOrgano(m.organo)}${
+            m.provincia ? ` · ${esc(m.provincia)}` : ''}</span>
           ${destacados.map(g => `<span class="donde">${
             g.es_mia ? 'Tu empresa' : esc(g.nombre ?? g.cif)}: ${
             plural(g.lotes ?? 1, 'lote', 'lotes')}${
@@ -5558,8 +5586,8 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
               ${mia ? '<span class="marca-mia">tu empresa entre ellas</span>'
               : sigo ? '<span class="marca-mia">una que sigues</span>' : ''}</p>
             <p class="que">${esc(primera.titulo ?? '')}</p>
-            <span class="donde">${esc([primera.organo, primera.provincia]
-              .filter(Boolean).join(' · '))}</span>
+            <span class="donde">${enlaceOrgano(primera.organo)}${
+              primera.provincia ? ` · ${esc(primera.provincia)}` : ''}</span>
             <span class="cuantas-veces">${plural(g.length, 'compra', 'compras')}
               <span class="flechita">▾</span></span>
           </div>
@@ -5620,6 +5648,23 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
           rankings de arriba cuentan todas.</p>` : ''}
         ${cuerpo}
       </div>`;
+
+    // El nombre de la empresa abre su ficha en Mercado y el del organismo
+    // la suya en Organismos. preventDefault evita que, dentro de un grupo
+    // desplegable, el clic pliegue o despliegue el resumen.
+    document.getElementById('datos-mov').onclick = ev => {
+      const e = ev.target.closest('[data-a-mercado]');
+      const o = ev.target.closest('[data-a-organismo]');
+      if (!e && !o) return;
+      ev.preventDefault();
+      if (e) {
+        irA('mercado', { cif: e.dataset.aMercado });
+        pantallaMercado(perfil, session, true, e.dataset.aMercado);
+      } else {
+        pantallaOrganismos(perfil, session, false, o.dataset.aOrganismo);
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    };
 
     const selProv = document.getElementById('f-provincia');
     if (selProv) selProv.onchange = () => {
@@ -6254,7 +6299,7 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
                      text-transform:uppercase">Sus últimos contratos</h4>
           <div class="ultimos-contratos">
             ${ultimos.map(u => `<div>
-              <p class="que">${esc(u.titulo)}</p>
+              <p class="que">${tituloConEnlace(u.titulo, u.enlace)}</p>
               <span class="quien">${esc(u.organo ?? '')}${
                 u.importe ? ` · ${euros(Number(u.importe))}` : ''}${
                 duracionTxt(u.duracion_meses)
@@ -6287,7 +6332,7 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
             cifras de arriba: el dinero llega por los contratos que salen de ellos.</p>
           <div class="ultimos-contratos">
             ${marcos.map(m => `<div>
-              <p class="que">${esc(m.titulo)}</p>
+              <p class="que">${tituloConEnlace(m.titulo, m.enlace)}</p>
               <span class="quien">${esc(m.organo ?? '')}${
                 m.lotes > 1 ? ` · ${plural(m.lotes, 'lote', 'lotes')}` : ''}${
                 m.fecha ? ` · desde ${esc(new Date(m.fecha).toLocaleDateString('es-ES',
