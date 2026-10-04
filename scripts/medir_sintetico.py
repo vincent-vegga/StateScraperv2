@@ -22,16 +22,27 @@ simular_sin_nif.ts con MODO=exportar):
   limpio_desc lo mismo, y el juez ve además la descripción (AVISO_SIN_NIF).
               Es lo que hay en producción (decisión 41) y la base de las
               demás.
-  lineas      además de a qué se dedica, «¿qué productos o servicios
-              vendéis más?»: una búsqueda por línea (puros_lineas), y la
-              descripción que ven el filtro y el juez lleva las líneas.
-  referentes  se le enseñan hasta ocho empresas de su tamaño que ganan lo
-              que describe y marca las que hacen lo mismo que él (el
-              oráculo, con su filtro real: es una cota). De las marcadas,
-              sus contratos (solo título y CPV) intercalados con los más
-              parecidos a la descripción. Si no marca ninguna, igual que
-              limpio_desc.
-  ambas       líneas y referentes.
+  limpio_desc_bis
+              limpio_desc otra vez, desde el filtro y sin reutilizar
+              veredictos: la diferencia entre las dos es el ruido del
+              modelo, el listón que tiene que pasar cualquier mejora.
+  web         en vez de la descripción, lo que el modelo saca de su web (a
+              qué se dedica y sus líneas, sin clientes ni zonas): familias
+              propuestas con eso y una búsqueda por línea. Sin web
+              legible, igual que limpio_desc (lo que haría el alta).
+  web_desc    la descripción y lo de la web juntos.
+  corr10_hoy  el cliente marca 10 contratos de su lista (el oráculo:
+              «me interesa» si están en su lista real) y el motor hace lo
+              de hoy: las correcciones solo llegan al juez.
+  corrN_nuevo lo mismo con 5, 10 o 20 marcas, y el motor cambiado
+              (propuesta 3): los «me interesa» entran en el historial
+              sintético, salen de él los ejemplos parecidos a un «no me
+              interesa», y el grupo se rehace con lo corregido.
+              Con correcciones, los contratos marcados no cuentan: ni en
+              lo que enseña ni en la lista real.
+
+Las líneas de producto y los referentes (medidos el 01/10/2026, sin
+mejora) ya no se exportan.
 
 Con MEDIR_ACTUAL=1 se mide también lo de antes (criterio en prosa), y con
 MEDIR_ANTERIORES=1 sintetico y limpio.
@@ -72,6 +83,10 @@ import puntuador as P  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 SALIDA = Path("simulacion")
 MAX_GASTO = float(os.environ.get("MAX_GASTO", "3"))
+# Cuántos contratos marca el cliente (propuesta 3), y con cuántos se mide
+# también el motor de hoy (las correcciones solo llegan al juez).
+N_MARCAS = (5, 10, 20)
+MARCAS_HOY = 10
 
 
 def prefijos_de(cpvs) -> set[str]:
@@ -190,8 +205,13 @@ def intercalar(*listas: list[dict]) -> list[dict]:
     return salida
 
 
-def con_motor(c, cif, ganados, k, gasto, descripcion=None):
-    """Grupo y lista del motor con un historial sintético (propio a cero)."""
+def con_motor(c, cif, ganados, k, gasto, descripcion=None, correcciones=(), recuerdo=None):
+    """Grupo y lista del motor con un historial sintético (propio a cero).
+
+    `correcciones`: lo que ha marcado el cliente, como en procesar_perfil:
+    el juez ve las más parecidas a cada contrato (sin motivo no hay reglas).
+    `recuerdo`: veredictos ya pedidos con el mismo mensaje exacto, para no
+    pagarlos dos veces. Nunca en la repetición que mide el ruido."""
     gan = [{"id_licitacion": v["id_licitacion"], "titulo": v["titulo"], "cpvs": v["cpvs"]}
            for v in ganados]
     c.completar_huellas({v["titulo"] for v in gan}, guardar=False)
@@ -199,20 +219,72 @@ def con_motor(c, cif, ganados, k, gasto, descripcion=None):
     X[:, 5] = 0.0
     grupo = [c.vivas[j] for j in np.argsort(-P.combinar(X))[:k]]
     E = np.asarray(c.emb[filas], np.float32)
+    corr = [x for x in correcciones if c.fila_de_titulo(x["titulo"]) is not None]
+    C = np.asarray(c.emb[[c.fila_de_titulo(x["titulo"]) for x in corr]], np.float32) \
+        if corr else np.zeros((0, E.shape[1]), np.float32)
     tareas = []
     for idl in grupo:
         f = c.ficha_viva[idl]
         r = c.fila_de_titulo(f["titulo"])
         v = np.asarray(c.emb[r], np.float32) if r is not None else np.zeros(E.shape[1], np.float32)
         ejemplos = [f"- {c.titulos[filas[j]]}" for j in np.argsort(-(E @ v))[:P.EJEMPLOS]]
-        m = P.mensajes_juez(f, ejemplos, [], [])
+        cerca = []
+        if len(C):
+            sc = C @ v
+            cerca = [corr[j] for j in np.argsort(-sc)[:P.CORRECCIONES] if sc[j] >= P.SIM_CORRECCION]
+        m = P.mensajes_juez(f, ejemplos, cerca, [])
         if descripcion:
             m[0]["content"] += AVISO_SIN_NIF
             m[1]["content"] = f"LO QUE LA EMPRESA DICE QUE HACE:\n{descripcion}\n\n" + m[1]["content"]
         tareas.append((idl, m))
+
+    def juicio(t):
+        clave = json.dumps(t[1], ensure_ascii=False)
+        if recuerdo is not None and clave in recuerdo:
+            return recuerdo[clave]
+        j = P.juzgar(t[1], gasto)
+        if recuerdo is not None and j:
+            recuerdo[clave] = j
+        return j
     with ThreadPoolExecutor(8) as ex:
-        juicios = list(ex.map(lambda t: P.juzgar(t[1], gasto), tareas))
+        juicios = list(ex.map(juicio, tareas))
     return {idl for (idl, _), j in zip(tareas, juicios) if j and j["veredicto"] in ("si", "quizas")}
+
+
+def marcas(c, mostrados: set[str], reales: set[str], n: int, semilla: int) -> list[dict]:
+    """El cliente marca `n` contratos de su lista: «me interesa» si están
+    en su lista real, «no me interesa» si no (el oráculo: es una cota). Sin
+    motivo, que es lo más frecuente. Al azar con semilla, no los primeros:
+    no sabemos en qué orden los mira."""
+    rng = np.random.default_rng(semilla)
+    elegidos = rng.permutation(sorted(mostrados))[:n]
+    return [{"id_licitacion": i, "titulo": c.ficha_viva[i]["titulo"],
+             "cpvs": c.ficha_viva[i]["cpvs"], "organo": c.ficha_viva[i].get("organo"),
+             "interesa": i in reales, "motivo": None} for i in elegidos]
+
+
+def historial_corregido(c, ganados: list[dict], corr: list[dict]) -> list[dict]:
+    """Lo que cambiaría en el motor (propuesta 3): los «me interesa» entran
+    en el historial sintético, y sale de él el ejemplo que se parece a un
+    «no me interesa» (con el mismo umbral con el que el juez ve una
+    corrección) más que a cualquier «me interesa»."""
+    def vec(t):
+        r = c.fila_de_titulo(t)
+        return None if r is None else np.asarray(c.emb[r], np.float32)
+    si = [v for v in (vec(x["titulo"]) for x in corr if x["interesa"]) if v is not None]
+    no = [v for v in (vec(x["titulo"]) for x in corr if not x["interesa"]) if v is not None]
+    quedan = []
+    for g in ganados:
+        v = vec(g["titulo"])
+        if v is not None and no:
+            peor = max(float(v @ n) for n in no)
+            mejor = max((float(v @ s) for s in si), default=-1.0)
+            if peor >= P.SIM_CORRECCION and peor > mejor:
+                continue
+        quedan.append(g)
+    vistos = {g["id_licitacion"] for g in quedan}
+    return quedan + [{"id_licitacion": x["id_licitacion"], "titulo": x["titulo"], "cpvs": x["cpvs"]}
+                     for x in corr if x["interesa"] and x["id_licitacion"] not in vistos]
 
 
 def main() -> int:
@@ -232,7 +304,8 @@ def main() -> int:
     ia = cribador.obtener_cliente_openai() if medir_actual else None
     anteriores = os.environ.get("MEDIR_ANTERIORES") == "1"
     VARIANTES = ((["actual"] if medir_actual else []) + (["sintetico", "limpio"] if anteriores else [])
-                 + ["limpio_desc", "lineas", "referentes", "ambas"])
+                 + ["limpio_desc", "limpio_desc_bis", "web", "web_desc"]
+                 + [f"corr{MARCAS_HOY}_hoy"] + [f"corr{n}_nuevo" for n in N_MARCAS])
     resultados, resumen = [], []
 
     for caso in casos:
@@ -245,26 +318,46 @@ def main() -> int:
         R = mostrados_reales(caso["perfil_id"], vivas)
         mostrados, extra = {}, {}
 
-        desc, desc_l = caso["descripcion"], caso.get("descripcion_lineas") or caso["descripcion"]
-        puros_l = caso.get("puros_lineas") or caso["puros"]
-        puros_c = caso.get("puros_referentes") or []
+        desc = caso["descripcion"]
         if anteriores:
             mostrados["sintetico"] = con_motor(c, cif, caso["vecinos"], k, gasto)
+        recuerdo: dict = {}
         limpios = limpiar(desc, caso["puros"], gasto)
         extra["limpios"] = len(limpios)
         extra["quitados"] = [v["titulo"] for v in caso["puros"][:len(limpios) + 20]
                              if v not in limpios][:10]
         if anteriores:
             mostrados["limpio"] = con_motor(c, cif, limpios, k, gasto)
-        mostrados["limpio_desc"] = con_motor(c, cif, limpios, k, gasto, desc)
-        mostrados["lineas"] = con_motor(c, cif, limpiar(desc_l, puros_l, gasto), k, gasto, desc_l)
-        mostrados["referentes"] = (
-            con_motor(c, cif, limpiar(desc, intercalar(caso["puros"], puros_c), gasto), k, gasto, desc)
-            if puros_c else mostrados["limpio_desc"])
-        mostrados["ambas"] = (
-            con_motor(c, cif, limpiar(desc_l, intercalar(puros_l, puros_c), gasto), k, gasto, desc_l)
-            if puros_c else mostrados["lineas"])
-        comp = caso.get("referentes") or {}
+        mostrados["limpio_desc"] = con_motor(c, cif, limpios, k, gasto, desc, recuerdo=recuerdo)
+        # Lo mismo otra vez, desde el filtro y sin recuerdo: lo que cambia
+        # entre las dos es el ruido del modelo, no el método.
+        mostrados["limpio_desc_bis"] = con_motor(c, cif, limpiar(desc, caso["puros"], gasto),
+                                                 k, gasto, desc)
+
+        # La web. Sin web legible, el alta seguiría con la descripción.
+        w = caso.get("web")
+        extra["web"] = bool(w)
+        if w:
+            mostrados["web"] = con_motor(c, cif, limpiar(w["descripcion"], w["puros"], gasto),
+                                         k, gasto, w["descripcion"])
+            mostrados["web_desc"] = con_motor(c, cif, limpiar(w["descripcion_con_desc"],
+                                                              w["puros_con_desc"], gasto),
+                                              k, gasto, w["descripcion_con_desc"])
+        else:
+            mostrados["web"] = mostrados["web_desc"] = mostrados["limpio_desc"]
+
+        # Correcciones sobre lo que enseña producción. Las marcas de 10
+        # incluyen las de 5, y las de 20 las de 10: el mismo cliente que
+        # sigue marcando.
+        todas = marcas(c, mostrados["limpio_desc"], R, max(N_MARCAS), int(cod[1:]) * 7919)
+        for n in N_MARCAS:
+            corr = todas[:n]
+            if n == MARCAS_HOY:
+                mostrados[f"corr{n}_hoy"] = con_motor(c, cif, limpios, k, gasto, desc, corr, recuerdo)
+            mostrados[f"corr{n}_nuevo"] = con_motor(c, cif, historial_corregido(c, limpios, corr),
+                                                    k, gasto, desc, corr, recuerdo)
+            extra[f"marcadas{n}"] = {i["id_licitacion"] for i in corr}
+        extra["marcas_si"] = sum(x["interesa"] for x in todas)
         mas_cara = max(mas_cara, gasto.total - antes)
         if gasto.agotado():
             # Algo se quedó sin juzgar: sus cifras saldrían falsamente bajas.
@@ -286,18 +379,24 @@ def main() -> int:
                                    if v and v["veredicto"] in ("si", "quizas")}
             gasto.total += len(candidatas) * (450 * 0.15 + 60 * 0.60) / 1e6
 
-        fila = {"codigo": cod, "reales": len(R), "limpios": extra["limpios"],
-                "n_lineas": len(caso.get("lineas") or []),
-                "n_referentes": f"{comp.get('marcadas', 0)}/{comp.get('enseñadas', 0)}"}
+        # Con correcciones, lo que marcó no cuenta (ni en lo que enseña ni
+        # en su lista real): ya sabía qué era. Para comparar, producción
+        # medida sin esos mismos contratos.
+        def cifras(S, fuera=frozenset()):
+            S, Rv = S - fuera, R - fuera
+            acierto = len(S & Rv)
+            return {"mostrados": len(S), "recupera": acierto / len(Rv) if Rv else None,
+                    "precision": acierto / len(S) if S else None}
+        fila = {"codigo": cod, "reales": len(R), "limpios": extra["limpios"], "web": extra["web"],
+                "web_caracteres": caso.get("web_caracteres", 0), "marcas_si": extra["marcas_si"]}
         for v in VARIANTES:
-            S = mostrados[v]
-            acierto = len(S & R)
-            fila[v] = {"mostrados": len(S),
-                       "recupera": acierto / len(R) if R else None,
-                       "precision": acierto / len(S) if S else None}
+            n = int(v[4:].split("_")[0]) if v.startswith("corr") else None
+            fuera = frozenset(extra[f"marcadas{n}"]) if n else frozenset()
+            fila[v] = cifras(mostrados[v], fuera)
+            fila[v]["base"] = cifras(mostrados["limpio_desc"], fuera)
         resumen.append(fila)
         resultados.append({**fila, "perfil_id": caso["perfil_id"], "quitados": extra["quitados"],
-                           "lineas_texto": caso.get("lineas"), "referentes_info": comp,
+                           "web_texto": caso.get("web"),
                            **{f"ids_{v}": sorted(mostrados[v]) for v in VARIANTES}})
         g = lambda x: "—" if x is None else f"{x:.2f}"
         logging.info("%s: reales %d · %s · gasto %.2f $", cod, len(R), " · ".join(
@@ -306,23 +405,33 @@ def main() -> int:
         (SALIDA / "sintetico.json").write_text(json.dumps(resultados))
 
     # ---- Resumen público: solo cifras
-    def media(v, campo):
-        xs = [f[v][campo] for f in resumen if f[v][campo] is not None]
+    def media(v, campo, filas=None):
+        xs = [f[v][campo] for f in (resumen if filas is None else filas) if f[v][campo] is not None]
         return sum(xs) / len(xs) if xs else float("nan")
-    lineas = ["## Alta sin NIF con el motor de huellas: líneas de producto y referentes", "",
-              "Referencia: lo que el motor enseña hoy a cada empresa con su NIF.", "",
-              "| Variante | Enseña (media) | Recupera de la lista real | De lo que enseña, está en la lista real |",
+    con_web = [f for f in resumen if f["web"]]
+    lineas = ["## Alta sin NIF: la web, el ruido y las correcciones", "",
+              "Referencia: lo que el motor enseña hoy a cada empresa con su NIF. "
+              "Con correcciones, sin contar los contratos marcados.", "",
+              "| Variante | Enseña (media) | Recupera | De lo que enseña, bueno |",
               "|---|---|---|---|"]
     for v in VARIANTES:
         lineas.append(f"| {v} | {media(v, 'mostrados'):.0f} | {media(v, 'recupera'):.2f} | "
                       f"{media(v, 'precision'):.2f} |")
-    # Empresa por empresa, frente a lo que hay en producción: una variante
-    # gana si recupera más sin enseñar peor (o enseña mejor sin recuperar
-    # menos). Diferencias de menos de 0,02 cuentan como empate.
+    lineas += ["", f"Solo las {len(con_web)} empresas con web legible:", "",
+               "| Variante | Enseña (media) | Recupera | De lo que enseña, bueno |", "|---|---|---|---|"]
+    for v in ("limpio_desc", "limpio_desc_bis", "web", "web_desc"):
+        lineas.append(f"| {v} | {media(v, 'mostrados', con_web):.0f} | "
+                      f"{media(v, 'recupera', con_web):.2f} | {media(v, 'precision', con_web):.2f} |")
+
+    # Empresa por empresa, frente a lo que hay en producción (medido sin
+    # los mismos contratos): una variante gana si recupera más sin enseñar
+    # peor (o enseña mejor sin recuperar menos). Diferencias de menos de
+    # 0,02 cuentan como empate. limpio_desc_bis dice cuánto «gana» o
+    # «pierde» el azar solo: es el listón para las demás.
     def compara(v):
         gana = pierde = 0
         for f in resumen:
-            a, b = f["limpio_desc"], f[v]
+            a, b = f[v]["base"], f[v]
             if None in (a["recupera"], b["recupera"], a["precision"], b["precision"]):
                 continue
             dr, dp = b["recupera"] - a["recupera"], b["precision"] - a["precision"]
@@ -336,13 +445,20 @@ def main() -> int:
         if v != "limpio_desc":
             gana, pierde = compara(v)
             lineas.append(f"| {v} | {gana} | {pierde} |")
+
+    def dif(f, campo):
+        a, b = f["limpio_desc"][campo], f["limpio_desc_bis"][campo]
+        return "—" if None in (a, b) else f"{abs(a - b):.2f}"
+    lineas += ["", "Ruido: diferencia entre limpio_desc y limpio_desc_bis (recupera / bueno): "
+               + ", ".join(f"{f['codigo']} {dif(f, 'recupera')} / {dif(f, 'precision')}" for f in resumen)]
+
     g = lambda x: "—" if x is None else f"{x:.2f}"
-    lineas += ["", "| Perfil | Reales | Líneas | Referentes marcados / enseñados | " +
+    lineas += ["", "| Perfil | Reales | Web (caracteres) | «Me interesa» de 20 | " +
                " | ".join(f"{v} rec / prec" for v in VARIANTES) + " |",
                "|---|---|---|---|" + "---|" * len(VARIANTES)]
     for f in resumen:
-        lineas.append(f"| {f['codigo']} | {f['reales']} | {f["n_lineas"]} | "
-                      f"{f['n_referentes']} | " +
+        lineas.append(f"| {f['codigo']} | {f['reales']} | {f['web_caracteres'] if f['web'] else 'no'} | "
+                      f"{f['marcas_si']} | " +
                       " | ".join(f"{g(f[v]['recupera'])} / {g(f[v]['precision'])}" for v in VARIANTES)
                       + " |")
     lineas += ["", f"Perfiles: {len(resumen)} de {len(casos)} exportados"

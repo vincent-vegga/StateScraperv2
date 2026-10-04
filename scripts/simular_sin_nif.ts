@@ -324,6 +324,101 @@ async function lineasComoCliente(actividad: string): Promise<string[]> {
     .filter(Boolean).slice(0, 6);
 }
 
+// ------------------------------------------------------------
+// La web de la empresa
+// ------------------------------------------------------------
+//
+// Lo que diría su web, en vez de (o además de) dos frases escritas en un
+// minuto. La web no se escribió leyendo sus contratos, así que no tiene
+// la fuga de la descripción simulada (que sale de perfiles.descripcion).
+//
+// Las direcciones llegan en SIM_WEBS ({"<NIF>": "https://..."}), un
+// secreto del repositorio: el repositorio es público y no pueden estar
+// en el código. Ni la dirección ni el texto salen en el registro.
+
+const WEBS: Record<string, string> = JSON.parse(Deno.env.get("SIM_WEBS") || "{}");
+
+// La portada y hasta seis páginas suyas que por la dirección o el texto
+// del enlace parecen contar qué hace: lo que leería el alta en producción.
+const PAGINAS_UTILES = /servicio|producto|soluci|actividad|quien|qui[eé]n|nosotros|empresa|cat[aá]logo|sector|que-hacemos|about|services|products/i;
+
+function textoDeHtml(html: string): string {
+  return html
+    .replace(/<(script|style|noscript|svg|nav|footer)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&[a-z]+;|&#\d+;/gi, " ")
+    .replace(/\s+/g, " ").trim();
+}
+
+async function pagina(url: string): Promise<string | null> {
+  try {
+    const r = await fetch(url, {
+      signal: AbortSignal.timeout(20_000), redirect: "follow",
+      // Como un navegador: con un agente propio, algunas webs responden 403.
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                   "(KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+                 "Accept": "text/html,application/xhtml+xml",
+                 "Accept-Language": "es-ES,es;q=0.9" },
+    });
+    if (!r.ok || !(r.headers.get("content-type") ?? "").includes("html")) {
+      await r.body?.cancel();
+      return null;
+    }
+    return await r.text();
+  } catch {
+    return null;
+  }
+}
+
+async function leerWeb(url: string): Promise<{ texto: string; paginas: number }> {
+  const portada = await pagina(url);
+  if (!portada) return { texto: "", paginas: 0 };
+  const base = new URL(url);
+  const enlaces = new Set<string>();
+  for (const m of portada.matchAll(/<a\s[^>]*href=["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    try {
+      const destino = new URL(m[1], base);
+      if (destino.hostname.replace(/^www\./, "") !== base.hostname.replace(/^www\./, "")) continue;
+      if (/\.(pdf|jpe?g|png|zip|docx?)$/i.test(destino.pathname)) continue;
+      if (PAGINAS_UTILES.test(destino.pathname) || PAGINAS_UTILES.test(textoDeHtml(m[2]))) {
+        enlaces.add(destino.origin + destino.pathname);
+      }
+    } catch { /* enlace roto: se salta */ }
+  }
+  const resto = await enParalelo([...enlaces].slice(0, 6), 3, pagina);
+  // Sin repetir frases (cabeceras y pies se repiten en cada página).
+  const vistas = new Set<string>();
+  const frases = [portada, ...resto].filter((x): x is string => !!x).map(textoDeHtml)
+    .flatMap((t) => t.split(/(?<=[.!?])\s+/))
+    .filter((f) => f.length > 3 && !vistas.has(f) && !!vistas.add(f));
+  return { texto: frases.join(" ").slice(0, 15_000), paginas: 1 + resto.filter(Boolean).length };
+}
+
+// Lo que haría el alta con su web. Solo el «qué»: ni clientes, ni
+// organismos, ni zonas (regla de DECISIONES: el «dónde / a quién» no
+// alimenta la similitud).
+async function webComoCliente(texto: string): Promise<{ descripcion: string; lineas: string[] } | null> {
+  const r = await modelo([
+    { role: "system", content:
+      "Te damos el texto de la web de una empresa española. Escribe a qué se " +
+      "dedica y qué vende o hace, para buscarle contratos públicos parecidos:\n" +
+      "- descripcion: dos a cuatro frases, en primera persona del plural.\n" +
+      "- lineas: de 3 a 8 productos o servicios concretos que ofrece, cortos " +
+      "(de dos a seis palabras).\n" +
+      "Solo lo que la web dice que hace, sin inventar. Sin nombre de empresa, " +
+      "sin nombres de clientes, sin organismos concretos, sin zonas ni ciudades " +
+      "y sin cifras. Si el texto no deja ver a qué se dedica, devuelve listas " +
+      "vacías y descripcion vacía.\n" +
+      "Devuelve EXCLUSIVAMENTE JSON: {\"descripcion\":\"...\",\"lineas\":[\"...\"]}" },
+    { role: "user", content: texto },
+  ], 500);
+  const descripcion = String(r.descripcion ?? "").trim();
+  if (descripcion.length < 15) return null;
+  const lineas = (Array.isArray(r.lineas) ? r.lineas : []).map((x: unknown) => String(x).trim())
+    .filter(Boolean).slice(0, 8);
+  return { descripcion, lineas };
+}
+
 // Nombres de las divisiones CPV (vocabulario común de 2008). El
 // catálogo de `proponer` en producción solo lleva número y volumen, y
 // con "prefiere divisiones con volumen alto" el modelo, que no sabe de
@@ -1082,33 +1177,42 @@ for (const { codigo, p } of casos) {
       const fila = ({ l, s }: { l: Lic; s: number }) =>
         ({ id_licitacion: l.id_licitacion, titulo: l.titulo, cpvs: l.cpvs ?? [], s });
 
-      // Con las líneas de producto: las familias se proponen con la
-      // descripción y las líneas (como lo haría el alta), y se busca
-      // por cada línea.
-      const lineas = await lineasComoCliente(String(p.descripcion ?? ""));
-      const descripcionLineas = lineas.length
-        ? `${descripcion} Lo que más vendemos o hacemos: ${lineas.join("; ")}.` : descripcion;
-      const familiasLineas = lineas.length
-        ? marcar((await proponer(descripcionLineas, true)).prefijos).familias : familias;
-      const purosLineas = lineas.length
-        ? await buscarPorLineas(lineas, familiasLineas, franjas, cif) : [];
-
-      // Con referentes de su tamaño.
-      const { ordenados } = await buscarVecinos(descripcion, familias, franjas, cif);
-      const refs = await buscarReferentes(descripcion, ordenados, cif, franjas, real.criterio);
+      // Con su web: lo que el modelo saca de ella (a qué se dedica y sus
+      // líneas), sin la descripción simulada (`web`) y junto a ella
+      // (`web_desc`). Las familias se proponen con ese texto, como lo
+      // haría el alta, y se busca por línea (un único vector de una web
+      // con varias líneas no se parece a ninguna). Sin web legible, nada:
+      // medir_sintetico.py lo cuenta como caída a la descripción.
+      const url = WEBS[cif];
+      const leida = url ? await leerWeb(url) : { texto: "", paginas: 0 };
+      const deLaWeb = leida.texto.length >= 300 ? await webComoCliente(leida.texto) : null;
+      let web = null;
+      if (deLaWeb) {
+        const conDesc = `${descripcion} ${deLaWeb.descripcion}`;
+        const familiasWeb = marcar((await proponer(deLaWeb.descripcion, true)).prefijos).familias;
+        const familiasWebDesc = marcar((await proponer(conDesc, true)).prefijos).familias;
+        const buscar = async (lineas: string[], desc: string, fams: string[]) => lineas.length
+          ? await buscarPorLineas(lineas, fams, franjas, cif)
+          : (await buscarVecinos(desc, fams, franjas, cif)).puros;
+        web = {
+          descripcion: deLaWeb.descripcion, lineas: deLaWeb.lineas,
+          puros: (await buscar(deLaWeb.lineas, deLaWeb.descripcion, familiasWeb)).map(fila),
+          descripcion_con_desc: conDesc,
+          puros_con_desc: (await buscar([descripcion, ...deLaWeb.lineas], conDesc,
+                                        familiasWebDesc)).map(fila),
+        };
+      }
 
       exportados.push({ codigo, perfil_id: p.id, cif, descripcion, familias,
                         vecinos: vv.detalle.filas, puros: vv.detalle.puros,
                         criterio: vv.criterio, prefijos: vv.prefijos,
-                        lineas, descripcion_lineas: descripcionLineas,
-                        familias_lineas: familiasLineas, puros_lineas: purosLineas.map(fila),
-                        puros_referentes: refs.puros.map(fila), referentes: refs.info });
+                        web_paginas: leida.paginas, web_caracteres: leida.texto.length, web });
       await Deno.writeTextFile(`${SALIDA}/gasto.json`, JSON.stringify({ dolares }));
       await Deno.writeTextFile(`${SALIDA}/sinteticos.json`, JSON.stringify(exportados));
+      // Sin la dirección ni el texto: el registro es público.
       console.log(`${codigo}: exportado (${(vv.detalle.filas as unknown[]).length} vecinos, ` +
-                  `${vv.prefijos.length} códigos, ${lineas.length} líneas, ` +
-                  `${purosLineas.length} por líneas, ` +
-                  `referentes ${refs.info.marcadas}/${refs.info.enseñadas}, ` +
+                  `web ${url ? `${leida.paginas} páginas, ${leida.texto.length} caracteres` : "sin dirección"}` +
+                  `${web ? `, ${web.lineas.length} líneas` : ", no se usa"}, ` +
                   `gasto ${dolares.toFixed(2)} $)`);
       masCara = Math.max(masCara, dolares - antesDeEsta);
       continue;

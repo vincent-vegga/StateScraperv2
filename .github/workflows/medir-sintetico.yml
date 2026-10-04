@@ -16,7 +16,7 @@ name: Medir alta sin NIF con huellas
 
 on:
   push:
-    branches: [simulacion-sin-nif, simulacion-lineas-producto]
+    branches: [simulacion-web]
     paths:
       - 'scripts/medir_sintetico.py'
       - '.github/workflows/medir-sintetico.yml'
@@ -33,11 +33,14 @@ concurrency:
 jobs:
   medir:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 240
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # Las webs del banco ({"<NIF>": "https://..."}): fuera del código,
+      # que es público.
+      SIM_WEBS: ${{ secrets.SIM_WEBS }}
       CACHE_HUELLAS: /home/runner/.cache/huellas
       # Tope de las dos fases juntas; la exportación, como mucho 2 $.
       MAX_GASTO: '12'
