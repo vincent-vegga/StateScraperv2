@@ -89,8 +89,13 @@ acción, y se solapa con Empresas y Organismos.
       prórrogas (migraciones `20261001220000_duracion_del_contrato.sql` y
       siguientes). Es lo que más valoran los clientes de Tussell y
       Stotles, y es el mejor argumento para el plan Pro.
+      **Hecho en la rama `lo-que-viene`, pendiente de aplicar** (noche
+      del 04 al 05/10/2026): `20261005100000_lo_que_viene.sql` +
+      `web/index.html`, Decisión 46. Ver el traspaso del final.
 - [ ] Decidir si lo de "quién ganó el último mes" se queda como una
       sección dentro de "Lo que viene" o pasa a Empresas y Organismos.
+      **Decidido en la rama, pendiente de aplicar:** se queda dentro,
+      como segunda vista ("Lo adjudicado"), igual que estaba.
 
 ### 3. Empresas — tiene sentido
 
@@ -109,7 +114,9 @@ Le falta:
 
 - [ ] **Seguir un organismo** y recibir avisos de sus licitaciones nuevas.
 - [ ] **Sus contratos que van a vencer** (lo mismo que "Lo que viene",
-      filtrado por organismo).
+      filtrado por organismo). Con la tabla `vencimientos` de la rama
+      `lo-que-viene` es una consulta por `organo`; falta la función y el
+      bloque en la ficha.
 - [ ] **El correo de contacto** del órgano.
 - [ ] **Sus contratos menores**, que revelan con quién trabaja antes de
       que salga el contrato grande (depende del conjunto 1143).
@@ -159,6 +166,7 @@ LicitaPilot y LICAI, y el tablero de equipo el de Licitandum. Centrarse en
 
 1. [x] El veredicto de viabilidad dentro de la lista de Contratos.
 2. [ ] "Lo que viene": contratos que van a vencer y volverán a licitarse.
+   Hecho en la rama `lo-que-viene`, pendiente de aplicar.
 3. [ ] Llevar la cuenta de cada contrato, de forma sencilla.
 4. [ ] Solvencia y requisitos, sacados del feed y del pliego.
 5. [ ] Contratos menores en vivo.
@@ -276,3 +284,113 @@ tabla grande: mejor cuando no haya otra sesión cargando histórico.
 - **Probar SQL sin dejar rastro**: un bloque `do $$ ... $$` que crea las
   funciones, las llama y termina con `raise exception` con el resultado.
   La excepción deshace todo y el mensaje trae los datos.
+
+---
+
+## Traspaso: "Lo que viene", noche del 04 al 05/10/2026
+
+Trabajo nocturno, sin supervisión. Todo está en la rama `lo-que-viene`
+(PR hacia `main`), **nada aplicado ni publicado**. En la base solo se
+han hecho lecturas y bloques `do` que terminan en excepción.
+
+### Lo construido
+
+| Qué | Dónde |
+|---|---|
+| Tabla `vencimientos`, vista `vencimientos_calculados`, refresco `refrescar_vencimientos(prefijos)`, lectura `lo_que_viene(meses, provincia_elegida, tope)`, lectura de prórrogas (`meses_de_prorroga`, `prorrogable_hasta`, `prorroga_de`) y trabajo de `pg_cron` `refrescar-vencimientos` (14:45 UTC) | `supabase/migrations/20261005100000_lo_que_viene.sql` |
+| La pestaña Movimientos pasa a ser "Lo que viene", con dos vistas: "Lo que vence" (por defecto) y "Lo adjudicado" (lo de antes, sin cambios) | `web/index.html` |
+| Decisión 46 y dos filas nuevas en la deuda técnica | `DECISIONES.md` |
+
+Cada fila dice quién lo tiene (enlace a su ficha en Empresas), qué es
+(enlace al expediente), de qué organismo (enlace a Organismos), el
+importe y lo que sale al año, cuándo vence ("en 41 días"), la duración y
+las prórrogas si el organismo las publicó. Filtros: plazo (3, 6 y 12
+meses, con cuántos hay en cada uno) y provincia. Lo tuyo y lo de las
+empresas que sigues va marcado, y el resumen dice cuántos son tuyos.
+
+### Lo medido (04/10/2026)
+
+- **Cobertura.** Muestra del 2 % de la tabla (23.028 adjudicaciones): el
+  99 % tiene fecha de inicio y el 85 % duración. Sin menores, la duración
+  la tiene el 99,5 %.
+- **Menores.** El 47 % de las adjudicaciones, duración mediana de un
+  mes, solo histórico de 2025: de 7.384 con duración, 7.373 ya vencidos
+  y 6 entre 3 y 12 meses. Fuera.
+- **Acuerdos marco.** Los basados (10 % de los no menores, 4 meses de
+  mediana) fuera: el siguiente solo lo piden los homologados. Los marcos
+  con importe, dentro (rotulados "Acuerdo marco"); las homologaciones sin
+  importe, fuera.
+- **Duraciones absurdas.** No hay ceros ni negativas. Más de 25 años:
+  concesiones demaniales, enajenaciones (996 meses) y errores de unidades
+  (electrocardiógrafos a 720 meses), fuera. Menos de 6 meses: compras y
+  actos sueltos, entre el 14 y el 29 % de lo que vence según el sector,
+  fuera. También las obras (CPV 45).
+- **Prórrogas.** Texto en el 22 % de los no menores. Las reglas leen el
+  63 % (48 % meses, 14 % "no hay", 2 % una fecha); 55 de 55 casos
+  etiquetados a mano bien. De lo que vence, el 25 % tiene prórrogas
+  leídas y el 63 % no trae texto.
+- **Por perfil** (12 meses / 3 meses): ascensores (MAINSA) 586 / 170,
+  uniformidad (SOLTEC) 735 / 178, espectáculos (SALAN) 459 / 122,
+  consultoría (RED2RED) 2.024 / 533.
+- **Tiempos.** Refresco de 8 prefijos: 7,2 s (2.800 filas, por índice).
+  `lo_que_viene()`: 40-660 ms con 300 filas (230-250 KB de respuesta).
+  El cálculo sobre la muestra del 2 % copiada aparte: 1,2 s.
+
+### Lo que no se ha podido probar
+
+1. **El relleno completo** (`refrescar_vencimientos()` sin argumentos):
+   recorre `licitaciones` entera, y esta noche no se podía. Estimado:
+   **1,5-2,5 minutos** y unas **80.000 filas** (60 s de cálculo por la
+   muestra, más leer 2,5 GB; `refrescar_organismos` tardó 68 s).
+2. **El trabajo de `pg_cron`**: el bloque de prueba no lo crea (no se
+   toca `cron.job`).
+3. **La pantalla con sesión y datos reales.** Se ha comprobado con una
+   copia local de la página y la base simulada (datos sacados de las
+   pruebas): escritorio, móvil de 375 px, modo oscuro, filtros, cambio
+   de vista, tabla vacía y función inexistente. La página real carga sin
+   errores, pero sin sesión.
+4. **Los perfiles con prefijos de dos cifras** ("72,48,79"): la lectura
+   los cruza por familia, pero la prueba solo rellenó prefijos de cuatro.
+5. **Los permisos a través de la API.** La función se probó como el
+   usuario (`request.jwt.claims` y `x-perfil` en el bloque), no por
+   PostgREST.
+
+### Para ponerlo en producción
+
+1. Mirar que no haya cargas pesadas en marcha:
+   `select pid, state, now() - query_start, left(query, 80) from pg_stat_activity where state <> 'idle';`
+2. **Aplicar la migración** `supabase/migrations/20261005100000_lo_que_viene.sql`
+   (con `apply_migration` o en el editor SQL). Solo crea objetos y el
+   trabajo de `pg_cron`: es instantánea. No toca `mis_oportunidades` ni
+   Viabilidad.
+3. **Rellenar la tabla la primera vez**, en el editor SQL (no por la
+   API: no cabe en 8 s):
+   `select public.refrescar_vencimientos();`
+   Tardará unos 1,5-2,5 minutos. Si algo la corta, rellenar primero solo
+   los sectores de los clientes, que va por índice (la tabla se rehace
+   entera esa misma tarde a las 14:45 UTC):
+   `select public.refrescar_vencimientos(array(select distinct trim(x) from public.perfiles p, unnest(string_to_array(coalesce(p.cpv_prefijos, ''), ',')) x where trim(x) ~ '^\d{4}$'));`
+4. **Comprobar**:
+   `select count(*), min(vence), max(vence), max(actualizado), count(*) filter (where prorroga = 'si') from public.vencimientos;`
+   (unas 80.000 filas, `vence` entre hoy y dentro de 13 meses) y
+   `select jobname, schedule from cron.job where jobname = 'refrescar-vencimientos';`
+5. **Unir la PR** a `main`, lo que publica la web. Si se une antes del
+   paso 2 no se rompe nada: la vista dice "se está preparando".
+6. Entrar con la cuenta de prueba (SOLTEC PRO UNIFORMIDAD) y mirar "Lo
+   que viene": unos 735 contratos en 12 meses, los filtros, un enlace a
+   Empresas, uno a Organismos y uno al expediente.
+
+### Abierto, para decidir
+
+1. **¿Ya se ha vuelto a licitar?** Un contrato que vence puede tener ya
+   su nueva licitación abierta (y salir también en Contratos).
+   Emparejarlos con la serie de Viabilidad (`serie_de`) permitiría
+   decir "ya está publicada" y enlazarla. Es lo siguiente que más valor
+   daría.
+2. **Avisar por correo** de lo tuyo que vence (4-5 contratos en los
+   clientes con NIF probados): es retener un contrato, no ganar uno
+   nuevo.
+3. **El umbral de 6 meses** se eligió mirando títulos; algunos
+   suministros de un año siguen siendo compras sueltas.
+4. **"Sus contratos que van a vencer" en Organismos** sale casi gratis
+   con la tabla (ver arriba, Organismos).

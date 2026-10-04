@@ -20,6 +20,7 @@ En producción con primeros usuarios reales. El core funciona; hay deuda técnic
 | Alta guiada: CIF → historial → criterio → cribado | ✅ |
 | Pantalla de Contratos abiertos | ✅ |
 | Inteligencia de mercado: Empresas, Movimientos, Organismos | ✅ |
+| Lo que viene: contratos del sector que van a vencer (sustituye a Movimientos) | ⚙️ Hecho el 05/10/2026, pendiente de aplicar la migración |
 | Viabilidad: puntuación por contrato, rango de precio y contratos enlazados | ✅ |
 | Viabilidad en la lista de Contratos: marca y filtro | ✅ Desde el 04/10/2026 |
 | Alerta diaria por correo | ✅ Activa, solo para quien enciende la campana |
@@ -104,6 +105,7 @@ Las migraciones SQL están en `migracion-*.sql`. Cada una explica en cabecera qu
 | `fichas_organismo` | Datos de cada organismo que alguien haya consultado | 1 día |
 | `organismos_por_prefijo` | Agregado de organismos **por prefijo CPV**, no por perfil | Lo rehace el robot cada noche |
 | `viabilidad_guardada` | El veredicto de Viabilidad de cada contrato abierto que está en alguna lista | 7 días; la rellena `pg_cron` cada 10 minutos |
+| `vencimientos` | Los contratos que vencen en los próximos 13 meses, **por prefijo**, con sus prórrogas leídas del texto | La rehace `pg_cron` cada día (14:45 UTC) |
 
 La caché existe porque calcular competencia o fichas sobre 25.000 contratos cada vez que alguien abre la pestaña agota el tiempo de espera. El resultado es el mismo; el trabajo se hace una vez.
 
@@ -122,6 +124,8 @@ La caché existe porque calcular competencia o fichas sobre 25.000 contratos cad
 | `pulso_mercado()` | Cifras del mes: contratos, importe, empresas |
 | `viabilidad(id)` | Puntuación de viabilidad de un contrato concreto |
 | `refrescar_viabilidad_guardada(segundos)` | Rellena `viabilidad_guardada` por tandas (`pg_cron`) |
+| `lo_que_viene(meses, provincia, tope)` | Lo que ve en "Lo que viene": los contratos de su sector que vencen |
+| `refrescar_vencimientos(prefijos)` | Rehace `vencimientos`, entera o solo unos prefijos (`pg_cron`) |
 | `comprobar_codigo(codigo)` | Dice si un código de acceso vale, sin consumirlo ni pedir sesión (primera pantalla) |
 | `canjear_codigo(codigo)` | Valida y consume un código de acceso (insensible a mayúsculas) |
 
