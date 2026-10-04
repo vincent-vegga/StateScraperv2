@@ -487,3 +487,29 @@ está en ese commit.
 **Para cerrarlo.** Revisar a mano una muestra de 30 de las agrupaciones
 nuevas con el arreglo puesto; si sale bien, recuperar el script de ese
 commit y lanzar el workflow `utes-socios.yml`.
+
+---
+
+## 19. ~~Ganadores fantasma en expedientes desiertos~~ (resuelto 04/10/2026)
+
+Resuelto en `supabase/migrations/20261004110000_ganadores_fantasma.sql`
+(decisión 44).
+
+**Qué pasaba.** 638 expedientes tenían todos los lotes sin ganador
+(`sin_contrato` no nulo), pero conservaban ganador, NIF e importe en la
+columna principal. Contaban en todas las pantallas de mercado: 391 M€. Se
+comprobaron cinco en la Plataforma y ninguno llegó a contrato: tres
+desiertos (uno "se niega a firmar el contrato"), una renuncia y una
+anulación de lotes.
+
+**La causa.** `completar_explicacion` aplica la versión más nueva del
+histórico con `coalesce(nuevo, viejo)`. Una versión desierta no trae
+ganador, así que se quedaba el de la versión adjudicada anterior. Todos
+venían del histórico; el feed escribe todos los campos.
+
+**Arreglo.** Si la versión nueva trae lotes y ninguno acaba en contrato,
+la función vacía el ganador, el NIF, los importes y el número de
+adjudicatarios. Los 638 se limpiaron; el disparador borró sus filas de
+`adjudicaciones_empresa`. Probado dentro de una transacción deshecha:
+una versión desierta posterior deja el expediente sin ganador y sin
+filas de empresa.
