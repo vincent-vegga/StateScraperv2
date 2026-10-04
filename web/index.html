@@ -2587,6 +2587,15 @@ select:focus{
   font-size:.9rem;
 }
 
+/* Por qué salió el contrato que va a descartar: antes de la pregunta,
+   para que sepa qué corregir. */
+.dialogo .por-que-sale{
+  padding:10px 12px;
+  border-radius:8px;
+  background:var(--fondo);
+  color:var(--texto);
+}
+
 .dialogo textarea{
   min-height:92px;
   background:var(--fondo);
@@ -8043,16 +8052,31 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
   // `origen` es el botón que lo abrió: al cancelar, el foco vuelve a él y
   // no al principio de la página.
+  // Por qué salió: el contrato de su historial que más se le parece
+  // (veredictos.parecido, lo escribe el puntuador). No el motivo del juez,
+  // que sin NIF habla de contratos «ganados» que no ganó. Sin historial
+  // (criterio en prosa) no hay frase.
+  function porQueSale(id) {
+    const parecido = (DATOS.find(o => o.id_licitacion === id)?.parecido || '').trim();
+    if (!parecido) return '';
+    const corto = parecido.length > 110 ? parecido.slice(0, 107).trimEnd() + '…' : parecido;
+    return `<p class="por-que-sale">Te lo enseñamos porque se parece a
+      «${esc(corto)}», ${perfil.cif ? 'un contrato que ganaste'
+        : 'un contrato de otra empresa parecido a lo que nos contaste de la tuya'}.</p>`;
+  }
+
   function pedirMotivo(id, origen = null) {
     const velo = document.createElement('div');
     velo.className = 'velo';
+    const sale = porQueSale(id);
     velo.innerHTML = `
       <div class="dialogo" role="dialog" aria-modal="true" aria-labelledby="titulo-motivo">
         <button type="button" class="cerrar-dialogo" id="cancelar-motivo"
                 aria-label="Cancelar, no descartar">×</button>
         <h3 id="titulo-motivo">¿Por qué no te interesa?</h3>
-        <p>Con una frase basta, y nos ayuda mucho más que el descarte solo.
-        Puedes saltártelo.</p>
+        ${sale}
+        <p>${sale ? 'Dinos qué no encaja: con' : 'Con'} una frase basta, y nos
+        ayuda mucho más que el descarte solo. Puedes saltártelo.</p>
         <textarea id="por-que" aria-labelledby="titulo-motivo"
           placeholder="Por ejemplo: es demasiado grande para nosotros, o no trabajamos en esa zona"></textarea>
         <div class="botonera">
