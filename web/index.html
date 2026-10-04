@@ -1984,6 +1984,20 @@ select:focus{
   font-weight:600;
 }
 
+/* El veredicto de Viabilidad en la fila: los mismos colores que el
+   dictamen de su pantalla. */
+.viab{
+  display:block;
+  width:fit-content;
+  margin:7px 0 0;
+  font-size:.78rem;
+  font-weight:600;
+}
+.viab::before{content:'● ';font-size:.7em;vertical-align:1px}
+.viab.mio{color:var(--si)}
+.viab.dificil{color:var(--acento)}
+.viab.cerrado{color:var(--no)}
+
 .sin-verificar{
   display:inline-block;
   margin-top:8px;
@@ -2675,9 +2689,13 @@ select:focus{
     padding:2px 0;
   }
 
-  /* Con un solo sector no hay selector de sector: el de encaje ocupa
-     la fila entera. */
-  .filtros:has(#f-sector[hidden]) #f-veredicto{
+  /* Encaje y opciones de ganar comparten fila; el de sector, cuando lo
+     hay, va debajo entero. Sin el de opciones (Viabilidad apagada), como
+     antes: encaje y sector juntos, o encaje solo si no hay sectores. */
+  .filtros:not(:has(#f-viabilidad[hidden])) > #f-sector{
+    grid-column:1 / -1;
+  }
+  .filtros:has(#f-viabilidad[hidden]):has(#f-sector[hidden]) #f-veredicto{
     grid-column:1 / -1;
   }
 
@@ -7670,6 +7688,17 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         <option value="si">Para mí</option>
         <option value="quizas">Puede ser para mí</option>
       </select>
+      <!-- Lo que dice Viabilidad de cada contrato, calculado de antemano
+           (viabilidad_guardada). "Sin los cerrados" es el uso de verdad:
+           quitarse de delante lo que ya tiene dueño. -->
+      <select id="f-viabilidad" aria-label="Filtrar por opciones de ganar"
+              ${VIABILIDAD_VISIBLE ? '' : 'hidden'}>
+        <option value="">Cualquier opción de ganar</option>
+        <option value="abierto">Tienes opciones</option>
+        <option value="no-cerrado">Sin los que parecen cerrados</option>
+        <option value="dificil">Difícil</option>
+        <option value="cerrado">Parece cerrado</option>
+      </select>
       <select id="f-sector" aria-label="Filtrar por sector" hidden>
         <option value="">Todos los sectores</option>
       </select>
@@ -7767,6 +7796,16 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // marco es el que más importa: si no estás homologado, no puedes
   // presentarte. La etiqueta es corta; la explicación va en el detalle,
   // porque un texto al pasar por encima no existe en el móvil.
+  // El veredicto de Viabilidad en la fila, solo cuando avisa de algo.
+  // "Tienes opciones" sale en tres de cada cuatro contratos (medido el
+  // 04/10/2026: 2.150 de 2.865) y una marca en casi todas las filas deja
+  // de avisar; para quedarse con esos está el filtro.
+  const VIABILIDAD_FILA = {
+    mio: 'Es tuyo: ganaste la anterior',
+    dificil: 'Difícil',
+    cerrado: 'Parece cerrado',
+  };
+
   const SISTEMAS = {
     'Sistema dinámico de adquisición': {
       marca: 'SISTEMA DINÁMICO',
@@ -7844,6 +7883,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       : (recordados.sector ?? null);
     recordados = {
       veredicto: document.getElementById('f-veredicto').value || null,
+      viabilidad: document.getElementById('f-viabilidad').value || null,
       sector,
       provincias: [...elegidas],
     };
@@ -7855,12 +7895,14 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
   const hayFiltros = () =>
     !!(document.getElementById('f-veredicto').value
+       || document.getElementById('f-viabilidad').value
        || document.getElementById('f-sector').value
        || document.getElementById('f-texto').value.trim()
        || elegidas.size);
 
   function quitarFiltros() {
     document.getElementById('f-veredicto').value = '';
+    document.getElementById('f-viabilidad').value = '';
     document.getElementById('f-sector').value = '';
     document.getElementById('f-texto').value = '';
     elegidas.clear();
@@ -7899,6 +7941,13 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     guardarFiltros();
     document.getElementById('quitar-filtros').hidden = !hayFiltros();
     const ver = document.getElementById('f-veredicto').value;
+    const viab = document.getElementById('f-viabilidad').value;
+    // "Tienes opciones" incluye lo que ya es tuyo; "sin los cerrados" deja
+    // también lo que aún no tiene veredicto: no saberlo no es estar cerrado.
+    const pasaViab = o => !viab
+      || (viab === 'abierto' ? ['abierto', 'mio'].includes(o.viabilidad)
+        : viab === 'no-cerrado' ? o.viabilidad !== 'cerrado'
+        : o.viabilidad === viab);
     // Sin tildes y palabra a palabra, como en Organismos: "jardineria"
     // encontraba 3 contratos y "jardinería", 12.
     const txt = document.getElementById('f-texto').value.trim();
@@ -7908,6 +7957,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const vistos = enPestana.filter(o =>
       enZona(o) &&
       (!ver || o.veredicto === ver) &&
+      pasaViab(o) &&
       (!sector || enSector(o, sector)) &&
       (!txt || coincide(`${o.titulo} ${o.organo}`, txt)));
 
@@ -7935,6 +7985,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           <p class="meta">${esc([o.organo, lugar(o)].filter(Boolean).join(' · '))}${
             SISTEMAS[o.sistema] ? `<span class="marca-ute marca-sistema">${
               SISTEMAS[o.sistema].marca}</span>` : ''}</p>
+          ${VIABILIDAD_VISIBLE && VIABILIDAD_FILA[o.viabilidad] ? `<span class="viab ${
+            o.viabilidad}">${VIABILIDAD_FILA[o.viabilidad]}</span>` : ''}
           ${o.dias_sin_verificar > 90
             ? `<span class="sin-verificar">Sin movimiento desde hace
                ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
@@ -8523,12 +8575,16 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const campoVeredicto = document.getElementById('f-veredicto');
   if ([...campoVeredicto.options].some(op => op.value === recordados.veredicto))
     campoVeredicto.value = recordados.veredicto;
+  const campoViab = document.getElementById('f-viabilidad');
+  if (VIABILIDAD_VISIBLE
+      && [...campoViab.options].some(op => op.value === recordados.viabilidad))
+    campoViab.value = recordados.viabilidad;
   try { document.getElementById('f-texto').value = sessionStorage.getItem(CLAVE_TEXTO) ?? ''; }
   catch { /* modo privado */ }
   alPulsar('quitar-filtros', quitarFiltros);
 
   pintarEtiquetas();
-  ['f-veredicto','f-sector','f-texto'].forEach(id =>
+  ['f-veredicto','f-viabilidad','f-sector','f-texto'].forEach(id =>
     document.getElementById(id).addEventListener('input', repintar));
   pintar();
 

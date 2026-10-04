@@ -119,11 +119,17 @@ Le falta:
 Es una acción sobre un contrato concreto, no un sitio al que ir: su
 pantalla "¿A cuál te presentas?" repite la lista de Contratos.
 
-- [ ] **Llevar el veredicto a la lista de Contratos**, como etiqueta
+- [x] **Llevar el veredicto a la lista de Contratos**, como etiqueta
       ("Tienes opciones / Difícil / Cerrado / Es tuyo") y como filtro u
       orden. Así la lista no solo dice qué encaja, también dónde se puede
       ganar. Ojo al coste: `viabilidad()` por fila sobre toda la lista
-      probablemente pida precalcularlo en el cribado o de noche.
+      probablemente pida precalcularlo en el cribado o de noche. Hecho el
+      04/10/2026 (`20261004210000_viabilidad_en_la_lista.sql`): tabla
+      `viabilidad_guardada` que rellena `pg_cron` cada 10 minutos (los
+      2.865 contratos abiertos en listas se calcularon en ~2 minutos). En
+      la fila solo se marca Difícil, Parece cerrado y Es tuyo: "Tienes
+      opciones" sale en 3 de cada 4 y no avisaría de nada; está en el
+      filtro, junto con "Sin los que parecen cerrados".
 - [ ] **Quitar la pestaña** o dejarla solo como destino del botón
       "Analizar viabilidad" de la ficha.
 - [x] **Dar un rango de precio y no solo la media**: percentiles de la baja
@@ -151,7 +157,7 @@ No competir en amplitud: generar memorias técnicas es el terreno de
 LicitaPilot y LICAI, y el tablero de equipo el de Licitandum. Centrarse en
 **decidir dónde presentarse**. Por este orden:
 
-1. [ ] El veredicto de viabilidad dentro de la lista de Contratos.
+1. [x] El veredicto de viabilidad dentro de la lista de Contratos.
 2. [ ] "Lo que viene": contratos que van a vencer y volverán a licitarse.
 3. [ ] Llevar la cuenta de cada contrato, de forma sencilla.
 4. [ ] Solvencia y requisitos, sacados del feed y del pliego.
