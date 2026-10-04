@@ -5664,7 +5664,7 @@ async function cribarMercado(destino = 'zona') {
 // defecto lo que vence, y se recuerda cuál eligió mientras dura la sesión.
 //
 // Los datos salen de `lo_que_viene()`, que lee una tabla que se rehace
-// cada noche (calcularlo al pedirlo no cabe en los 8 s de la API). Ver
+// cada día (calcularlo al pedirlo no cabe en los 8 s de la API). Ver
 // supabase/migrations/20261005100000_lo_que_viene.sql.
 const PLAZOS_VIENE = [3, 6, 12];
 
@@ -5823,12 +5823,12 @@ async function seccionLoQueViene(perfil, session) {
     const datos = document.getElementById('datos-viene');
     if (!datos) return;
 
-    // La tabla se rellena por la noche. Hasta la primera pasada está
+    // La tabla se rellena una vez al día. Hasta la primera pasada está
     // vacía, y eso no es lo mismo que "no vence nada".
     if (!d.actualizado) {
       datos.innerHTML = `<p class="vacio" style="margin-top:26px">Estamos
         preparando esta pantalla: los contratos que vencen se calculan una
-        vez al día, por la noche. Vuelve mañana.</p>`;
+        vez al día. Vuelve mañana.</p>`;
       return;
     }
 
@@ -5913,7 +5913,7 @@ async function seccionLoQueViene(perfil, session) {
           contratos menores, los basados en un acuerdo marco (solo pueden
           pedirlos las empresas homologadas), las obras ni los de menos de
           seis meses. ${d.mios ? '<strong>Los tuyos</strong> van marcados: son los que te toca defender. ' : ''}Se
-          recalcula cada noche.</p>
+          recalcula cada día.</p>
         </dl>
       </div>
 

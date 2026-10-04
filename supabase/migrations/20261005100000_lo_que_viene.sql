@@ -101,7 +101,7 @@
 --   vencimientos             tabla: lo que vence en los próximos 13
 --                            meses (uno de margen sobre los 12 que se
 --                            enseñan, por si el refresco falla un día).
---   refrescar_vencimientos() la rehace entera cada noche (pg_cron,
+--   refrescar_vencimientos() la rehace entera cada día (pg_cron,
 --                            14:45 UTC, después de los demás agregados),
 --                            marcando y barriendo como
 --                            `refrescar_organismos`. Con una lista de
@@ -679,7 +679,7 @@ grant execute on function public.lo_que_viene(integer, text, integer) to authent
 
 
 -- ------------------------------------------------------------
--- (6) Cada noche, después de los demás agregados (14:00-14:30 UTC)
+-- (6) Cada día, después de los demás agregados (14:00-14:30 UTC)
 -- ------------------------------------------------------------
 select cron.schedule('refrescar-vencimientos', '45 14 * * *',
                      'select public.refrescar_vencimientos()');
