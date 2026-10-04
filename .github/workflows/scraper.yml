@@ -390,7 +390,7 @@ jobs:
       # Dos a la vez. Con tres, la segunda pasada agotaba el tiempo de
       # espera en todas las tandas; con uno, doce meses no caben en el
       # límite de una hora por trabajo.
-      max-parallel: 2
+      max-parallel: 1   # TEMPORAL: carga de 2023 de noche, un mes cada vez
       matrix:
         mes: ${{ fromJson(needs.meses.outputs.lista) }}
 
