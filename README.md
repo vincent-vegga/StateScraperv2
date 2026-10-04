@@ -169,6 +169,10 @@ El flujo completo:
 5. Al entrar por primera vez, el arranque detecta pendientes y criba.
 6. Si hay muchos pendientes (>5s de espera), se muestra la lista vacía y el workflow los criba en la siguiente pasada.
 
+El alta sin NIF (quien no ha ganado contratos públicos) tiene su propio
+documento, con su historia, lo medido y lo descartado:
+[docs/alta-sin-nif/LEEME.md](docs/alta-sin-nif/LEEME.md).
+
 
 Para crear uno nuevo:
 ```sql
