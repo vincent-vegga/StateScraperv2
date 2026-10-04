@@ -467,7 +467,7 @@ Deno.serve(async (peticion) => {
     if (!autorizacion) return responder({ error: "sin_sesion" }, 401);
 
     const { accion, descripcion, prefijos, cif, empresa, dias,
-            perfil_id, franjas } = await peticion.json();
+            perfil_id, franjas, confirmacion } = await peticion.json();
 
     // Con varias empresas por cuenta, la web dice cuál está mirando. Se
     // reenvía a la base como `x-perfil` para que las funciones que buscan
@@ -490,12 +490,35 @@ Deno.serve(async (peticion) => {
     const { data: { user } } = await comoUsuario.auth.getUser();
     if (!user) return responder({ error: "sin_sesion" }, 401);
 
-    // Cliente de servidor: solo para leer el catálogo de Storage, que no
-    // pertenece a ningún usuario.
+    // Cliente de servidor: para leer lo que no pertenece a ningún usuario
+    // y, en `borrar_cuenta`, para borrar el usuario de Auth.
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // --- Borrar la cuenta entera ---
+    //
+    // Va aquí, antes de cargar el perfil: una cuenta que se quedó sin
+    // canjear el código no tiene perfil y también tiene derecho a irse.
+    //
+    // Se borra el usuario de Auth y todo lo demás cae en cascada: perfiles
+    // (on delete cascade sobre auth.users) y, de cada perfil, veredictos,
+    // correcciones, seguimiento, sectores y avisos. Lo único que queda son
+    // los datos públicos de contratación, que no son suyos.
+    //
+    // La web pide escribir BORRAR antes de llamar; se comprueba también
+    // aquí para que un clic suelto o una llamada a medias no baste.
+    if (accion === "borrar_cuenta") {
+      if (confirmacion !== "BORRAR") return responder({ error: "sin_confirmar" }, 400);
+      const { error: fallo } = await admin.auth.admin.deleteUser(user.id);
+      if (fallo) {
+        console.error(`No se pudo borrar la cuenta ${user.id}:`, fallo);
+        return responder({ error: "error_interno" }, 500);
+      }
+      console.log(`Cuenta ${user.id} borrada a petición propia`);
+      return responder({ ok: true });
+    }
 
     // La pedida si es suya; si no (borrada, o de una versión vieja de la
     // web que no la manda), la más antigua, igual que mi_perfil_id().
