@@ -179,3 +179,100 @@ Con lo anterior, la diferencia entre los dos planes del
 El mercado está entre 19 y 199 € al mes. La referencia directa es El
 Vínculo a 39 €, que ya ofrece búsqueda semántica, competencia y chat con
 los pliegos. Licitandum tiene un plan gratuito permanente.
+
+---
+
+## Traspaso: estado al cierre del 04/10/2026
+
+Para retomar en otra sesión sin repasar la conversación.
+
+### Lo hecho, todo en producción
+
+| Qué | Dónde | Commit |
+|---|---|---|
+| Esta hoja de ruta | `docs/competencia/LEEME.md`, enlazada desde el `README.md` | `aa066fe` |
+| Exportar el plazo al calendario | Descartado, no llegó a `main` | — |
+| Etiqueta de sistema dinámico, acuerdo marco y "solo homologados" en Contratos | `20261004190000_sistema_en_mis_oportunidades.sql` + `web/index.html` | `fc54874` |
+| Viabilidad: rango de precio (cuartiles) y contratos con enlace al expediente | `20261004200000_viabilidad_rango_y_contratos.sql` + `web/index.html` | `5831795` |
+| El veredicto de Viabilidad en la lista de Contratos: marca en la fila y filtro | `20261004210000_viabilidad_en_la_lista.sql` + `web/index.html` | `e84f747` |
+
+Las tres migraciones están **aplicadas** en Supabase. Lo último se probó
+con sesión iniciada (cuenta de prueba SOLTEC PRO UNIFORMIDAD, 63
+contratos): el filtro, la marca de la fila y la ficha de Viabilidad con
+sus contratos enlazados funcionan con datos reales.
+
+### Cómo funciona lo nuevo
+
+- **`mis_oportunidades`** (la vista de la lista) tiene dos columnas más al
+  final: `sistema` y `viabilidad` (`abierto`, `dificil`, `cerrado`,
+  `mio` o null). Esta vista la han redefinido **varias sesiones el mismo
+  día** (la PR #28 le añadió `parecido`): antes de tocarla, leer la
+  definición de producción con `pg_get_viewdef`, no la del repositorio,
+  y añadir columnas solo al final.
+- **`viabilidad_guardada`**: el veredicto de cada contrato abierto que
+  está en alguna lista. No depende de quién mira; "Es tuyo" lo resuelve
+  la vista comparando `ultimo_cif` con el NIF del perfil. Guarda también
+  `sin_datos` y `error`, que la vista convierte en null.
+- **`refrescar_viabilidad_guardada(segundos)`**, por `pg_cron` (trabajo
+  `refrescar-viabilidad-guardada`, cada 10 minutos, 100 s como mucho):
+  primero lo que no tiene veredicto, recalcula a los 7 días y borra a los
+  30 lo que ya no se recalcula. Va a unos 25 contratos por segundo; los
+  2.865 del arranque tardaron unos 2 minutos.
+- **`incumbencia()`**: cada empresa del `reparto` lleva `contratos` (los
+  cinco más recientes, con `enlace`). **`ediciones_anteriores()`**
+  devuelve `enlace`. **`viabilidad()`** devuelve `baja_p25` y `baja_p75`
+  en `organismo`; la web solo enseña el rango con 5 contratos o más.
+
+### Abierto, para decidir
+
+1. **"Difícil" con muy poca base.** Basta con que una empresa gane la
+   mitad de 3 adjudicaciones del organismo (caso real: Málaga, Sagres
+   S.L., 2 de 3). Ahora que la lista se filtra por el veredicto, quizá
+   convenga exigir más contratos. Y "Parece cerrado" es rarísimo: 14 de
+   2.865. Si "Sin los cerrados" apenas cambia la lista, revisar los
+   umbrales de `viabilidad()`.
+2. **La casilla del correo diario viene marcada** en la bienvenida del
+   alta, aunque el `README.md` dice que los avisos nacen apagados.
+3. **Permisos de `mis_oportunidades`**: `anon` y `authenticated` tienen
+   todos los privilegios, no solo `select`. Ya era así; en la práctica no
+   se puede escribir (la vista une varias tablas), pero lo correcto es
+   dejar solo `select`.
+4. **Viabilidad tarda 3–5 s en frío** en organismos muy grandes (uno de
+   4.228 adjudicaciones). Ya pasaba antes de estos cambios; está cerca
+   del corte de 8 s de la API.
+5. **El umbral de baja anormal** no se puede dar: depende de las ofertas
+   de cada licitación, que no tenemos.
+
+### Lo siguiente: "Lo que viene"
+
+Prioridad 2. Datos medidos el 04/10/2026: de 942.000 adjudicaciones desde
+2023, el 83 % tiene duración y fecha (783.000), y unas 76.000 vencen en
+los próximos 12 meses. Esa cifra incluye los contratos menores, que duran
+poco: filtrado por el sector de cada cliente, y sin menores, saldrán
+muchas menos. Fecha de fin = `coalesce(fecha_formalizacion,
+fecha_formalizacion_estimada, fecha_adjudicacion) + duracion_meses`; las
+prórrogas solo están en texto (`prorrogas_texto`). Hará falta un agregado
+nocturno por prefijo, como `organismos_por_prefijo`, por el corte de 8 s.
+
+Después: llevar la cuenta de cada contrato (decidir antes los estados y
+si lleva notas). Solvencia y contratos menores tocan el scraper y la
+tabla grande: mejor cuando no haya otra sesión cargando histórico.
+
+### Cómo se ha trabajado, por si sirve
+
+- **Subir a `main` publica la web en producción** (Cloudflare Pages).
+  Cada rama subida tiene su vista previa en
+  `https://<rama>.statescraperv2.pages.dev`: sirve para comprobar que la
+  página carga sin errores antes de unirla.
+- **Web en local**: `py -m http.server 8765 --bind 127.0.0.1 --directory web`
+  y abrir `http://localhost:8765`. En este equipo hay un
+  `.claude/launch.json` con eso mismo (la carpeta `.claude` no se sube:
+  está en el `.gitignore`). **Habla con la base de producción.**
+- **No hay Node en este equipo.** Para comprobar el JavaScript, la vista
+  previa de la rama o la web en local.
+- **Otras sesiones trabajan en paralelo** (alta sin NIF, capacidad de la
+  base e histórico). Cada cambio se hizo en su propio worktree y su
+  rama, y se miró `pg_stat_activity` antes de aplicar migraciones.
+- **Probar SQL sin dejar rastro**: un bloque `do $$ ... $$` que crea las
+  funciones, las llama y termina con `raise exception` con el resultado.
+  La excepción deshace todo y el mensaje trae los datos.

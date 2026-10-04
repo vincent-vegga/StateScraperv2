@@ -20,10 +20,11 @@ En producción con primeros usuarios reales. El core funciona; hay deuda técnic
 | Alta guiada: CIF → historial → criterio → cribado | ✅ |
 | Pantalla de Contratos abiertos | ✅ |
 | Inteligencia de mercado: Empresas, Movimientos, Organismos | ✅ |
-| Viabilidad: puntuación por contrato | ✅ |
+| Viabilidad: puntuación por contrato, rango de precio y contratos enlazados | ✅ |
+| Viabilidad en la lista de Contratos: marca y filtro | ✅ Desde el 04/10/2026 |
 | Alerta diaria por correo | ✅ Activa, solo para quien enciende la campana |
 | Histórico completo | ⚙️ Parcial (~25% del disponible) |
-| Sistemas dinámicos de adquisición marcados como tales | ⬜ Pendiente |
+| Sistemas dinámicos y acuerdos marco marcados como tales | ✅ Desde el 04/10/2026 |
 | Alta sin historial: camino estable | ⬜ Frágil |
 
 ---
@@ -102,6 +103,7 @@ Las migraciones SQL están en `migracion-*.sql`. Cada una explica en cabecera qu
 | `organismos_guardados` | La lista de organismos del sector, ya paginada | 1 día |
 | `fichas_organismo` | Datos de cada organismo que alguien haya consultado | 1 día |
 | `organismos_por_prefijo` | Agregado de organismos **por prefijo CPV**, no por perfil | Lo rehace el robot cada noche |
+| `viabilidad_guardada` | El veredicto de Viabilidad de cada contrato abierto que está en alguna lista | 7 días; la rellena `pg_cron` cada 10 minutos |
 
 La caché existe porque calcular competencia o fichas sobre 25.000 contratos cada vez que alguien abre la pestaña agota el tiempo de espera. El resultado es el mismo; el trabajo se hace una vez.
 
@@ -119,6 +121,7 @@ La caché existe porque calcular competencia o fichas sobre 25.000 contratos cad
 | `ficha_organismo(organo)` | Datos de un organismo concreto, con caché |
 | `pulso_mercado()` | Cifras del mes: contratos, importe, empresas |
 | `viabilidad(id)` | Puntuación de viabilidad de un contrato concreto |
+| `refrescar_viabilidad_guardada(segundos)` | Rellena `viabilidad_guardada` por tandas (`pg_cron`) |
 | `comprobar_codigo(codigo)` | Dice si un código de acceso vale, sin consumirlo ni pedir sesión (primera pantalla) |
 | `canjear_codigo(codigo)` | Valida y consume un código de acceso (insensible a mayúsculas) |
 
@@ -209,7 +212,7 @@ select codigo, usos, usos_maximos, caduca from public.codigos_acceso;
 ## Límites conocidos
 
 - **El alta sin historial es frágil.** Con pocos contratos el criterio puede ser demasiado estrecho o demasiado territorial. El prompt está corregido para no usar geografía, pero con cuatro o cinco contratos el margen es pequeño.
-- **Los sistemas dinámicos de adquisición inundan algunos sectores.** Son contratos que técnicamente encajan pero son inscripciones a catálogos, no licitaciones. Están en la lista pero no se distinguen visualmente.
+- **Los sistemas dinámicos de adquisición inundan algunos sectores.** Son contratos que técnicamente encajan pero son inscripciones a catálogos, no licitaciones. Siguen en la lista, pero desde el 04/10/2026 llevan su etiqueta (también los acuerdos marco y los contratos basados en ellos, "solo homologados").
 - **`pendientes_de_perfil` tarda con sectores grandes.** Con 25.000 contratos en el sector, la primera visita de un usuario nuevo puede superar el tiempo de espera del navegador. El workflow lo resuelve, pero el usuario puede ver la pantalla vacía antes.
 - **El histórico es parcial.** La inteligencia de mercado funciona mejor cuanto más histórico hay. Ahora hay unos dos años en algunos sectores y menos en otros.
 - **Los criterios geográficos.** Si la empresa tiene todo su historial en una provincia, el modelo podía deducir un criterio territorial. El prompt está corregido, pero hay perfiles antiguos que pueden tener ese sesgo.
@@ -219,14 +222,14 @@ select codigo, usos, usos_maximos, caduca from public.codigos_acceso;
 ## Hoja de ruta de producto
 
 Qué ofrece la competencia y qué le falta a cada pantalla, con las
-prioridades: [docs/competencia/LEEME.md](docs/competencia/LEEME.md).
+prioridades: [docs/competencia/LEEME.md](docs/competencia/LEEME.md). Al
+final tiene el traspaso: lo hecho, lo abierto y cómo seguir.
 
 ---
 
 ## Deuda técnica conocida
 
 - Caché de `pendientes_de_perfil` — prioritario: resuelve el problema de entrada vacía
-- Etiqueta visual para sistemas dinámicos de adquisición
 - Alta sin historial: mejorar usando historial de empresas similares
 - `alertador.py` necesita actualizar el remitente (está en el workflow pero no en el código)
 - Índice en `perfiles.cif` — hay búsquedas lentas porque hace seq scan
