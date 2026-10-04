@@ -65,8 +65,11 @@ Le falta:
 - [ ] **Contratos menores en vivo** (conjunto 1143). Hoy solo está el
       histórico de 2025. Para una pyme son la puerta de entrada, y la
       competencia los incluye. Ver también `PENDIENTES.md` §6.
-- [ ] **Distinguir los sistemas dinámicos de adquisición** en la lista
-      (ya en la deuda técnica del `README.md`).
+- [x] **Distinguir los sistemas dinámicos de adquisición** en la lista
+      (ya en la deuda técnica del `README.md`). Hecho el 04/10/2026:
+      etiqueta en la fila y explicación en el detalle, también para
+      acuerdos marco y contratos basados en ellos
+      (`20261004190000_sistema_en_mis_oportunidades.sql`).
 - [ ] **Avisar antes.** El cron de "las 06:00 UTC" arranca hacia las
       10:30–11:15 (`PENDIENTES.md`), frente a menos de 1 h en Licitandum.
       Valorar un cron externo o varias pasadas al día.

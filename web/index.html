@@ -1796,6 +1796,7 @@ select:focus{
 .marca-ute{display:inline-block;margin-left:6px;padding:0 5px;border:1px solid var(--linea);
   border-radius:4px;font-size:.68rem;font-weight:650;letter-spacing:.05em;
   color:var(--tenue);vertical-align:2px;line-height:1.5}
+.marca-sistema{margin-left:8px;white-space:nowrap}
 .socios-ute{display:block;margin-top:2px;color:var(--tenue);font-size:.82rem}
 
 .apilada{
@@ -7704,6 +7705,27 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const lugar = o => o.provincia
     ?? (o.comunidad ? `${o.comunidad}, provincia sin precisar` : null);
 
+  // Lo que no es un contrato normal, dicho en la fila: en algunos sectores
+  // los sistemas dinámicos llenan la lista y, vistos igual que un
+  // contrato, parecen oportunidades que no son. El basado en un acuerdo
+  // marco es el que más importa: si no estás homologado, no puedes
+  // presentarte. La etiqueta es corta; la explicación va en el detalle,
+  // porque un texto al pasar por encima no existe en el móvil.
+  const SISTEMAS = {
+    'Sistema dinámico de adquisición': {
+      marca: 'SISTEMA DINÁMICO',
+      explica: 'Es una inscripción en un catálogo de proveedores que sigue abierto. Entrar no es ganar un contrato: los encargos llegan después, entre los inscritos.',
+    },
+    'Acuerdo marco': {
+      marca: 'ACUERDO MARCO',
+      explica: 'Se homologa a una o varias empresas. El dinero llega después, con los contratos basados en el acuerdo.',
+    },
+    'Contrato basado en acuerdo marco': {
+      marca: 'SOLO HOMOLOGADOS',
+      explica: 'Es un encargo dentro de un acuerdo marco: solo pueden presentarse las empresas ya homologadas en él.',
+    },
+  };
+
   // Solo el titular. Los cuatro recuadros de antes —abiertos, encaje
   // claro, importe, vencimientos— duplicaban lo que ya dicen el titular
   // y los filtros de debajo. La misma función en dos sitios confunde
@@ -7854,7 +7876,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
            aria-expanded="false" aria-controls="d${i}">
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
-          <p class="meta">${esc([o.organo, lugar(o)].filter(Boolean).join(' · '))}</p>
+          <p class="meta">${esc([o.organo, lugar(o)].filter(Boolean).join(' · '))}${
+            SISTEMAS[o.sistema] ? `<span class="marca-ute marca-sistema">${
+              SISTEMAS[o.sistema].marca}</span>` : ''}</p>
           ${o.dias_sin_verificar > 90
             ? `<span class="sin-verificar">Sin movimiento desde hace
                ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
@@ -7877,6 +7901,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
              la máquina en vez de decirle si le interesa o no. Para eso
              están los dos botones. -->
         <dl>
+          ${SISTEMAS[o.sistema] ? `<dt>Tipo</dt><dd>${esc(o.sistema)}
+            <br><span style="color:var(--tenue)">${SISTEMAS[o.sistema].explica}</span></dd>` : ''}
           <dt>Órgano</dt><dd>${esc(o.organo ?? '—')}</dd>
           <dt>Provincia</dt><dd>${esc(o.provincia
             ?? (o.comunidad ? `sin precisar (${o.comunidad})` : 'no informada'))}</dd>
