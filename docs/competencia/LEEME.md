@@ -129,7 +129,7 @@ pantalla "¿A cuál te presentas?" repite la lista de Contratos.
       2.865 contratos abiertos en listas se calcularon en ~2 minutos). En
       la fila solo se marca Difícil, Parece cerrado y Es tuyo: "Tienes
       opciones" sale en 3 de cada 4 y no avisaría de nada; está en el
-      filtro, junto con "Sin los que parecen cerrados".
+      filtro, junto con "Sin los cerrados".
 - [ ] **Quitar la pestaña** o dejarla solo como destino del botón
       "Analizar viabilidad" de la ficha.
 - [x] **Dar un rango de precio y no solo la media**: percentiles de la baja
