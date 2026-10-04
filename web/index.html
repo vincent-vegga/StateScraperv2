@@ -5794,6 +5794,13 @@ async function seccionLoQueViene(perfil, session) {
     if (!ahora) return;
     ahora.classList.remove('cambiando');
 
+    // Si la web llega a producción antes que la migración, la función aún
+    // no existe (PGRST202): eso es "se está preparando", no un error.
+    if (r.error?.code === 'PGRST202') {
+      pintar({ actualizado: null });
+      return;
+    }
+
     // Un fallo no se enseña como "no hay nada": el cliente concluiría
     // que en su sector no vence ningún contrato.
     if (r.error) {
