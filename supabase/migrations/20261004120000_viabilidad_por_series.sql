@@ -205,14 +205,19 @@ as $function$
     ),
     por_conv as (select count(*) > 0 as si from ganadas),
     este as (
-        select l.organo, l.prefijo_principal
+        select l.organo, l.prefijo_principal,
+               public.clase_sistema(l.sistema) as clase
         from public.licitaciones l where l.id_licitacion = ficha
     ),
+    -- Solo los de su misma clase: en un acuerdo marco, sus cientos de
+    -- contratos derivados (un licitador cada uno, por definición) no
+    -- dicen nada de quién gana el marco.
     organismo as (
         select o.adjudicatario, o.adjudicatario_cif, o.fecha_actualizacion
         from public.licitaciones o, este
         where o.organo = este.organo
           and o.prefijo_principal = este.prefijo_principal
+          and public.clase_sistema(o.sistema) = este.clase
           and o.adjudicatario_cif is not null
           and not coalesce(o.sustituida, false)
           and coalesce(o.procedimiento, '') <> 'Contrato menor'
@@ -312,7 +317,11 @@ begin
     inc := public.incumbencia(ficha, 4);
     serie := coalesce((inc->>'por_convocatoria')::boolean, false);
 
-    -- Cómo adjudica ese organismo en esta familia de contratos.
+    -- Cómo adjudica ese organismo en esta familia de contratos. Solo
+    -- adjudicaciones de verdad y de su misma clase, como el resto de
+    -- pantallas: los menores (un licitador casi siempre), los duplicados
+    -- republicados y los derivados de un marco inflaban el "solo se
+    -- presentó una empresa" (2.212 de 2.337 en un acuerdo marco).
     select round(avg(public.baja_real(o.presupuesto_base, o.importe_sin_iva,
                                       o.lotes, o.sistema)))::int,
            count(*) filter (where public.baja_real(o.presupuesto_base,
@@ -324,6 +333,10 @@ begin
     from public.licitaciones o
     where o.organo = c.organo
       and o.prefijo_principal = c.prefijo_principal
+      and public.clase_sistema(o.sistema) = public.clase_sistema(c.sistema)
+      and o.adjudicatario_cif is not null
+      and not coalesce(o.sustituida, false)
+      and coalesce(o.procedimiento, '') <> 'Contrato menor'
       and o.fecha_actualizacion >= now() - interval '4 years';
 
     -- ---------- El veredicto ----------
@@ -339,6 +352,10 @@ begin
     elsif serie and (inc->>'ediciones')::int = 1 then
         motivos := motivos || format(
             'la convocatoria anterior de este contrato la ganó %s',
+            inc->'lider'->>'nombre');
+    elsif (inc->>'ediciones')::int = 1 then
+        motivos := motivos || format(
+            'la única adjudicación de este tipo en este organismo la ganó %s',
             inc->'lider'->>'nombre');
     elsif (inc->>'reparto_equitativo')::boolean then
         if serie then
@@ -446,7 +463,12 @@ begin
             'licitadores_medio', licit,
             'licitadores_muestra', n_licit,
             'sin_competencia', solos),
-        'soy_el_lider', (inc->'lider'->>'cif') is not distinct from yo.cif
+        -- "Este contrato es tuyo" solo si de verdad lo es: hay serie y
+        -- ganaste la convocatoria más reciente. Ser quien más gana en el
+        -- organismo no hace tuyo ESTE contrato, y haber ganado dos de
+        -- tres tampoco si la última se la llevó otro.
+        'soy_el_lider', serie and yo.cif is not null
+                        and (inc->'ultimo'->>'cif') = yo.cif
     );
 end;
 $function$;

@@ -1260,6 +1260,21 @@ prueba (Silex Seguridad): serie de tres, serie con una desierta,
 contratos paralelos, solo desiertas y "Este contrato es tuyo". Ver
 `supabase/migrations/20261004120000_viabilidad_por_series.sql`.
 
+**Revisión antes de encenderla** (mismo día, 120 abiertas al azar):
+
+- "Este contrato es tuyo" salía al ser el líder del reparto, también
+  sin serie (líder del organismo) o habiendo perdido la última. Ahora
+  solo con serie y si ganaste la más reciente.
+- La baja, los licitadores de media y el "solo se presentó una empresa"
+  contaban menores, duplicados y, en un acuerdo marco, sus derivados
+  ("2.212 de 2.337"). Ahora, como el resto de pantallas: adjudicados, sin
+  menores ni duplicados y de su misma clase de sistema. El reparto del
+  organismo, igual.
+- Con una sola adjudicación salía "1 empresas distintas se reparten las
+  1 adjudicaciones". Ahora dice quién la ganó.
+
+Queda: 104 "Tienes opciones", 14 "difícil" y 2 "cerrado" de 120.
+
 **Pendiente.** Títulos en dos idiomas; y con más histórico (hay desde
 2024 en la mayoría de fuentes), series más largas.
 

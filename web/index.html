@@ -4728,15 +4728,16 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         organismo en tu sector.</p></div>`;
     }
 
-    // Una sola convocatoria anterior: ni porcentaje ni reparto, solo
-    // quién la ganó. «100 %» de una sería verdad y no diría nada.
-    if (inc.por_convocatoria && inc.ediciones === 1) {
+    // Una sola adjudicación: ni porcentaje ni reparto, solo quién la
+    // ganó. «100 %» de una sería verdad y no diría nada.
+    if (inc.ediciones === 1) {
       return `<div class="factor ${esMio ? 'bueno' : ''}">
-        <h4>Quién ganó la anterior</h4>
+        <h4>${inc.por_convocatoria ? 'Quién ganó la anterior' : 'Quién ganó aquí'}</h4>
         <div class="cifra" style="font-size:1.05rem;line-height:1.3">${
           esc(lider.nombre ?? '—')}</div>
-        <span class="pie">la única convocatoria anterior de este contrato
-          que hemos encontrado</span>
+        <span class="pie">${inc.por_convocatoria
+          ? 'la única convocatoria anterior de este contrato que hemos encontrado'
+          : 'la única adjudicación de este tipo en este organismo en cuatro años'}</span>
       </div>`;
     }
 
