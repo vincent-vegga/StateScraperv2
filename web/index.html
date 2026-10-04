@@ -5514,6 +5514,8 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
     // Con varios ganadores: la principal "y 12 más". Si entre los demás
     // está tu empresa o una que sigues, se dice cuál y qué se llevó: es
     // lo único de esos doce que le importa.
+    const enlaceOrgano = o => o ? `<a href="#" class="enlace-ficha"
+      data-a-organismo="${esc(o)}">${esc(o)}</a>` : '';
     const unaLinea = m => {
       const [principal, ...resto] = m.ganadores;
       const destacados = resto.filter(g => g.es_mia || g.la_sigo);
@@ -5523,11 +5525,14 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
         : m.la_sigo ? 'una que sigues' : '';
       return `<div class="movimiento ${m.es_mia ? 'mia' : m.la_sigo ? 'sigo' : ''}">
         <div>
-          <p class="gano">${esc(m.empresa ?? '—')}${
+          <p class="gano">${principal?.cif
+            ? `<a href="#" class="enlace-ficha" data-a-mercado="${esc(principal.cif)}">${esc(m.empresa ?? '—')}</a>`
+            : esc(m.empresa ?? '—')}${
             resto.length ? ` <span class="cuanto">y ${resto.length} más</span>` : ''}${
             marca ? `<span class="marca-mia">${marca}</span>` : ''}</p>
           <p class="que">${esc(m.titulo ?? '')}</p>
-          <span class="donde">${esc([m.organo, m.provincia].filter(Boolean).join(' · '))}</span>
+          <span class="donde">${enlaceOrgano(m.organo)}${
+            m.provincia ? ` · ${esc(m.provincia)}` : ''}</span>
           ${destacados.map(g => `<span class="donde">${
             g.es_mia ? 'Tu empresa' : esc(g.nombre ?? g.cif)}: ${
             plural(g.lotes ?? 1, 'lote', 'lotes')}${
@@ -5558,8 +5563,8 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
               ${mia ? '<span class="marca-mia">tu empresa entre ellas</span>'
               : sigo ? '<span class="marca-mia">una que sigues</span>' : ''}</p>
             <p class="que">${esc(primera.titulo ?? '')}</p>
-            <span class="donde">${esc([primera.organo, primera.provincia]
-              .filter(Boolean).join(' · '))}</span>
+            <span class="donde">${enlaceOrgano(primera.organo)}${
+              primera.provincia ? ` · ${esc(primera.provincia)}` : ''}</span>
             <span class="cuantas-veces">${plural(g.length, 'compra', 'compras')}
               <span class="flechita">▾</span></span>
           </div>
@@ -5620,6 +5625,23 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
           rankings de arriba cuentan todas.</p>` : ''}
         ${cuerpo}
       </div>`;
+
+    // El nombre de la empresa abre su ficha en Mercado y el del organismo
+    // la suya en Organismos. preventDefault evita que, dentro de un grupo
+    // desplegable, el clic pliegue o despliegue el resumen.
+    document.getElementById('datos-mov').onclick = ev => {
+      const e = ev.target.closest('[data-a-mercado]');
+      const o = ev.target.closest('[data-a-organismo]');
+      if (!e && !o) return;
+      ev.preventDefault();
+      if (e) {
+        irA('mercado', { cif: e.dataset.aMercado });
+        pantallaMercado(perfil, session, true, e.dataset.aMercado);
+      } else {
+        pantallaOrganismos(perfil, session, false, o.dataset.aOrganismo);
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    };
 
     const selProv = document.getElementById('f-provincia');
     if (selProv) selProv.onchange = () => {
