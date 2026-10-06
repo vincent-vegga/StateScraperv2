@@ -30,7 +30,7 @@ El código CPV —la clasificación europea de contratos— es demasiado grueso 
 
 **Contratos** — Tu lista de oportunidades abiertas. Solo las que encajan con tu empresa, ordenadas por plazo. Puedes marcar las que no te interesan y el sistema aprende.
 
-**Movimientos** — Quién ha ganado qué en tu sector el último mes. Filtrable por provincia. Muestra el importe, el organismo y si alguna de esas empresas ya la sigues.
+**Lo que viene** — Los contratos de tu sector que terminan en los próximos 3, 6 o 12 meses y que el organismo tendrá que volver a licitar. Para cada uno: quién lo tiene, qué es, de qué organismo, cuánto vale, cuándo vence y si admite prórrogas. Si ya hay una nueva licitación abierta, te lo dice y te lleva a ella. Filtrable por plazo y provincia. Además, la vista «Lo adjudicado» sigue enseñando quién ha ganado qué en tu sector el último mes.
 
 **Empresas** — Las veinticinco empresas que más compiten contigo, ordenadas por contratos ganados, con lo que gana cada una al año. Puedes quedarte solo con las de tu tamaño, para que el líder del sector no tape a quien de verdad se lleva tus contratos, y marcarlas para seguirlas o ignorarlas.
 
