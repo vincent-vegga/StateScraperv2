@@ -817,9 +817,17 @@ async function incrustar(textos: string[]): Promise<number[][]> {
         for (const e of d.data) salida.push(e.embedding);
         break;
       }
+      // 429 (límite de tokens por minuto): con la web, la búsqueda por
+      // líneas pide muchos vectores a la vez, y esperando 2–10 s se rendía
+      // (tanda 2: P02, P08 y P14). Se espera lo que pide OpenAI, o 5, 10,
+      // 20… s hasta 60, y se rinde a los 8 intentos (unos 5 minutos).
+      const pedidoMs = Number(r.headers.get("retry-after-ms"))
+        || Number(r.headers.get("retry-after")) * 1000 || 0;
       await r.body?.cancel();
-      if (intento >= 4) throw new Error(`embeddings ${r.status}`);
-      await new Promise((ok) => setTimeout(ok, 2000 * (intento + 1)));
+      const reintentable = r.status === 429 || r.status >= 500;
+      if (!reintentable || intento >= 7) throw new Error(`embeddings ${r.status}`);
+      const esperaMs = Math.max(pedidoMs, Math.min(60_000, 5000 * 2 ** intento));
+      await new Promise((ok) => setTimeout(ok, esperaMs + Math.random() * 1000));
     }
   }
   return salida;

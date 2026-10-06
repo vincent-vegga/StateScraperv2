@@ -96,6 +96,8 @@ def _numeros(nombre: str, defecto: str) -> tuple[int, ...]:
 N_MARCAS = _numeros("N_MARCAS", "5,10,20")
 MARCAS_HOY = _numeros("MARCAS_HOY", "10")
 SIN_BIS = os.environ.get("SIN_BIS") == "1"
+# Solo la web junto a la descripción (la web sola ya se vio que es peor).
+SIN_WEB_SOLA = os.environ.get("SIN_WEB_SOLA") == "1"
 
 
 def prefijos_de(cpvs) -> set[str]:
@@ -314,7 +316,8 @@ def main() -> int:
     anteriores = os.environ.get("MEDIR_ANTERIORES") == "1"
     VARIANTES = ((["actual"] if medir_actual else []) + (["sintetico", "limpio"] if anteriores else [])
                  + ["limpio_desc"] + ([] if SIN_BIS else ["limpio_desc_bis"])
-                 + (["web", "web_desc"] if any(x.get("web") for x in casos) else [])
+                 + ([] if SIN_WEB_SOLA else ["web"] if any(x.get("web") for x in casos) else [])
+                 + (["web_desc"] if any(x.get("web") for x in casos) else [])
                  + [f"corr{n}_hoy" for n in MARCAS_HOY] + [f"corr{n}_nuevo" for n in N_MARCAS])
     resultados, resumen = [], []
 
@@ -349,9 +352,10 @@ def main() -> int:
         # «igual que limpio_desc» llenaría la comparación de empates).
         w = caso.get("web")
         extra["con_web"] = bool(w)
-        if w:
+        if w and not SIN_WEB_SOLA:
             mostrados["web"] = con_motor(c, cif, limpiar(w["descripcion"], w["puros"], gasto),
                                          k, gasto, w["descripcion"])
+        if w:
             mostrados["web_desc"] = con_motor(c, cif, limpiar(w["descripcion_con_desc"],
                                                               w["puros_con_desc"], gasto),
                                               k, gasto, w["descripcion_con_desc"])
@@ -359,7 +363,8 @@ def main() -> int:
         # Correcciones sobre lo que enseña producción. Las marcas de 10
         # incluyen las de 5, y las de 20 las de 10: el mismo cliente que
         # sigue marcando.
-        todas = marcas(c, mostrados["limpio_desc"], R, max(N_MARCAS + MARCAS_HOY), int(cod[1:]) * 7919)
+        todas = marcas(c, mostrados["limpio_desc"], R, max(N_MARCAS + MARCAS_HOY, default=0),
+                       int(cod[1:]) * 7919)
         for n in sorted(set(N_MARCAS + MARCAS_HOY)):
             corr = todas[:n]
             if n in MARCAS_HOY:
@@ -368,7 +373,7 @@ def main() -> int:
                 mostrados[f"corr{n}_nuevo"] = con_motor(c, cif, historial_corregido(c, limpios, corr),
                                                         k, gasto, desc, corr, recuerdo)
             extra[f"marcadas{n}"] = {i["id_licitacion"] for i in corr}
-        extra["marcas_si"] = sum(x["interesa"] for x in todas)
+        extra["marcas_si"] = sum(x["interesa"] for x in todas) if todas else None
         mas_cara = max(mas_cara, gasto.total - antes)
         if gasto.agotado():
             # Algo se quedó sin juzgar: sus cifras saldrían falsamente bajas.
@@ -493,12 +498,12 @@ def main() -> int:
 
     g = lambda x: "—" if x is None else f"{x:.2f}"
     celda = lambda f, v: f"{g(f[v]['recupera'])} / {g(f[v]['precision'])}" if f[v] else "—"
-    lineas += ["", f"| Perfil | Reales | Web (caracteres) | «Me interesa» de {max(N_MARCAS + MARCAS_HOY)} | " +
+    lineas += ["", f"| Perfil | Reales | Web (caracteres) | «Me interesa» de {max(N_MARCAS + MARCAS_HOY, default=0)} | " +
                " | ".join(f"{v} rec / prec" for v in VARIANTES) + " |",
                "|---|---|---|---|" + "---|" * len(VARIANTES)]
     for f in resumen:
         lineas.append(f"| {f['codigo']} | {f['reales']} | {f['web_caracteres'] if f['con_web'] else 'no'} | "
-                      f"{f['marcas_si']} | " + " | ".join(celda(f, v) for v in VARIANTES) + " |")
+                      f"{'—' if f['marcas_si'] is None else f['marcas_si']} | " + " | ".join(celda(f, v) for v in VARIANTES) + " |")
     lineas += ["", f"Perfiles: {len(resumen)} de {len(casos)} exportados"
                + (f" ({a_medias} a medias, fuera)" if a_medias else "")
                + f". Gasto contado, las dos fases: {gasto.total:.2f} $ (tope {MAX_GASTO:.2f} $)."]

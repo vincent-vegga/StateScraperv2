@@ -42,16 +42,16 @@ jobs:
       # que es público.
       SIM_WEBS: ${{ secrets.SIM_WEBS }}
       CACHE_HUELLAS: /home/runner/.cache/huellas
-      # Tope de las dos fases juntas; la exportación, como mucho 2 $.
-      # Tanda 2 (aprobada el 06/10/2026, ~4,5 $ con tope 6 $).
-      MAX_GASTO: '6'
-      MAX_GASTO_EXPORTAR: '2'
-      # El motor de hoy y el nuevo con las mismas 20 marcas; sin repetir
-      # limpio_desc (el ruido ya se midió en la tanda 1), y la web solo en
-      # las tres empresas en las que falló la exportación.
-      N_MARCAS: '20'
-      MARCAS_HOY: '20'
+      # Tope de las dos fases juntas.
+      # Web de P02, P08 y P14 (aprobada el 06/10/2026: 1 $). En la tanda 2
+      # la web se leyó pero las embeddings dieron 429; ahora se espera.
+      # Solo limpio_desc (la base) y web_desc, sin correcciones.
+      MAX_GASTO: '1'
+      MAX_GASTO_EXPORTAR: '0.3'
+      N_MARCAS: ''
+      MARCAS_HOY: ''
       SIN_BIS: '1'
+      SIN_WEB_SOLA: '1'
       WEB_SOLO: 'P02,P08,P14'
       CRIBADO_SIMULTANEAS: '8'
     steps:
@@ -76,7 +76,7 @@ jobs:
       - name: Exportar lo que daría el alta sin NIF
         env:
           MODO: exportar
-        run: deno run -A scripts/simular_sin_nif.ts --muestra=1
+        run: deno run -A scripts/simular_sin_nif.ts --muestra=1 --solo=P02,P08,P14
 
       - name: Medir
         run: python scripts/medir_sintetico.py
