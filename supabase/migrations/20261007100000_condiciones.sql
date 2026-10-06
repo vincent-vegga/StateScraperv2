@@ -205,6 +205,19 @@ as $function$
     limit tope
 $function$;
 
+-- Lo gastado, por día y solo sumando. No vale sumar `lectura_coste`: al
+-- releer una licitación se sobrescribe, y el tope de gasto se quedaría
+-- corto (pasó en la carga inicial del 06/10/2026, que releyó las 40 de la
+-- prueba; ese día se apuntó a mano lo gastado hasta el cambio, con
+-- 1 céntimo de margen).
+create table if not exists public.gasto_lecturas_dia (
+    dia      date primary key,
+    coste    numeric not null default 0,
+    lecturas integer not null default 0
+);
+alter table public.gasto_lecturas_dia enable row level security;
+revoke all on public.gasto_lecturas_dia from anon, authenticated;
+
 create or replace function public.guardar_lectura(ficha text, datos jsonb,
                                                   origen text, estado text,
                                                   coste numeric,
@@ -218,10 +231,14 @@ as $function$
         lectura = datos, lectura_origen = origen, lectura_estado = estado,
         lectura_fecha = now(), lectura_coste = coste,
         lectura_documento = documento
-    where id_licitacion = ficha
+    where id_licitacion = ficha;
+    insert into public.gasto_lecturas_dia as g (dia, coste, lecturas)
+    values ((now() at time zone 'UTC')::date, coalesce(coste, 0), 1)
+    on conflict (dia) do update
+        set coste = g.coste + excluded.coste, lecturas = g.lecturas + 1;
 $function$;
 
--- Lo gastado en lecturas, para que el lector respete su tope.
+-- Lo gastado en lecturas desde un día, para que el lector respete sus topes.
 create or replace function public.gasto_lecturas(desde timestamptz default '-infinity')
 returns numeric
 language sql
@@ -229,8 +246,8 @@ stable
 security definer
 set search_path to 'public'
 as $function$
-    select coalesce(sum(lectura_coste), 0) from public.condiciones
-    where lectura_fecha >= desde
+    select coalesce(sum(coste), 0) from public.gasto_lecturas_dia
+    where dia >= (desde at time zone 'UTC')::date
 $function$;
 
 revoke execute on function public.condiciones_por_leer(integer, boolean) from public, anon, authenticated;
