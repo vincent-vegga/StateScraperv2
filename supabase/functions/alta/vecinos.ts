@@ -58,11 +58,17 @@ async function incrustar(textos: string[]): Promise<number[][]> {
         const d = await r.json();
         return (d.data as { embedding: number[] }[]).map((e) => e.embedding);
       }
+      // 429 (límite de tokens por minuto) o caída: se espera lo que pida
+      // OpenAI, o 2, 4, 8… s hasta 20. En la simulación con webs, esperar
+      // 2–10 s no bastaba (06/10/2026).
+      const pedidoMs = Number(r.headers.get("retry-after-ms"))
+        || Number(r.headers.get("retry-after")) * 1000 || 0;
       await r.body?.cancel();
-      if (intento >= 2 || (r.status !== 429 && r.status < 500)) {
+      if (intento >= 4 || (r.status !== 429 && r.status < 500)) {
         throw new Error(`embeddings respondió ${r.status}`);
       }
-      await new Promise((ok) => setTimeout(ok, 1000 * 2 ** intento));
+      await new Promise((ok) => setTimeout(ok,
+        Math.max(pedidoMs, Math.min(20_000, 2000 * 2 ** intento)) + Math.random() * 500));
     }
   }));
   return resultados.flat();
@@ -92,9 +98,15 @@ export type Parecidos = {
  * menos 15 (si no, todos), y de ahí 40 con diversidad. Sin diversidad, a
  * quien vende mobiliario y material de oficina le salían cuarenta
  * variaciones de "suministro de mobiliario de oficina".
+ *
+ * Con `lineas` (los productos o servicios que salen de su web), los puros
+ * se buscan por turnos con la descripción y con cada línea: un único
+ * vector de una empresa con varias líneas queda a medio camino y no se
+ * parece a ninguna. Es la variante web_desc de la simulación (+0,07 de F1
+ * en las empresas con web legible, 04/10/2026).
  */
 export async function buscarParecidos(descripcion: string, filas: Adjudicada[],
-                                      franjas: string[]): Promise<Parecidos> {
+                                      franjas: string[], lineas: string[] = []): Promise<Parecidos> {
   // Un título repetido se incrusta una vez.
   const porTitulo = new Map<string, number>();
   const titulos: string[] = [];
@@ -102,17 +114,26 @@ export async function buscarParecidos(descripcion: string, filas: Adjudicada[],
     const t = l.titulo.trim().toLowerCase();
     if (!porTitulo.has(t)) { porTitulo.set(t, titulos.length); titulos.push(l.titulo); }
   }
-  const [consulta, ...vectores] = await incrustar([descripcion, ...titulos]);
+  // Todos los vectores de una vez: una petición por línea con todos los
+  // títulos era lo que daba 429 en la simulación.
+  const todos = await incrustar([descripcion, ...lineas, ...titulos]);
+  const consulta = todos[0];
+  const deLineas = todos.slice(1, 1 + lineas.length);
+  const vectores = todos.slice(1 + lineas.length);
   const vector = (l: Adjudicada) => vectores[porTitulo.get(l.titulo.trim().toLowerCase())!];
 
-  const ordenados = filas.map((l) => ({ l, s: coseno(consulta, vector(l)) }))
+  const ordenar = (q: number[]) => filas.map((l) => ({ l, s: coseno(q, vector(l)) }))
     .sort((a, b) => b.s - a.s);
+  const enSusFranjas = (orden: { l: Adjudicada; s: number }[]) => {
+    const top = orden.slice(0, 200);
+    const enFranjas = franjas.length
+      ? top.filter(({ l }) => franjas.includes(franja(l.importe ?? l.presupuesto) ?? ""))
+      : [];
+    return enFranjas.length >= 15 ? enFranjas : top;
+  };
 
-  const top = ordenados.slice(0, 200);
-  const enFranjas = franjas.length
-    ? top.filter(({ l }) => franjas.includes(franja(l.importe ?? l.presupuesto) ?? ""))
-    : [];
-  const candidatos = enFranjas.length >= 15 ? enFranjas : top;
+  const ordenados = ordenar(consulta);
+  const candidatos = enSusFranjas(ordenados);
 
   // MMR: cada vecino nuevo tiene que parecerse a la descripción y
   // aportar algo que no tengan ya los elegidos.
@@ -129,8 +150,24 @@ export async function buscarParecidos(descripcion: string, filas: Adjudicada[],
     elegidos.push(e);
     for (const q of quedan) q.max = Math.max(q.max, coseno(q.v, e.v));
   }
-  return { ordenados, vecinos: elegidos.map((e) => e.l),
-           puros: candidatos.slice(0, 80).map(({ l }) => l) };
+  // Los puros: por turnos entre la descripción y cada línea, sin repetir,
+  // hasta 80.
+  let puros = candidatos.slice(0, 80).map(({ l }) => l);
+  if (deLineas.length) {
+    const listas = [candidatos, ...deLineas.map((q) => enSusFranjas(ordenar(q)))];
+    const vistos = new Set<string>();
+    puros = [];
+    for (let i = 0; puros.length < 80 && listas.some((x) => i < x.length); i++) {
+      for (const x of listas) {
+        const l = x[i]?.l;
+        if (l && puros.length < 80 && !vistos.has(l.id_licitacion)) {
+          vistos.add(l.id_licitacion);
+          puros.push(l);
+        }
+      }
+    }
+  }
+  return { ordenados, vecinos: elegidos.map((e) => e.l), puros };
 }
 
 // Para el historial sintético del motor de huellas (decisión 41), cada

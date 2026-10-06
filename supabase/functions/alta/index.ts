@@ -35,6 +35,7 @@ import {
   historialSintetico,
   type Adjudicada, type Parecidos,
 } from "./vecinos.ts";
+import { descripcionCompleta, direccionWeb, leerWeb, webComoCliente } from "./web.ts";
 
 
 
@@ -407,7 +408,9 @@ async function parecidosDe(
   const filas = ((data ?? []) as Adjudicada[]).filter((l) => l.titulo);
   if (filas.length < 50) return null;
   const franjas = Array.isArray(perfil.franjas) ? perfil.franjas as string[] : [];
-  return await buscarParecidos(String(perfil.descripcion), filas, franjas);
+  // Las líneas de su web (si dio una): se busca también por cada una.
+  const lineas = Array.isArray(perfil.web_lineas) ? perfil.web_lineas as string[] : [];
+  return await buscarParecidos(String(perfil.descripcion), filas, franjas, lineas);
 }
 
 // ------------------------------------------------------------
@@ -467,7 +470,7 @@ Deno.serve(async (peticion) => {
     if (!autorizacion) return responder({ error: "sin_sesion" }, 401);
 
     const { accion, descripcion, prefijos, cif, empresa, dias,
-            perfil_id, franjas, confirmacion } = await peticion.json();
+            perfil_id, franjas, confirmacion, web, web_texto, web_lineas } = await peticion.json();
 
     // Con varias empresas por cuenta, la web dice cuál está mirando. Se
     // reenvía a la base como `x-perfil` para que las funciones que buscan
@@ -722,7 +725,21 @@ Deno.serve(async (peticion) => {
           : `${d.prefijo}: ${d.licitaciones}`)
         .join("\n");
 
-      const propuesta = await proponerCpv(descripcion, catalogoDivisiones);
+      // Su web, si la ha dado (decisión 49): a qué se dedica y sus líneas,
+      // que se le enseñan para que quite lo que no sea suyo. Si no se puede
+      // leer, se sigue sin ella: la web nunca bloquea el alta.
+      const url = direccionWeb(web);
+      let deLaWeb: { descripcion: string; lineas: string[] } | null = null;
+      if (url) {
+        try {
+          deLaWeb = await webComoCliente(await leerWeb(url));
+        } catch (fallo) {
+          console.error("No se pudo leer la web:", (fallo as Error).name);
+        }
+        console.log(`Web: ${deLaWeb ? `${deLaWeb.lineas.length} líneas` : "sin texto útil"}`);
+      }
+      const propuesta = await proponerCpv(
+        deLaWeb ? `${descripcion} ${deLaWeb.descripcion}` : descripcion, catalogoDivisiones);
 
       // Cuántas trae cada prefijo. Sin ese número, confirmar la
       // propuesta sería a ciegas: uno que trae cero sobra y uno que
@@ -778,6 +795,9 @@ Deno.serve(async (peticion) => {
 
       await comoUsuario.from("perfiles").update({
         descripcion,
+        web: url?.href ?? null,
+        descripcion_web: deLaWeb?.descripcion ?? null,
+        web_lineas: deLaWeb?.lineas ?? null,
         palabras_producto: propuesta.producto,
         palabras_destinatario: propuesta.destinatario,
         // Los tamaños que ha marcado; ninguno es "no lo sé".
@@ -786,7 +806,8 @@ Deno.serve(async (peticion) => {
         paso_alta: "describiendo",
       }).eq("id", perfil.id);
 
-      return responder({ ok: true, ...propuesta });
+      return responder({ ok: true, ...propuesta,
+                         web: url ? { leida: !!deLaWeb, ...(deLaWeb ?? {}) } : null });
     }
 
     // --- Confirmar las familias y generar el criterio (sin historial) ---
@@ -813,6 +834,21 @@ Deno.serve(async (peticion) => {
       if (!lista.length) return responder({ error: "sin_prefijos" }, 400);
       if (!perfil.descripcion) return responder({ error: "descripcion_corta" }, 400);
 
+      // Lo de su web, tal como lo ha dejado al revisarlo: puede haber
+      // corregido el texto y quitado líneas. Vacío es «sin web».
+      if (perfil.web && (typeof web_texto === "string" || Array.isArray(web_lineas))) {
+        const texto = typeof web_texto === "string" ? web_texto.trim().slice(0, 1500) : perfil.descripcion_web;
+        const lineas = Array.isArray(web_lineas)
+          ? web_lineas.map((x: unknown) => String(x).trim().slice(0, 120)).filter(Boolean).slice(0, 8)
+          : perfil.web_lineas;
+        await comoUsuario.from("perfiles").update({
+          descripcion_web: texto || null, web_lineas: lineas?.length ? lineas : null,
+        }).eq("id", perfil.id);
+        perfil.descripcion_web = texto || null;
+        perfil.web_lineas = lineas?.length ? lineas : null;
+      }
+      const loQueHace = descripcionCompleta(perfil);
+
       let parecidos: Parecidos | null = null;
       try {
         parecidos = await parecidosDe(admin, perfil, lista);
@@ -821,7 +857,7 @@ Deno.serve(async (peticion) => {
       }
       const conEjemplos = parecidos && parecidos.vecinos.length >= 10;
 
-      const criterio = await generarCriterio(perfil.descripcion, conEjemplos
+      const criterio = await generarCriterio(loQueHace, conEjemplos
         ? parecidos!.vecinos.map((l) => ({
             titulo: l.titulo, organo: l.organo ?? "",
             cpvs: (l.cpvs ?? []).join(","), interesa: true,
@@ -843,7 +879,7 @@ Deno.serve(async (peticion) => {
       // pasada, o no llega, el perfil sigue con él.
       // Se guarda antes de pedir la pasada: el motor lo lee al arrancar.
       const historial = conEjemplos
-        ? await historialSintetico(String(perfil.descripcion), parecidos!) : [];
+        ? await historialSintetico(loQueHace, parecidos!) : [];
       if (historial.length) {
         await admin.from("perfiles").update({
           ganados_sinteticos: historial.map((l) => l.id_licitacion),
