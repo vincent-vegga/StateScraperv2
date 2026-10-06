@@ -2655,7 +2655,8 @@ select:focus{
 .requisitos .compara .base{display:block;color:var(--tenue);font-size:.8rem}
 .requisitos ul{margin:0;padding-left:18px}
 .requisitos li{margin:2px 0}
-.requisitos .docs a{color:var(--texto)}
+.requisitos a{color:var(--texto);text-underline-offset:2px}
+.requisitos dd{overflow-wrap:anywhere}
 .requisitos .cita{margin:4px 0 12px;font-size:.86rem;font-style:italic}
 .requisitos .origen{
   margin:0 0 12px;
@@ -8147,7 +8148,8 @@ function reglaRequisito(req) {
                  valor_estimado: 'el valor estimado',
                  presupuesto: 'el presupuesto de licitación' }[req.base];
   if (!base) return '';
-  const cuanto = veces === 1 ? 'igual a' : veces < 1
+  if (veces === 1) return `igual a${base.replace(/^el /, 'l ')}`;
+  const cuanto = veces < 1
     ? `el ${numero(Math.round(veces * 100))} % de`
     : `${String(veces).replace('.', ',')} veces`;
   return `${cuanto} ${base}`;
@@ -8158,9 +8160,12 @@ function reglaRequisito(req) {
 // para que se vea que es nuestra cuenta y se pueda comprobar.
 function explicacionRequisito(req) {
   const regla = reglaRequisito(req);
+  // El resumen que repite la cifra de arriba no añade nada.
+  const repite = req.importe != null && String(req.texto ?? '').replace(/\D/g, '')
+    .includes(String(Math.trunc(req.importe)));
   const t = req.importe == null && regla
     ? `${regla[0].toUpperCase()}${regla.slice(1)}, según el pliego; la cifra es nuestra cuenta.`
-    : req.texto;
+    : repite ? '' : req.texto;
   return t ? `<br><span class="regla">${esc(t)}</span>` : '';
 }
 
@@ -8194,7 +8199,7 @@ function pintarRequisitos(r) {
   const filas = [];
   const fila = (dt, dd) => filas.push(`<dt>${dt}</dt><dd>${dd}</dd>`);
   const leido = r.estado === 'leido';
-  const comparar = que => (r.comparar || []).find(c => c.que === que);
+  const comparar = que => (r.comprobar || []).find(c => c.que === que);
 
   if (leido && r.exento) {
     fila('Solvencia', 'No hace falta acreditarla: el pliego la exime.');
@@ -8288,7 +8293,11 @@ function pintarRequisitos(r) {
 
   return `${titulo}${aviso ? `<p class="nota">${aviso}</p>` : ''}${
     filas.length ? `<dl>${filas.join('')}</dl>` : ''}${
-    leido && r.cita ? `<p class="cita">«${esc(r.cita)}»</p>` : ''}${
+    // La frase literal, solo si dice algo concreto (una cifra): "serán los
+    // exigidos en el Anexo 4" no ayuda, y repetir el resumen tampoco.
+    leido && /\d/.test(r.cita ?? '') && !/anexo\s+n?º?\.?\s*\d+\.?»?$/i.test(r.cita)
+      && ![r.economica?.texto, r.tecnica?.texto].includes(r.cita)
+      ? `<p class="cita">«${esc(r.cita)}»</p>` : ''}${
     origen ? `<p class="origen">${origen}</p>` : ''}`;
 }
 

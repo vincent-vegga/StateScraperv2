@@ -112,7 +112,7 @@ Responde SOLO con un objeto JSON con exactamente estas claves:
 Reglas:
 - Importes en euros, sin IVA, como número (1.151.534,92 € -> 1151534.92).
 - NO calcules nada. "importe" solo si la cifra está escrita en el texto; si no, null.
-- Si el requisito es una regla relativa ("una vez y media el valor anual medio del contrato", "igual o superior al valor estimado"), pon "multiplo" y "base" (valor_anual = valor anual medio; valor_estimado; presupuesto = presupuesto base de licitación). Si la regla depende de la duración ("1,5 veces el valor estimado si dura un año o menos, y el valor anual medio si dura más"), usa base = valor_anual: se calcula con la duración. Si además el texto da la cifra ya calculada, ponla en "importe".
+- Si el requisito es una regla relativa ("una vez y media el valor anual medio del contrato", "igual o superior al valor estimado"), pon "multiplo" y "base" (valor_anual = valor anual medio; valor_estimado; presupuesto = presupuesto base de licitación). "Igual a" o "equivalente a" es multiplo 1. Si la regla depende de la duración ("1,5 veces el valor estimado si dura un año o menos, y el valor anual medio si dura más"), usa base = valor_anual: se calcula con la duración. Si además el texto da la cifra ya calculada, ponla en "importe".
 - En "economica" va el medio principal de solvencia económica. Si se puede acreditar por volumen de negocios O por otro medio, usa volumen_negocios. Si solo se pide un seguro, medio = "seguro" y además rellena "seguro".
 - En "tecnica", trabajos_similares es la relación de trabajos/servicios/suministros/obras parecidos ejecutados; "anios" es cuántos años atrás cuentan (normalmente 3, o 5 en obras). El importe es el mínimo anual o acumulado que se exige.
 - "clasificacion": códigos como "G6-1" (grupo letra, subgrupo número, categoría). obligatoria = true si es exigida; false si solo sustituye a la solvencia (opcional).
@@ -315,6 +315,10 @@ def limpiar(datos: dict, fuente: str = "") -> dict:
         for k in ("importe", "multiplo", "anios"):
             if k in salida and not isinstance(salida[k], (int, float)):
                 salida[k] = None
+        # "Equivalente a la anualidad media": la base sin múltiplo es 1.
+        if (salida.get("base") and salida.get("multiplo") is None
+                and re.search(r"equivalente|igual", str(salida.get("texto") or ""), re.I)):
+            salida["multiplo"] = 1
         if salida.get("importe") is not None and fuente:
             entero = int(salida["importe"])
             if not ({entero, entero + 1, entero - 1} & escritas):
