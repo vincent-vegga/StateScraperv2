@@ -19,6 +19,7 @@ En producción con primeros usuarios reales. El core funciona; hay deuda técnic
 | Web multiusuario con sesión y autenticación | ✅ |
 | Alta guiada: CIF → historial → criterio → cribado | ✅ |
 | Pantalla de Contratos abiertos | ✅ |
+| Mi cartera: llevar la cuenta de cada contrato, con su resultado y avisos de plazo | 🟡 Hecho el 06/10/2026, sin publicar (Decisión 53) |
 | Inteligencia de mercado: Empresas, Lo que viene, Organismos | ✅ |
 | Lo que viene: contratos del sector que van a vencer (sustituye a Movimientos) | ✅ Desde el 06/10/2026, con la etiqueta de nueva licitación abierta |
 | Viabilidad: puntuación por contrato, rango de precio y contratos enlazados | ✅ |
@@ -94,6 +95,7 @@ Las migraciones SQL están en `migracion-*.sql`. Cada una explica en cabecera qu
 | `veredictos_mercado` | Cribado semántico del mercado (adjudicaciones históricas) |
 | `correcciones` | Cuando el cliente pulsa "no me interesa" o "sí me interesa" |
 | `seguimiento` | Empresas que el cliente ha marcado para seguir |
+| `cartera` | Contratos que el cliente lleva: estado, nota e importe de su oferta (Decisión 53) |
 | `codigos_acceso` | Códigos de acceso para el periodo de pruebas |
 
 ### Tablas de caché
@@ -124,6 +126,9 @@ La caché existe porque calcular competencia o fichas sobre 25.000 contratos cad
 | `pulso_mercado()` | Cifras del mes: contratos, importe, empresas |
 | `viabilidad(id)` | Puntuación de viabilidad de un contrato concreto |
 | `refrescar_viabilidad_guardada(segundos)` | Rellena `viabilidad_guardada` por tandas (`pg_cron`) |
+| `mi_cartera()` | Lo que ve en "Mi cartera", con el resultado de la adjudicación cruzado con su NIF |
+| `poner_en_cartera(licitacion, estado)` | Guarda o cambia el estado; apunta el "sí me interesa" si no lo había |
+| `plazos_de_cartera(perfil)` | Para el correo: lo que lleva y cierra en los próximos 8 días (solo clave de servicio) |
 | `lo_que_viene(meses, provincia, tope)` | Lo que ve en "Lo que viene": los contratos de su sector que vencen |
 | `refrescar_vencimientos(prefijos)` | Rehace `vencimientos`, entera o solo unos prefijos (`pg_cron`) |
 | `comprobar_codigo(codigo)` | Dice si un código de acceso vale, sin consumirlo ni pedir sesión (primera pantalla) |
@@ -135,7 +140,7 @@ La caché existe porque calcular competencia o fichas sobre 25.000 contratos cad
 
 ### Cron diario
 
-Cada mañana a las 06:00 UTC (08:00 peninsular en verano). Ejecuta el scraper, el cribado y la alerta por correo. Solo recibe correo quien haya encendido la campana: `perfiles.avisos` nace apagado.
+Cada mañana a las 06:00 UTC (08:00 peninsular en verano). Ejecuta el scraper, el cribado y la alerta por correo. Solo recibe correo quien haya encendido la campana: `perfiles.avisos` nace apagado. El correo sale si hay contratos nuevos o si algo de su cartera cierra dentro de 7, 3 o 1 día.
 
 ### Modos manuales
 

@@ -54,10 +54,15 @@ pantallas de inteligencia de mercado.
 
 Le falta:
 
-- [ ] **Llevar la cuenta de cada contrato**: guardado → me presento →
+- [x] **Llevar la cuenta de cada contrato**: guardado → me presento →
       presentado → ganado/perdido, con notas. Sin eso el usuario se lleva
       el trabajo a un Excel y deja de entrar. Licitandum lo da desde 19 €.
-      Sencillo, no un tablero de 12 etapas.
+      Sencillo, no un tablero de 12 etapas. **Hecho el 06/10/2026, sin
+      publicar**: pestaña "Mi cartera" (`20261006230000_cartera.sql` +
+      `web/index.html` + `alertador.py`, Decisión 53). Seis estados, nota
+      e importe de la oferta, el resultado cruzado con el NIF, su oferta
+      frente a la ganadora y aviso de plazo a 7, 3 y 1 día. Ver el
+      traspaso del final.
 - [ ] **Enseñar lo que el feed ya trae** (Decisiones 18 y 19): requisitos
       de solvencia (contenido real en el 77 %), correo del órgano (93 %),
       garantía definitiva (40 %), enlaces a cada pliego. Hoy la ficha solo
@@ -170,7 +175,7 @@ LicitaPilot y LICAI, y el tablero de equipo el de Licitandum. Centrarse en
 |---|---|---|---|
 | 1 | El veredicto de viabilidad dentro de la lista de Contratos | ✅ Hecho | Marca en la fila y filtro, desde el 04/10/2026 |
 | 2 | "Lo que viene": contratos que van a vencer y volverán a licitarse | ✅ Hecho | Publicado el 06/10/2026 (Decisión 48). Las filas dicen si ya hay una nueva licitación abierta (Decisión 52) |
-| 3 | Llevar la cuenta de cada contrato, de forma sencilla | ⬜ Pendiente | |
+| 3 | Llevar la cuenta de cada contrato, de forma sencilla | 🟡 Hecho, sin publicar | "Mi cartera", Decisión 53. Ver el traspaso del 06/10/2026 |
 | 4 | Solvencia y requisitos, sacados del feed y del pliego | ⬜ Pendiente | |
 | 5 | Contratos menores en vivo | ⬜ Pendiente | |
 
@@ -399,3 +404,72 @@ empresas que sigues va marcado, y el resumen dice cuántos son tuyos.
    suministros de un año siguen siendo compras sueltas.
 4. **"Sus contratos que van a vencer" en Organismos** sale casi gratis
    con la tabla (ver arriba, Organismos).
+
+---
+
+## Traspaso: "Mi cartera", noche del 06 al 07/10/2026
+
+Trabajo nocturno, sin supervisión. Todo en la rama `mis-contratos` (PR
+hacia `main`). **Nada aplicado ni publicado**: en la base de producción
+solo se han hecho lecturas. Crear objetos, aunque fuera en un bloque que
+se deshace, no estaba permitido esta noche; la migración se probó en un
+PostgreSQL local (ver Decisión 53, "Probado").
+
+### Qué hace la competencia (mirado el 06/10/2026, por su web)
+
+- **Licitandum**: tablero de 12 etapas (de "interesado" a "finalizada"),
+  sobres A/B/C con requisitos y responsable, documentos, tareas, avisos a
+  7, 3 y 1 día, go/no-go con motivo, probabilidad, importe ofertado y
+  resultado. 3 expedientes en el plan gratuito, 25 en Starter.
+- **El Vínculo**: tablero "en revisión, candidata, en curso, presentada,
+  ganada" más descartada, en lista o calendario, notas, recordatorios de
+  cierre, aviso si cambia el plazo de lo guardado, exportar a Excel.
+- **Stotles**: tablero por estado e informes de bid/no-bid en equipo.
+
+Lo que se ha tomado: los avisos a 7, 3 y 1 día, el aviso de plazo
+cambiado, el go/no-go como "No me presento" con nota y el importe
+ofertado. Lo que no: sobres, tareas, documentos y equipos. Lo que no da
+ninguno: el resultado cruzado con el NIF, sin que el cliente lo busque, y
+su oferta frente a la ganadora.
+
+### Lo construido
+
+| Qué | Dónde |
+|---|---|
+| Tabla `cartera`; `poner_en_cartera`, `anotar_en_cartera`, `quitar_de_cartera`, `dar_plazo_por_visto`, `mi_cartera`, `plazos_de_cartera`, `licitacion_vigente`, `resultado_licitacion`; los "sí me interesa" abiertos pasan a la cartera | `supabase/migrations/20261006230000_cartera.sql` |
+| Pestaña "Mi cartera" en Contratos; la etiqueta del estado en la fila; el bloque "Tu cartera" en cada ficha; "Sí me interesa" guarda en la cartera; `statescraper.com/#cartera` abre la pestaña | `web/index.html` |
+| "Plazos de tu cartera" en el correo diario, a 7, 3 y 1 día del cierre | `alertador.py` |
+| Decisión 53, README | `DECISIONES.md`, `README.md` |
+
+### Para ponerlo en producción
+
+1. Mirar que no haya cargas pesadas: `select pid, state, now() - query_start, left(query, 80) from pg_stat_activity where state <> 'idle';`
+2. **Aplicar la migración** `20261006230000_cartera.sql`. Solo crea objetos
+   y copia unas pocas filas (6 "sí me interesa" abiertos el 06/10/2026):
+   instantánea. No toca `mis_oportunidades` ni `licitaciones`.
+3. Comprobar: `select count(*) from public.cartera;` (los "sí me interesa"
+   de contratos abiertos) y, con la cuenta de prueba de uniformidad,
+   que `select public.mi_cartera();` responde.
+4. **Unir la PR** a `main`. El orden no importa: la web sin la migración
+   no enseña la pestaña y todo funciona como antes.
+5. Entrar con la cuenta de prueba: "Sí me interesa" en un contrato →
+   aparece en Mi cartera; abrir la ficha, "Preparo la oferta", escribir
+   una nota y un importe, guardar, recargar y ver que siguen; quitarla y
+   deshacer.
+6. El correo: `python alertador.py --simulacro --solo <NIF de prueba>` con
+   algo de la cartera que cierre dentro de 7, 3 o 1 día.
+
+### Abierto, para decidir
+
+1. **La primera vez que se guarda un contrato cuenta como corrección**, y
+   a las tres se ajusta el filtro (con su ventana y la recarga). Es lo que
+   ya hacía "Sí me interesa", pero ahora también pasa al elegir "Preparo
+   la oferta" en la ficha de un contrato sin corregir.
+2. **¿Vigilar contratos de "Lo que viene"?** Un estado "vigilar" para los
+   que vencen y se volverán a licitar, con aviso cuando salga la nueva
+   licitación (Decisión 52). Encajaría en la cartera.
+3. **¿Aplicar el resultado solo cuando el NIF coincide?** Hoy se propone y
+   el cliente confirma. Con NIF y un solo adjudicatario el acierto sería
+   casi seguro; se dejó manual por las UTE y los NIF mal publicados.
+4. **La cartera en Viabilidad.** La ficha de Viabilidad no dice si el
+   contrato está en la cartera ni deja guardarlo.
