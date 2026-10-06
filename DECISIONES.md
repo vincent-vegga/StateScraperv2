@@ -1411,7 +1411,7 @@ reales):
 - Calcularlo al pedirlo no cabe en los 8 s de la API: solo leer las
   3.478 adjudicaciones de ascensores costó 1,4 s en frío.
 
-**Decisión** (05/10/2026, sin aplicar).
+**Decisión** (05/10/2026; aplicada y publicada el 06/10/2026).
 
 - Una tabla, `vencimientos`, con lo que vence en los próximos 13 meses
   en todos los prefijos, rehecha cada día por `pg_cron` (14:45 UTC)

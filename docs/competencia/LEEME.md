@@ -78,24 +78,27 @@ Le falta:
       o Outlook en el navegador un .ics solo se descarga, y hacerlo bien
       pedía enlaces a Google y a Microsoft.
 
-### 2. Movimientos — la más débil tal como está
+### 2. Movimientos, ahora "Lo que viene" — hecho
 
-"Quién ganó qué el último mes" es interesante, pero no lleva a ninguna
-acción, y se solapa con Empresas y Organismos.
+Antes decía "quién ganó qué el último mes": interesante, pero sin una
+acción detrás, y solapada con Empresas y Organismos. Desde el 06/10/2026
+es "Lo que viene" y esa vista queda como "Lo adjudicado".
 
-- [ ] **Convertirla en "Lo que viene"**: adjudicaciones del sector cuya
+- [x] **Convertirla en "Lo que viene"**: adjudicaciones del sector cuya
       duración (más prórrogas) termina en los próximos 3–12 meses, y que
       por tanto volverán a licitarse. Ya se guardan la duración y las
       prórrogas (migraciones `20261001220000_duracion_del_contrato.sql` y
       siguientes). Es lo que más valoran los clientes de Tussell y
       Stotles, y es el mejor argumento para el plan Pro.
-      **Hecho en la rama `lo-que-viene`, pendiente de aplicar** (noche
-      del 04 al 05/10/2026): `20261005100000_lo_que_viene.sql` +
-      `web/index.html`, Decisión 48. Ver el traspaso del final.
-- [ ] Decidir si lo de "quién ganó el último mes" se queda como una
+      **Hecho y publicado el 06/10/2026**: `20261005100000_lo_que_viene.sql`
+      + `web/index.html`, Decisión 48. Desde ese día, las filas dicen
+      además si ya hay una nueva licitación abierta
+      (`20261006100000_ya_publicada.sql`, Decisión 52). Ver el traspaso
+      del final.
+- [x] Decidir si lo de "quién ganó el último mes" se queda como una
       sección dentro de "Lo que viene" o pasa a Empresas y Organismos.
-      **Decidido en la rama, pendiente de aplicar:** se queda dentro,
-      como segunda vista ("Lo adjudicado"), igual que estaba.
+      **Decidido y publicado:** se queda dentro, como segunda vista
+      ("Lo adjudicado"), igual que estaba.
 
 ### 3. Empresas — tiene sentido
 
@@ -114,9 +117,8 @@ Le falta:
 
 - [ ] **Seguir un organismo** y recibir avisos de sus licitaciones nuevas.
 - [ ] **Sus contratos que van a vencer** (lo mismo que "Lo que viene",
-      filtrado por organismo). Con la tabla `vencimientos` de la rama
-      `lo-que-viene` es una consulta por `organo`; falta la función y el
-      bloque en la ficha.
+      filtrado por organismo). Con la tabla `vencimientos` es
+      una consulta por `organo`; falta la función y el bloque en la ficha.
 - [ ] **El correo de contacto** del órgano.
 - [ ] **Sus contratos menores**, que revelan con quién trabaja antes de
       que salga el contrato grande (depende del conjunto 1143).
@@ -164,12 +166,13 @@ No competir en amplitud: generar memorias técnicas es el terreno de
 LicitaPilot y LICAI, y el tablero de equipo el de Licitandum. Centrarse en
 **decidir dónde presentarse**. Por este orden:
 
-1. [x] El veredicto de viabilidad dentro de la lista de Contratos.
-2. [ ] "Lo que viene": contratos que van a vencer y volverán a licitarse.
-   Hecho en la rama `lo-que-viene`, pendiente de aplicar.
-3. [ ] Llevar la cuenta de cada contrato, de forma sencilla.
-4. [ ] Solvencia y requisitos, sacados del feed y del pliego.
-5. [ ] Contratos menores en vivo.
+| # | Prioridad | Estado | Detalle |
+|---|---|---|---|
+| 1 | El veredicto de viabilidad dentro de la lista de Contratos | ✅ Hecho | Marca en la fila y filtro, desde el 04/10/2026 |
+| 2 | "Lo que viene": contratos que van a vencer y volverán a licitarse | ✅ Hecho | Publicado el 06/10/2026 (Decisión 48). Las filas dicen si ya hay una nueva licitación abierta (Decisión 52) |
+| 3 | Llevar la cuenta de cada contrato, de forma sencilla | ⬜ Pendiente | |
+| 4 | Solvencia y requisitos, sacados del feed y del pliego | ⬜ Pendiente | |
+| 5 | Contratos menores en vivo | ⬜ Pendiente | |
 
 Lo demás de cada pantalla, cuando toque trabajar en ella.
 
@@ -288,6 +291,9 @@ tabla grande: mejor cuando no haya otra sesión cargando histórico.
 ---
 
 ## Traspaso: "Lo que viene", noche del 04 al 05/10/2026
+
+**Estado (06/10/2026): aplicado, rellenado y publicado** (PR 30). Lo que
+sigue cuenta cómo estaba la noche del 04 al 05/10/2026, antes de aplicarlo.
 
 Trabajo nocturno, sin supervisión. Todo está en la rama `lo-que-viene`
 (PR hacia `main`), **nada aplicado ni publicado**. En la base solo se

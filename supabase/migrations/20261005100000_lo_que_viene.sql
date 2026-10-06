@@ -2,8 +2,9 @@
 -- Lo que viene: los contratos de tu sector que van a vencer
 -- ============================================================
 --
--- SIN APLICAR. Escrita la noche del 04 al 05/10/2026; pasos para
--- aplicarla al final de `docs/competencia/LEEME.md`.
+-- Escrita la noche del 04 al 05/10/2026 y APLICADA el 06/10/2026 (en
+-- Supabase figura como `lo_que_viene`, sin estos comentarios). Los pasos
+-- que se siguieron están al final de `docs/competencia/LEEME.md`.
 --
 -- Prioridad 2 de la hoja de ruta. Movimientos decía quién ganó qué el
 -- último mes, que es interesante pero no lleva a ninguna acción. Lo que

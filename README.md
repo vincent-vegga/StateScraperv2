@@ -19,8 +19,8 @@ En producción con primeros usuarios reales. El core funciona; hay deuda técnic
 | Web multiusuario con sesión y autenticación | ✅ |
 | Alta guiada: CIF → historial → criterio → cribado | ✅ |
 | Pantalla de Contratos abiertos | ✅ |
-| Inteligencia de mercado: Empresas, Movimientos, Organismos | ✅ |
-| Lo que viene: contratos del sector que van a vencer (sustituye a Movimientos) | ⚙️ Hecho el 05/10/2026, pendiente de aplicar la migración |
+| Inteligencia de mercado: Empresas, Lo que viene, Organismos | ✅ |
+| Lo que viene: contratos del sector que van a vencer (sustituye a Movimientos) | ✅ Desde el 06/10/2026, con la etiqueta de nueva licitación abierta |
 | Viabilidad: puntuación por contrato, rango de precio y contratos enlazados | ✅ |
 | Viabilidad en la lista de Contratos: marca y filtro | ✅ Desde el 04/10/2026 |
 | Alerta diaria por correo | ✅ Activa, solo para quien enciende la campana |
