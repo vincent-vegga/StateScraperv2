@@ -1,0 +1,93 @@
+name: Solvencia y requisitos
+# Decisión 54. Dos pasos:
+#   1. rellenar: relee los ZIP del mes en curso y los dos anteriores y guarda
+#      las condiciones de lo abierto (`rellenar_condiciones.py`). El scraper
+#      ya las guarda cada día; esto es para lo que entró antes y para
+#      reponer si algo falla.
+#   2. leer: lee la solvencia del feed o del pliego con el modelo
+#      (`leer_pliegos.py`), con topes de gasto.
+#
+# Cuándo corre:
+#   - Cada día, al acabar el scraper: solo `leer`, con el tope diario y el
+#     mensual. Lo nuevo ya lo guardó el scraper.
+#   - A mano desde Actions, con las opciones de abajo.
+#   - Al subir la rama `ejecutar-condiciones`: relleno y lectura de lo que
+#     está en las listas, con el tope total de 5 $ (la primera vez).
+on:
+  workflow_run:
+    workflows: ["Scraper de licitaciones (eventos y cultura)"]
+    types: [completed]
+  push:
+    branches: [ejecutar-condiciones]
+  workflow_dispatch:
+    inputs:
+      rellenar:
+        description: 'Releer los ZIP antes de leer'
+        type: boolean
+        default: false
+      tope:
+        description: 'Licitaciones a leer como mucho'
+        default: '400'
+      solo_en_listas:
+        description: 'Solo lo que está en la lista de algún cliente'
+        type: boolean
+        default: true
+      gasto_total:
+        description: 'Tope total en dólares (0 = sin tope)'
+        default: '0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: condiciones
+  cancel-in-progress: false
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+jobs:
+  rellenar:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.rellenar)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python rellenar_condiciones.py
+
+  leer:
+    needs: rellenar
+    # Corre aunque `rellenar` se salte; tras el scraper, solo si acabó bien.
+    if: >-
+      always() && needs.rellenar.result != 'failure' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: |
+          sudo apt-get install -y -qq poppler-utils >/dev/null
+          pip install -r requirements.txt
+      - name: Leer la solvencia
+        run: |
+          case "${{ github.event_name }}" in
+            push)
+              python leer_pliegos.py --solo-en-listas --tope 4000 --gasto-total 5 --gasto-dia 5 --gasto-mes 5 ;;
+            workflow_dispatch)
+              python leer_pliegos.py --tope "${{ inputs.tope }}" \
+                ${{ inputs.solo_en_listas && '--solo-en-listas' || '' }} \
+                --gasto-total "${{ inputs.gasto_total }}" ;;
+            *)
+              python leer_pliegos.py --tope 600 ;;
+          esac
