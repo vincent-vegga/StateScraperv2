@@ -69,6 +69,7 @@ PRECIOS = {"gpt-4o-mini": (0.15, 0.60)}
 MAX_DESCARGA = 30 * 1024 * 1024     # un pliego de más de 30 MB es casi siempre escaneado
 MAX_PAGINAS_PYPDF = 160
 MAX_TROZOS = 12_000                 # caracteres que van al modelo
+TANDA = 500                         # filas que se piden a la cola cada vez
 VENTANA = 1_400
 
 # Anexos que suelen llevar la solvencia: el cuadro de características o
@@ -423,12 +424,6 @@ def main() -> int:
         logging.warning("Tope de gasto alcanzado: no se lee nada.")
         return 0
 
-    filas = base.rpc("condiciones_por_leer",
-                     {"tope": a.tope, "solo_en_listas": a.solo_en_listas}).execute().data or []
-    if a.id:
-        filas = [f for f in filas if f["id_licitacion"] == a.id]
-    logging.info("Por leer: %d", len(filas))
-
     cliente_ia = None
     if not a.simulacro:
         from openai import OpenAI
@@ -465,9 +460,8 @@ def main() -> int:
             logging.info("%s · %s · %d caracteres · %s", fila["id_licitacion"][-12:],
                          r["origen"], len(r.get("trozos") or ""), r.get("documento"))
             return
-        # Un error de red no se guarda como lectura: se reintenta mañana.
-        if r["estado"] == "error":
-            return
+        # Un error también se guarda, sin datos: así sale de la cola de esta
+        # pasada, y `condiciones_por_leer` lo vuelve a dar al día siguiente.
         lector.con_reintentos(
             lambda: base.rpc("guardar_lectura", {
                 "ficha": fila["id_licitacion"], "datos": r["datos"],
@@ -476,14 +470,30 @@ def main() -> int:
             }).execute(),
             "Guardar una lectura")
 
+    # Por tandas: la API devuelve 1.000 filas como mucho por llamada, y lo
+    # leído (o fallido) sale de la cola, así que cada tanda trae lo
+    # siguiente. En simulacro no se guarda nada: una sola tanda.
     inicio = time.monotonic()
+    hechas = 0
     with ThreadPoolExecutor(max_workers=a.hilos) as grupo:
-        futuros = [grupo.submit(trabajar, f) for f in filas]
-        for i, futuro in enumerate(as_completed(futuros), 1):
-            futuro.result()
-            if i % 50 == 0:
-                logging.info("  %d/%d · %.4f $ · %s", i, len(filas), gasto["run"],
-                             json.dumps(cuenta, ensure_ascii=False))
+        while hechas < a.tope and not parar.is_set():
+            filas = base.rpc("condiciones_por_leer", {
+                "tope": min(TANDA, a.tope - hechas),
+                "solo_en_listas": a.solo_en_listas}).execute().data or []
+            if a.id:
+                filas = [f for f in filas if f["id_licitacion"] == a.id]
+            if not filas:
+                break
+            logging.info("Tanda de %d (llevamos %d)", len(filas), hechas)
+            futuros = [grupo.submit(trabajar, f) for f in filas]
+            for i, futuro in enumerate(as_completed(futuros), 1):
+                futuro.result()
+                if (hechas + i) % 100 == 0:
+                    logging.info("  %d · %.4f $ · %s", hechas + i, gasto["run"],
+                                 json.dumps(cuenta, ensure_ascii=False))
+            hechas += len(filas)
+            if a.simulacro or a.id:
+                break
     if parar.is_set():
         logging.warning("Parado por el tope de gasto.")
     logging.info("Hecho en %.0f s · %.4f $ · %s", time.monotonic() - inicio,

@@ -162,7 +162,8 @@ revoke execute on function public.huella_documentos(jsonb) from public, anon, au
 
 -- ---------- La cola de lectura ----------
 --
--- Lo abierto (PUB, plazo vigente) sin lectura. Primero lo que está en la
+-- Lo abierto (PUB, plazo vigente) sin lectura, o con una lectura fallida
+-- de hace casi un día. Primero lo que está en la
 -- lista de algún cliente y vence antes; luego el resto. Trae lo que el
 -- lector necesita para decidir si basta con el feed.
 create or replace function public.condiciones_por_leer(tope integer default 200,
@@ -190,7 +191,9 @@ as $function$
                      and v.veredicto in ('si', 'quizas')) as en_listas
     from public.condiciones c
     join public.licitaciones l on l.id_licitacion = c.id_licitacion
-    where c.lectura_estado is null
+    where (c.lectura_estado is null
+           -- Un fallo (red, modelo) se reintenta al día siguiente.
+           or (c.lectura_estado = 'error' and c.lectura_fecha < now() - interval '20 hours'))
       and coalesce(l.estado_licitacion, '') = 'PUB'
       and l.fecha_limite >= now()
       and not coalesce(l.sustituida, false)
