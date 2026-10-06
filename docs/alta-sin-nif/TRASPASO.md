@@ -112,10 +112,18 @@ marcados a la base.
 ## 4. Lo pendiente, rama por rama
 
 **Estado al 06/10/2026.** El commit de la tanda 2 no llegó a subirse
-desde Windows; se rehízo en Mac a partir de esta sección (cf5ab4e) y la
-tanda 2 está en marcha (ejecución 37436528853, aprobada: ~4,5 $, tope
-6 $). `aviso-entrenar-lista` ya está desplegada (#31). La tabla de
-abajo es la del 04/10.
+desde Windows; se rehízo en Mac a partir de esta sección (cf5ab4e).
+Tanda 2 hecha (ejecución 37436528853, 4,65 $): el motor nuevo de
+correcciones gana (decisión 50) y está en producción (#33).
+`aviso-entrenar-lista` también (#31, decisión 47). La web de P02, P08 y
+P14 no se pudo medir: sus webs se leyeron, pero las embeddings de la
+búsqueda por líneas daban 429 (límite de OpenAI) y el script se rendía.
+Arreglado (espera lo que pide OpenAI) y repetido para esas tres: 0,63 →
+0,64 de F1. Ojo: los códigos P01… se mueven cuando entra una empresa con
+más contratos (un primer intento midió otras); `--solo` y `WEB_SOLO`
+aceptan ya el principio del id. La web está en el alta desde el 06/10
+(decisión 49), y también el filtro de tamaño y las reglas de importe del
+juez (decisión 51). La tabla de abajo es la del 04/10.
 
 Cada rama tenía su worktree al lado del repositorio (en Windows).
 
