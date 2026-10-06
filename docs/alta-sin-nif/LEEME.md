@@ -84,28 +84,27 @@ El flujo en producción (decisiones 38, 40 y 41), con sus acciones en
    dice que lo que más la afina son sus primeras correcciones, y cuántas
    lleva (decisión 47).
 
-### Un límite estructural que no estaba escrito
+### Las correcciones cambian el historial (desde el 06/10/2026)
 
-Las correcciones **solo llegan al juez**. En `procesar_perfil`
-(`puntuador.py`):
+Hasta el 06/10, las correcciones **solo llegaban al juez**: el **grupo**
+(los 100 de cada 1.000 contratos vivos mejor puntuados, `grupo_por_mil`
+en `puntuacion_pesos.json`) salía solo del historial sintético del alta.
+Un «no me interesa» podía quitar ruido, pero **nada de lo que corrigiera
+podía traer un contrato que el alta hubiera dejado fuera**.
 
-- el **grupo** (los 100 de cada 1.000 contratos vivos mejor puntuados,
-  `grupo_por_mil` en `puntuacion_pesos.json`) sale **solo** de
-  `rasgos_perfil` con los ganados, en este caso los sintéticos;
-- las correcciones entran después, en el mensaje del juez: las 5 más
-  parecidas a cada contrato y todas las que tienen motivo, como reglas.
+Desde la decisión 50, sin NIF, en cada pasada del puntuador
+(`historial_corregido`, en `puntuador.py`):
 
-Consecuencias:
+- un «me interesa» entra en el historial sintético;
+- sale de él el ejemplo que se parece a un «no me interesa»
+  (≥ `SIM_CORRECCION`, 0,55) más que a cualquier «me interesa»;
+- el grupo se rehace con el historial corregido. Si quedaran menos de
+  `minimo_ganados`, se rellena con los ejemplos quitados que menos se
+  parecen a sus «no». Nunca se vuelve al historial del alta (#34).
 
-- Un «no me interesa» puede **quitar** ruido de lo que ya está en el
-  grupo.
-- **Nada de lo que corrija puede traer un contrato que el historial
-  sintético dejó fuera del grupo.** La recuperación queda fijada en el
-  alta.
-- Un contrato que le interesa no se añade a su historial: el historial
-  sintético no cambia nunca después del alta.
-
-Cualquier idea de «aprender después del alta» tiene que tocar esto.
+`perfiles.ganados_sinteticos` no cambia: el historial corregido se
+calcula en cada pasada a partir del del alta y de todas sus
+correcciones. Las correcciones siguen llegando también al juez.
 
 ## 3. Historia: qué se ha probado y con qué resultado
 
@@ -125,10 +124,13 @@ Detalle completo en [DECISIONES.md](../../DECISIONES.md), decisiones 37 a
 | 25/09 | Historial sintético en el motor de huellas, frente al criterio en prosa | Recupera el 62 % frente al 32 %, pero enseña 256 contratos y solo el 44 % es bueno | 40: en producción |
 | 25/09 | Historial sin diversidad, filtrado contra la descripción, y juez que ve la descripción | Enseña 176, recupera el 55 % y el 57 % es bueno. Algunas empresas pierden cobertura (una baja del 46 % al 19 %) | 41: en producción |
 | 01/10 | Líneas de producto y referentes de su tamaño, con el motor de huellas | Ninguna mejora en media (sección 4) | Sin decisión. Ver sección 8 |
-| 04/10 | La web de la empresa como entrada, junto a la descripción | F1 0,52 → 0,60 en las 8 con web legible: mejor en 4, peor en 2. Sola, peor (0,48) | Sí a pedirla. Falta diseñarla ([TRASPASO.md](TRASPASO.md), sección 5) |
+| 04/10 | La web de la empresa como entrada, junto a la descripción | F1 0,52 → 0,60 en las 8 con web legible: mejor en 4, peor en 2. Sola, peor (0,48) | Sí a pedirla |
+| 06/10 | La web en las 3 pymes en las que falló (429 de OpenAI, no la web) | 0,63 → 0,64. Las 11: 0,55 → 0,61, mejor en 5, peor en 2 | 49: en producción |
 | 04/10 | El cliente marca 10 o 20 contratos; motor de hoy y motor que corrige el historial | Mejor en 5 de 11, peor en 1–2. Con 20, el nuevo recupera lo que el alta dejó fuera | Tanda 2 en curso: falta el motor de hoy con 20 |
+| 06/10 | Tanda 2: motor de hoy y motor nuevo, los dos con 20 marcas, 14 empresas | Hoy: mejor en 4, peor en 4. Nuevo: mejor en 6, peor en 2 (recupera 0,55 → 0,58). Nuevo frente a hoy: 5 / 1 | 50: en producción |
 | 04/10 | Decir por qué salió cada contrato | Sin medición: es un hecho, no cuesta | 46: en producción |
 | 06/10 | Avisar de que la lista aprende con las primeras correcciones | Sin medición | 47: en producción |
+| 06/10 | Filtro de tamaño en la lista; el juez generaliza las reglas de importe | Comprobado en los 4 perfiles con motivos: sin reglas de importe, el juez no descarta lo pequeño | 51: en producción |
 
 Relacionado, aunque no es del alta: **la decisión 43** (03/10, pestaña
 Empresas) midió cómo encontrar «la competencia de tu tamaño». Filtrar por
@@ -308,10 +310,12 @@ Opinión razonada, no medida:
   líneas, referentes) acaban en la misma franja. Cuando pasa eso, lo
   normal es que el límite sea la entrada. Seguir afinando cómo se procesa
   la misma descripción probablemente dé otra variante que empata.
-- **El banco no distingue mejoras pequeñas de ruido** (sección 6).
-  Optimizar contra él a ciegas puede producir mejoras que no existen.
-- **La recuperación se fija en el alta** (sección 2): las correcciones no
-  pueden recuperar lo que el historial sintético dejó fuera.
+- **El banco no distingue mejoras pequeñas de ruido** (sección 6): el
+  ruido por empresa es pequeño (medido el 04/10), pero una ventaja de
+  0,02 en media sigue sin demostrar nada.
+- **La recuperación se fijaba en el alta** (sección 2): las correcciones
+  no podían recuperar lo que el historial sintético dejó fuera. Desde la
+  decisión 50 sí pueden.
 
 ## 8. Vías abiertas
 
@@ -320,10 +324,10 @@ Ordenadas por lo que creo que aportan. Ninguna está decidida.
 Actualizado el 06/10. Lo hecho desde el 04/10, en
 [TRASPASO.md](TRASPASO.md).
 
-1. **La web de la empresa.** La única entrada nueva que se ha medido que
-   mejora (+0,07 de F1 junto a la descripción). Aprobada; falta
-   diseñarla en el alta después de saber por qué falló en tres de las
-   pymes del banco (tanda 2).
+1. **La web de la empresa.** En producción desde el 06/10 (decisión 49):
+   F1 0,55 → 0,61 en las 11 empresas del banco con web legible. Falta ver
+   cuántos clientes reales la dan y qué pasa con webs hechas con
+   JavaScript (sin texto) o que bloquean bots.
 2. **Información real de los betatesters.** Es lo único que trae
    información nueva, y no lo puede hacer un agente. Dos preguntas:
    - ¿Qué falla en su lista: le sobra ruido o le faltan cosas? Con
@@ -331,14 +335,11 @@ Actualizado el 06/10. Lo hecho desde el 04/10, en
    - ¿Qué contestarían a «¿qué productos o servicios vendéis o hacéis más
      a menudo?»? Con 10–15 respuestas reales se mide `lineas` sin fuga
      (unos 3 $ con dos variantes).
-3. **Aprender después del alta.** Medido el 04/10: con 10 o 20 marcas
-   la lista mejora en 5 de 11 empresas. El cambio de motor (rama
-   `correcciones-al-historial`) hace que los «me interesa» entren en el
-   historial sintético, que los «no me interesa» saquen de él los
-   contratos que se les parecen y que el grupo se rehaga con lo
-   corregido. Se decide con la tanda 2 (el motor de hoy y el nuevo, los
-   dos con 20 marcas). La parte de producto ya está: el aviso de la
-   decisión 47.
+3. **Aprender después del alta.** En producción desde el 06/10
+   (decisión 50): las correcciones cambian el historial sintético y el
+   grupo, y el aviso de la decisión 47 empuja a corregir. Lo que falta
+   es ver con betatesters cuántos corrigen y cuánto, porque el banco
+   mide con un oráculo que no se equivoca.
 4. **Mejorar la evaluación.** Una referencia mejor que la salida del
    motor con NIF, o señales reales (lo que marcan o descartan los
    betatesters). El ruido ya está medido (sección 6).

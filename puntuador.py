@@ -156,9 +156,15 @@ quien lo convoque.
 - Un descarte sin motivo no es una regla: solo dice que ese contrato \
 concreto no le interesa.
 - Lo que marcó como "SÍ le interesa" es tan fuerte como un contrato ganado.
+- Cada regla lleva entre corchetes el presupuesto del contrato que \
+corrigió. Solo cuenta si su motivo habla del importe o del tamaño: \
+entonces vale para cualquier contrato de ese presupuesto o menor (si dice \
+que es pequeño) o mayor (si dice que es grande). Si el motivo habla de \
+otra cosa, ignora el presupuesto.
 (Ejemplos de forma, de otro sector: "no trabajamos con hospitales \
 privados" vale para todo hospital privado; "no hacemos cocina sin gluten" \
-vale solo para eso.)"""
+vale solo para eso; "demasiado pequeño para nosotros" sobre un contrato \
+de 20.000 EUR vale para todo contrato de 20.000 EUR o menos.)"""
 
 
 # ==============================================================
@@ -460,8 +466,17 @@ def licitaciones_de(ids: list[str]) -> list[dict]:
     return out
 
 
+def presupuestos_de(ids: list[str]) -> list[dict]:
+    out = []
+    for a in range(0, len(ids), 100):
+        filtro = "(" + ",".join(_q(i) for i in ids[a:a + 100]) + ")"
+        out += leer("licitaciones", {"select": "id_licitacion,presupuesto",
+                                     "id_licitacion": f"in.{filtro}"})
+    return out
+
+
 def historial_corregido(c: "Contexto", ganados: list[dict],
-                        correcciones: list[dict]) -> list[dict]:
+                        correcciones: list[dict], minimo: int = 0) -> list[dict]:
     """Sin NIF, lo que corrige el cliente cambia su historial sintético, y
     con él el grupo (propuesta 3 de docs/alta-sin-nif). Antes las
     correcciones solo llegaban al juez: quitaban ruido del grupo, pero
@@ -472,6 +487,12 @@ def historial_corregido(c: "Contexto", ganados: list[dict],
         (con el umbral con el que el juez ve una corrección,
         SIM_CORRECCION) más que a cualquier «me interesa».
 
+    Si quedaran menos de `minimo`, se rellena con los ejemplos quitados que
+    menos se parecen a sus «no me interesa». Nunca se vuelve al historial
+    del alta: hasta el 06/10/2026 se volvía, y un cliente que había quitado
+    15 de 17 ejemplos (aguas residuales, vigilancia…) los habría recuperado
+    todos con un «no» más. Corregir no puede empeorar la lista de golpe.
+
     Lo mismo que midió scripts/medir_sintetico.py (variantes corrN_nuevo,
     rama simulacion-web). Los títulos tienen que tener ya su huella."""
     def vec(t):
@@ -479,19 +500,24 @@ def historial_corregido(c: "Contexto", ganados: list[dict],
         return None if r is None else np.asarray(c.emb[r], np.float32)
     si = [v for v in (vec(x["titulo"]) for x in correcciones if x["interesa"]) if v is not None]
     no = [v for v in (vec(x["titulo"]) for x in correcciones if not x["interesa"]) if v is not None]
-    quedan = []
+    quedan, quitados = [], []
     for g in ganados:
         v = vec(g["titulo"])
         if v is not None and no:
             peor = max(float(v @ n) for n in no)
             mejor = max((float(v @ s) for s in si), default=-1.0)
             if peor >= SIM_CORRECCION and peor > mejor:
+                quitados.append((peor, g))
                 continue
         quedan.append(g)
     vistos = {g["id_licitacion"] for g in quedan}
     nuevos = sorted({x["id_licitacion"] for x in correcciones
                      if x["interesa"] and x.get("id_licitacion") and x["id_licitacion"] not in vistos})
-    return quedan + (licitaciones_de(nuevos) if nuevos else [])
+    salida = quedan + (licitaciones_de(nuevos) if nuevos else [])
+    faltan = minimo - len(salida)
+    if faltan > 0:
+        salida += [g for _, g in sorted(quitados, key=lambda t: t[0])[:faltan]]
+    return salida
 
 
 def _cpvs(x) -> list[str]:
@@ -610,6 +636,8 @@ def mensajes_juez(f: dict, ejemplos: list[str], cercanas: list[dict],
         texto += "\n\nLO QUE EL CLIENTE NOS HA DICHO:\n" + "\n".join(
             f"- {'Le interesa' if x['interesa'] else 'No le interesa'} "
             f"«{x['titulo']}»" + (f" ({x['organo']})" if x.get("organo") else "")
+            + (f" [presupuesto {float(x['presupuesto']):,.0f} EUR]".replace(",", ".")
+               if x.get("presupuesto") is not None else "")
             + f": {x['motivo']}" for x in reglas)
     otras = [x for x in cercanas if x not in reglas]
     if otras:
@@ -691,9 +719,13 @@ def procesar_perfil(c: Contexto, perfil: dict, ganados: list[dict], previos: dic
             sc = C @ v
             cerca = [corr[j] for j in np.argsort(-sc)[:CORRECCIONES] if sc[j] >= SIM_CORRECCION]
         m = mensajes_juez(f, ejemplos, cerca, reglas)
-        if not perfil.get("cif") and perfil.get("descripcion"):
+        # Lo que dice que hace y, si dio su web, lo que dice su web
+        # (decisión 49), seguidos: como en la medición y en la función alta.
+        dice = " ".join(str(perfil.get(k) or "").strip()
+                        for k in ("descripcion", "descripcion_web") if perfil.get(k))
+        if not perfil.get("cif") and dice:
             m[0]["content"] += AVISO_SIN_NIF
-            m[1]["content"] = (f"LO QUE LA EMPRESA DICE QUE HACE:\n{perfil['descripcion']}\n\n"
+            m[1]["content"] = (f"LO QUE LA EMPRESA DICE QUE HACE:\n{dice}\n\n"
                                + m[1]["content"])
         tareas.append((idl, m))
 
@@ -813,7 +845,8 @@ def main() -> int:
     try:
         # Con NIF, o sin NIF con historial sintético (alta sin NIF).
         perfiles = leer("perfiles", {
-            "select": "id,cif,sistema,criterio_version,puntuado_en,ganados_sinteticos,descripcion",
+            "select": "id,cif,sistema,criterio_version,puntuado_en,ganados_sinteticos,descripcion,"
+                      "descripcion_web",
             "activo": "is.true", "or": "(cif.not.is.null,ganados_sinteticos.not.is.null)"})
     except RuntimeError as error:
         # Sin la migración 20260924200000 no hay columna `sistema`: solo
@@ -828,6 +861,16 @@ def main() -> int:
     correcciones = defaultdict(list)
     for x in leer("correcciones", {"select": "perfil_id,id_licitacion,titulo,organo,interesa,motivo,fecha"}):
         correcciones[x["perfil_id"]].append(x)
+    # El presupuesto de lo corregido con motivo: el juez lo ve en la regla,
+    # y una regla de importe («demasiado pequeño») vale para todo lo de
+    # ese tamaño, no solo para ese contrato.
+    con_motivo = sorted({x["id_licitacion"] for xs in correcciones.values() for x in xs
+                         if x.get("motivo") and x.get("id_licitacion")})
+    importes = {f["id_licitacion"]: f.get("presupuesto") for f in presupuestos_de(con_motivo)}
+    for xs in correcciones.values():
+        for x in xs:
+            if x.get("motivo"):
+                x["presupuesto"] = importes.get(x.get("id_licitacion"))
 
     hechos = 0
     for p in perfiles:
@@ -859,18 +902,18 @@ def main() -> int:
         c.completar_huellas({g["titulo"] for g in ganados} |
                             {x["titulo"] for x in correcciones[p["id"]]},
                             guardar=not args.instantanea)
-        # Sin NIF, las correcciones cambian el historial (y el grupo). Si
-        # dejaran menos del mínimo, se queda el del alta: quedarse sin
-        # historial lo devolvería al criterio en prosa.
+        # Sin NIF, las correcciones cambian el historial (y el grupo). Nunca
+        # por debajo del mínimo (lo devolvería al criterio en prosa) ni de
+        # vuelta al del alta: se rellena con lo menos parecido a sus «no».
         if not p.get("cif") and correcciones[p["id"]]:
-            corregido = historial_corregido(c, ganados, correcciones[p["id"]])
-            if len(corregido) >= PESOS["minimo_ganados"]:
-                antes = {g["id_licitacion"] for g in ganados}
-                ahora = {g["id_licitacion"] for g in corregido}
-                logging.info("%s: historial corregido %d → %d (+%d, −%d)", et, len(antes),
-                             len(ahora), len(ahora - antes), len(antes - ahora))
-                ganados = corregido
-                c.completar_huellas({g["titulo"] for g in ganados}, guardar=not args.instantanea)
+            corregido = historial_corregido(c, ganados, correcciones[p["id"]],
+                                            PESOS["minimo_ganados"])
+            antes = {g["id_licitacion"] for g in ganados}
+            ahora = {g["id_licitacion"] for g in corregido}
+            logging.info("%s: historial corregido %d → %d (+%d, −%d)", et, len(antes),
+                         len(ahora), len(ahora - antes), len(antes - ahora))
+            ganados = corregido
+            c.completar_huellas({g["titulo"] for g in ganados}, guardar=not args.instantanea)
         res = procesar_perfil(c, p, ganados, previos, correcciones[p["id"]], gasto, args.ensayo)
         veredictos = {**previos, **res["nuevos"]}
         en_grupo = {i for i, _ in res["grupo"]}

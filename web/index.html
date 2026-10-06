@@ -200,6 +200,7 @@ p.guia{
 
 input[type=email],
 input[type=text],
+input[type=url],
 textarea{
   width:100%;
   min-height:var(--alto);
@@ -2737,13 +2738,12 @@ select:focus{
     padding:2px 0;
   }
 
-  /* Encaje y opciones de ganar comparten fila; el de sector, cuando lo
-     hay, va debajo entero. Sin el de opciones (Viabilidad apagada), como
-     antes: encaje y sector juntos, o encaje solo si no hay sectores. */
-  .filtros:not(:has(#f-viabilidad[hidden])) > #f-sector{
-    grid-column:1 / -1;
-  }
-  .filtros:has(#f-viabilidad[hidden]):has(#f-sector[hidden]) #f-veredicto{
+  /* Encaje y opciones de ganar comparten fila; tamaño y sector, cuando
+     lo hay, comparten la siguiente. Sin sectores, el de tamaño va entero.
+     Sin el de opciones (Viabilidad apagada): encaje y tamaño juntos, y
+     el de sector debajo entero. */
+  .filtros:has(#f-sector[hidden]):not(:has(#f-viabilidad[hidden])) > #f-tamano,
+  .filtros:has(#f-viabilidad[hidden]) > #f-sector{
     grid-column:1 / -1;
   }
 
@@ -3350,6 +3350,17 @@ function importeAnualTxt(importe, meses) {
 // la pantalla al recargar desaparecen; no se borra nada.
 // ------------------------------------------------------------
 const VIABILIDAD_VISIBLE = true;
+
+// Tamaños de contrato: los que marca el cliente en el alta
+// (perfiles.franjas) y el filtro de la lista. Los cortes, los de
+// `franja` en supabase/functions/alta/vecinos.ts.
+const FRANJAS_TAMANO = [['<15k', 'Hasta 15.000 €'], ['15-100k', '15.000 – 100.000 €'],
+                        ['100k-1M', '100.000 € – 1 M€'], ['>1M', 'Más de 1 M€']];
+function franjaDe(importe) {
+  const x = Number(importe);
+  if (importe == null || !(x > 0)) return null;
+  return x < 15000 ? '<15k' : x < 100000 ? '15-100k' : x < 1000000 ? '100k-1M' : '>1M';
+}
 // UTEs en la ficha de empresa (decisión 42). Apagadas el 01/10/2026 (el
 // enlace a otra ficha no subía la página y la ficha de la UTE no decía
 // arriba que lo era) y encendidas el 02/10 con el interruptor
@@ -4218,12 +4229,20 @@ function pantallaDescribir(perfil, session) {
       <div class="campo">
         <textarea id="descripcion" placeholder="Por ejemplo: somos una empresa de Zaragoza que se dedica al mantenimiento de zonas verdes y jardinería para ayuntamientos y comunidades de regantes: poda de arbolado, desbroce de cunetas y caminos, mantenimiento de parques y riego automático. También plantamos y reponemos árboles en calles y hacemos tratamientos fitosanitarios.">${esc(perfil.descripcion ?? '')}</textarea>
       </div>
+      <!-- Su web, si quiere (decisión 49): junto a lo que escribe, mejora
+           la lista; leemos qué hace, nunca a quién vende. -->
+      <p class="etiqueta-campo" id="web-titulo">La web de tu empresa
+        <span style="font-weight:400;color:var(--tenue)">(si tienes)</span></p>
+      <div class="campo" style="margin:0 0 20px">
+        <input type="url" id="web-empresa" inputmode="url" autocomplete="url"
+               aria-labelledby="web-titulo"
+               placeholder="www.tuempresa.es" value="${esc(perfil.web ?? '')}">
+      </div>
       <p class="etiqueta-campo" id="franjas-titulo">¿De qué tamaño son los contratos que te interesan?</p>
       <p class="guia" style="margin:0 0 6px;font-size:.88rem">Marca los que quieras. Si no
       lo tienes claro, déjalo en blanco.</p>
       <div class="franjas" role="group" aria-labelledby="franjas-titulo">
-        ${[['<15k', 'Hasta 15.000 €'], ['15-100k', '15.000 – 100.000 €'],
-           ['100k-1M', '100.000 € – 1 M€'], ['>1M', 'Más de 1 M€']].map(([f, texto]) => `
+        ${FRANJAS_TAMANO.map(([f, texto]) => `
           <button type="button" data-franja="${f}"
             aria-pressed="${(perfil.franjas ?? []).includes(f)}">${texto}</button>`).join('')}
       </div>
@@ -4246,11 +4265,12 @@ function pantallaDescribir(perfil, session) {
         `<div class="aviso mal">Cuéntanos un poco más, con una frase basta.</div>`;
       return;
     }
+    const web = document.getElementById('web-empresa').value.trim();
     boton.disabled = true;
-    boton.textContent = 'Analizando...';
+    boton.textContent = web ? 'Leyendo tu web...' : 'Analizando...';
     try {
-      const r = await llamar('proponer', { descripcion, franjas });
-      pantallaFamilias({ ...perfil, descripcion, franjas }, r, session);
+      const r = await llamar('proponer', { descripcion, franjas, web });
+      pantallaFamilias({ ...perfil, descripcion, franjas, web }, r, session);
     } catch (error) {
       document.getElementById('resultado').innerHTML =
         `<div class="aviso mal">No hemos podido analizarlo. Inténtalo de nuevo.</div>`;
@@ -4269,6 +4289,21 @@ function pantallaFamilias(perfil, propuesta, session) {
       Es preferible dejar de más: después revisamos cada contrato con lo que
       nos has contado, y lo que no te interese lo puedes descartar desde tu
       lista.</p>
+      ${propuesta.web?.leida ? `
+      <!-- Lo que hemos sacado de su web, para que lo corrija: todos los
+           competidores que leen la web lo enseñan. -->
+      <p class="etiqueta-campo" id="web-texto-titulo" style="margin-top:24px">Lo que hemos entendido de tu web</p>
+      <p class="guia" style="margin:0 0 6px;font-size:.88rem">Corrígelo si algo no es
+      así, y desmarca lo que no hagas o no quieras vender a la administración.</p>
+      <div class="campo" style="margin:0 0 8px">
+        <textarea id="web-texto" rows="4" aria-labelledby="web-texto-titulo">${esc(propuesta.web.descripcion)}</textarea>
+      </div>
+      <div class="franjas" role="group" aria-label="Productos y servicios de tu web">
+        ${(propuesta.web.lineas ?? []).map(l => `
+          <button type="button" data-linea="${esc(l)}" aria-pressed="true">${esc(l)}</button>`).join('')}
+      </div>` : propuesta.web ? `
+      <p class="guia" style="margin-top:20px;font-size:.88rem">No hemos podido leer
+      tu web. Seguimos con lo que nos has contado.</p>` : ''}
       <div class="propuesta">
         ${propuesta.prefijos.map((p, i) => `
           <div class="familia-bloque">
@@ -4291,6 +4326,10 @@ function pantallaFamilias(perfil, propuesta, session) {
     </div>`;
 
   document.getElementById('atras').onclick = () => pantallaDescribir(perfil, session);
+  raiz.querySelectorAll('[data-linea]').forEach(b => {
+    b.onclick = () => b.setAttribute('aria-pressed',
+      String(b.getAttribute('aria-pressed') !== 'true'));
+  });
 
   // Los contratos parecidos llegan después: la pantalla no los espera.
   // Si no hay (muestra aún vacía) o falla, simplemente no se enseñan.
@@ -4319,8 +4358,16 @@ function pantallaFamilias(perfil, propuesta, session) {
     }
     boton.disabled = true;
     boton.textContent = 'Preparando tu filtro con contratos como los tuyos...';
+    // Lo de su web, tal como lo deja: el texto corregido y las líneas
+    // que sigan marcadas.
+    const textoWeb = document.getElementById('web-texto');
+    const deLaWeb = textoWeb ? {
+      web_texto: textoWeb.value.trim(),
+      web_lineas: [...raiz.querySelectorAll('[data-linea][aria-pressed="true"]')]
+        .map(b => b.dataset.linea),
+    } : {};
     try {
-      await llamar('confirmar_familias', { prefijos });
+      await llamar('confirmar_familias', { prefijos, ...deLaWeb });
       const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
       pantallaCribando(data?.[0] ?? perfil, session);
     } catch (error) {
@@ -8077,6 +8124,14 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         <option value="dificil">Difícil</option>
         <option value="cerrado">Parece cerrado</option>
       </select>
+      <!-- Tamaño de contrato, con los cortes de las franjas del alta.
+           Lo elige el cliente: en septiembre, esconder por tamaño sin que
+           él lo pidiera empeoraba siempre (decisiones 38 y 39). -->
+      <select id="f-tamano" aria-label="Filtrar por tamaño de contrato">
+        <option value="">Cualquier tamaño</option>
+        ${(perfil.franjas ?? []).length ? `<option value="suyos">Los tamaños que marcaste</option>` : ''}
+        ${FRANJAS_TAMANO.map(([f, texto]) => `<option value="${f}">${texto}</option>`).join('')}
+      </select>
       <select id="f-sector" aria-label="Filtrar por sector" hidden>
         <option value="">Todos los sectores</option>
       </select>
@@ -8291,6 +8346,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     recordados = {
       veredicto: document.getElementById('f-veredicto').value || null,
       viabilidad: document.getElementById('f-viabilidad').value || null,
+      tamano: document.getElementById('f-tamano').value || null,
       sector,
       provincias: [...elegidas],
     };
@@ -8303,6 +8359,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const hayFiltros = () =>
     !!(document.getElementById('f-veredicto').value
        || document.getElementById('f-viabilidad').value
+       || document.getElementById('f-tamano').value
        || document.getElementById('f-sector').value
        || document.getElementById('f-texto').value.trim()
        || elegidas.size);
@@ -8310,6 +8367,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   function quitarFiltros() {
     document.getElementById('f-veredicto').value = '';
     document.getElementById('f-viabilidad').value = '';
+    document.getElementById('f-tamano').value = '';
     document.getElementById('f-sector').value = '';
     document.getElementById('f-texto').value = '';
     elegidas.clear();
@@ -8355,6 +8413,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       || (viab === 'abierto' ? ['abierto', 'mio'].includes(o.viabilidad)
         : viab === 'no-cerrado' ? o.viabilidad !== 'cerrado'
         : o.viabilidad === viab);
+    // Tamaño: «los que marcaste» son sus franjas del alta. Un contrato sin
+    // importe publicado se queda siempre: no saberlo no es no ser suyo.
+    const tam = document.getElementById('f-tamano').value;
+    const franjasSuyas = perfil.franjas ?? [];
+    const pasaTamano = o => {
+      if (!tam) return true;
+      const f = franjaDe(o.presupuesto);
+      return f == null || (tam === 'suyos' ? franjasSuyas.includes(f) : f === tam);
+    };
     // Sin tildes y palabra a palabra, como en Organismos: "jardineria"
     // encontraba 3 contratos y "jardinería", 12.
     const txt = document.getElementById('f-texto').value.trim();
@@ -8365,6 +8432,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       enZona(o) &&
       (!ver || o.veredicto === ver) &&
       pasaViab(o) &&
+      pasaTamano(o) &&
       (!sector || enSector(o, sector)) &&
       (!txt || coincide(`${o.titulo} ${o.organo}`, txt)));
 
@@ -8987,12 +9055,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   if (VIABILIDAD_VISIBLE
       && [...campoViab.options].some(op => op.value === recordados.viabilidad))
     campoViab.value = recordados.viabilidad;
+  const campoTamano = document.getElementById('f-tamano');
+  if ([...campoTamano.options].some(op => op.value === recordados.tamano))
+    campoTamano.value = recordados.tamano;
   try { document.getElementById('f-texto').value = sessionStorage.getItem(CLAVE_TEXTO) ?? ''; }
   catch { /* modo privado */ }
   alPulsar('quitar-filtros', quitarFiltros);
 
   pintarEtiquetas();
-  ['f-veredicto','f-viabilidad','f-sector','f-texto'].forEach(id =>
+  ['f-veredicto','f-viabilidad','f-tamano','f-sector','f-texto'].forEach(id =>
     document.getElementById(id).addEventListener('input', repintar));
   pintar();
 

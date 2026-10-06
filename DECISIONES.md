@@ -1496,6 +1496,130 @@ mismo órgano y CPV principal con el título casi igual.
 
 ---
 
+## 49. Alta sin NIF: la web de la empresa, revisada por el cliente
+
+**Contexto.** Sin betatesters que den feedback, el 04/10/2026 se miró a
+los competidores: los nuevos con IA piden la web y sacan de ella el
+perfil, que el cliente revisa. Sin NIF, todo lo que sabíamos del cliente
+era lo que escribe en un minuto.
+
+**Lo medido** (variante `web_desc`: la descripción y lo que el modelo saca
+de su web, con búsqueda por líneas; F1 frente a la lista con NIF):
+
+- 04/10, 8 empresas con web legible (8,31 $ con el resto de la tanda):
+  0,52 → 0,60. Mejor en 4, peor en 2. La web sola, peor (0,48): un
+  catálogo enorme lo trae todo.
+- 06/10, las 3 pymes en las que falló (las embeddings daban 429, no la
+  web; 1,47 $ con un intento que midió empresas equivocadas porque los
+  códigos se movieron): 0,63 → 0,64, mejor en 1 y empate en 2.
+- Las 11: 0,55 → 0,61; mejor en 5, empate en 4, peor en 2.
+
+**Decisión** (06/10/2026, #38). Campo opcional «La web de tu empresa».
+`proponer` la lee (`web.ts`: portada y hasta seis páginas propias, agente
+de navegador, 15.000 caracteres; nada de direcciones internas) y saca a
+qué se dedica y de 3 a 8 líneas, sin clientes, organismos ni zonas. El
+cliente lo revisa en el paso de familias: corrige el texto y desmarca
+líneas. Los parecidos se buscan por turnos con la descripción y cada
+línea; el filtro del historial, el criterio y el juez leen la descripción
+seguida de lo de la web. Si la web no se puede leer, el alta sigue sin
+ella. Migración `20261006180000_web_en_el_alta`.
+
+**Motivo.** Es la única entrada nueva medida que mejora, y no le pide
+casi nada al cliente. Probablemente se subestima: la descripción simulada
+tiene la fuga de siempre (sale de `perfiles.descripcion`, escrita
+leyendo sus contratos).
+
+---
+
+## 50. Sin NIF: las correcciones cambian el historial sintético
+
+**Contexto.** Las correcciones solo llegaban al juez. El grupo de cada
+perfil sin NIF salía siempre del historial sintético del alta: un «no me
+interesa» podía quitar ruido, pero nada de lo que el alta dejó fuera
+podía entrar nunca. La recuperación quedaba fijada en el alta.
+
+**Lo medido** (tanda 2, 06/10/2026, ejecución 37436528853, 4,65 $). 14
+empresas que van por huellas, simuladas sin NIF. Un oráculo marca 20
+contratos de su lista: «me interesa» si están en su lista real. Todo
+medido sin esos 20 contratos, también la producción:
+
+| | Recupera | De lo que enseña, bueno | Frente a producción |
+|---|---|---|---|
+| Producción | 0,55 | 0,58 | — |
+| Motor de hoy, 20 marcas | 0,54 | 0,63 | mejor en 4, peor en 4 |
+| Motor nuevo, 20 marcas | 0,58 | 0,61 | mejor en 6, peor en 2 |
+
+Con las mismas marcas, el motor nuevo gana al de hoy en 5 empresas y
+pierde en 1. El de hoy solo recorta: acierta más en lo que enseña pero
+recupera menos. El nuevo trae lo que el alta dejó fuera (P05: de 0,42 a
+0,65), y en algunas empresas acierta algo menos (P05: de 0,84 a 0,76).
+
+**Decisión** (06/10/2026, #33; decidida como «48», renumerada porque esa
+ya era «Lo que viene»). Solo sin NIF, en cada pasada del
+puntuador (`historial_corregido`): un «me interesa» entra en el
+historial; sale el ejemplo que se parece a un «no me interesa»
+(≥ `SIM_CORRECCION`) más que a cualquier «me interesa»; y el grupo se
+rehace con lo corregido. Si quedaran menos de `minimo_ganados`, se queda
+el del alta. Sin migración: `ganados_sinteticos` no cambia, y lo
+corregido se calcula en cada pasada.
+
+**Arreglo del mismo día** (#34). Si las correcciones dejaban menos de
+`minimo_ganados` (5), se volvía al historial del alta entero. En la
+primera pasada, un perfil sin NIF quitó 15 de sus 17 ejemplos (había
+depuración de aguas, servicios de RENFE y vigilancia para una empresa de
+monitorización informática) y se quedó justo en 5: con un «no» más los
+habría recuperado todos. Ahora se rellena hasta el mínimo con los
+ejemplos quitados que menos se parecen a sus «no». Corregir no puede
+empeorar la lista de golpe.
+
+**Motivo.** Es lo único medido que mejora la recuperación después del
+alta, y con el aviso de la decisión 47 el cliente sabe que corregir
+sirve. Es una cota: el oráculo no se equivoca, y un cliente real
+marcará menos y a veces mal.
+
+---
+
+## 51. El tamaño de contrato: filtro en la lista y reglas de importe
+
+**Contexto.** El perfil sin NIF de la decisión 50 solo marcó «más de
+1 M€» en el alta y descartó dos contratos por «presupuesto demasiado
+bajo», pero 69 de los 92 contratos de su lista estaban por debajo. Las
+franjas del alta solo servían para buscar sus ejemplos. El juez tomaba
+«presupuesto demasiado bajo» como algo de esos dos contratos.
+
+**Decisión** (06/10/2026):
+
+- **Filtro de tamaño en la lista** (#36): «Cualquier tamaño», «Los
+  tamaños que marcaste» y cada franja, con los cortes de `franja` en
+  `vecinos.ts`. Lo elige el cliente y se recuerda; por defecto no filtra.
+  Un contrato sin importe publicado pasa siempre.
+- **Reglas de importe en el juez** (#37): cada regla del cliente lleva
+  el presupuesto del contrato que corrigió. Si el motivo habla del
+  importe o del tamaño, vale para todo lo de ese presupuesto o menor (o
+  mayor); si habla de otra cosa, se ignora.
+
+**Motivo.** Esconder por tamaño sin que el cliente lo pida empeoró
+siempre (decisiones 38 y 39); un filtro que elige él es su decisión, como
+la provincia o el sector.
+
+**Comprobado empresa por empresa** (los 4 perfiles con motivos, grupo
+rejuzgado, 0,60 $; «sí» + «quizás» abiertos, antes → después):
+
+| Perfil | Reglas de importe | Lista | Menos de 100k |
+|---|---|---|---|
+| Con NIF | no | 27 → 29 | 14 → 18 |
+| Con NIF | no | 95 → 104 | 50 → 59 |
+| Sin NIF | no | 81 → 71 | 36 → 30 |
+| Sin NIF (el de monitorización) | 2 | 92 → 58 | 24 → 20 |
+
+Donde no hay reglas de importe, el juez no se pone a descartar lo
+pequeño. Al de monitorización le baja la lista sobre todo por el
+historial corregido; sus dos reglas de importe hablan de contratos de
+3.000 y 8.000 €, así que solo se generalizan a ese tamaño. Para él, lo que
+funciona es el filtro.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
