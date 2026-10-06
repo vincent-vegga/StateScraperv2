@@ -1490,6 +1490,22 @@ casi nada al cliente. Probablemente se subestima: la descripción simulada
 tiene la fuga de siempre (sale de `perfiles.descripcion`, escrita
 leyendo sus contratos).
 
+**Probado en producción** (06/10/2026, cuenta de prueba): el alta entera
+funciona, con 33 ejemplos sintéticos y 107 contratos en la lista, todos
+del oficio descrito. Salieron dos cosas, ya arregladas:
+
+- **El nombre de la empresa** (#41). El modelo lo escribía aunque se le
+  pidiera que no («En el Grupo Tragsa nos dedicamos…»). Ahora se saca de
+  la propia web (`nombresDe`: og:site_name, application-name, los trozos
+  del `<title>` que casan con el dominio y la palabra del dominio si
+  ellos la confirman), se le dice al modelo cómo se llama y se borra del
+  texto y de las líneas si sale igual, con lo que suele llevar delante
+  («en el Grupo…») y su forma jurídica (`quitarNombres`). Un trozo del
+  título solo cuenta como nombre si el dominio es al menos la mitad: con
+  jardines.es, «Mantenimiento de jardines en Zaragoza» es un lema, y
+  quitarlo estropearía la descripción.
+- La etiqueta del campo de la web quedaba pegada a la descripción (#40).
+
 ---
 
 ## 50. Sin NIF: las correcciones cambian el historial sintético
