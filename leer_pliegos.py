@@ -440,6 +440,16 @@ def main() -> int:
     sesion = requests.Session()
     sesion.headers["User-Agent"] = lector.USER_AGENT
 
+    # Un cliente de Supabase por hilo: compartido, las escrituras
+    # simultáneas cortaban la conexión de vez en cuando ("Server
+    # disconnected", 8 de 1.000 el 06/10/2026; el reintento las salvaba).
+    locales = threading.local()
+
+    def base_del_hilo():
+        if not hasattr(locales, "base"):
+            locales.base = lector.obtener_cliente_supabase()
+        return locales.base
+
     cerrojo = threading.Lock()
     parar = threading.Event()
     cuenta: dict[str, int] = {}
@@ -467,7 +477,7 @@ def main() -> int:
         # Un error también se guarda, sin datos: así sale de la cola de esta
         # pasada, y `condiciones_por_leer` lo vuelve a dar al día siguiente.
         lector.con_reintentos(
-            lambda: base.rpc("guardar_lectura", {
+            lambda: base_del_hilo().rpc("guardar_lectura", {
                 "ficha": fila["id_licitacion"], "datos": r["datos"],
                 "origen": r["origen"], "estado": r["estado"],
                 "coste": round(r["coste"], 6), "documento": r["documento"],
