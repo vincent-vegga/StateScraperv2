@@ -383,7 +383,7 @@ empresas que sigues va marcado, y el resumen dice cuántos son tuyos.
 ### Abierto, para decidir
 
 1. **¿Ya se ha vuelto a licitar?** Hecho el 06/10/2026 para lo que se
-   empareja con seguridad (Decisión 49, `20261006100000_ya_publicada.sql`):
+   empareja con seguridad (Decisión 52, `20261006100000_ya_publicada.sql`):
    278 contratos de 84.000. Queda abierto cómo ampliar la cobertura sin
    perder precisión.
 2. **Avisar por correo** de lo tuyo que vence (4-5 contratos en los

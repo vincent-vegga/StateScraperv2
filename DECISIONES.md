@@ -1457,45 +1457,6 @@ Viabilidad). Algunos suministros de 6 meses o más son compras sueltas
 63 % de lo que vence no trae texto de prórrogas: para esos solo se da el
 fin del plazo inicial.
 
-## 49. Lo que vence: decir cuándo ya hay una nueva licitación abierta
-
-**Contexto.** Un contrato que vence puede tener ya su nueva licitación
-abierta. Es lo más accionable de "Lo que viene" ("presenta oferta ya"),
-pero no se decía. Viabilidad ya empareja una licitación con sus ediciones
-anteriores (`serie_de`, Decisión 45); aquí se usa al revés.
-
-**Decisión.** Cada día (14:55 UTC, tras el refresco de `vencimientos`) se
-recorren las licitaciones abiertas (PUB, con plazo vigente, sin obras ni
-menores, solo las que comparten órgano y CPV principal con algo que
-vence) y se guarda en `vencimientos_nueva` la pareja *contrato que vence
-→ licitación abierta*. `lo_que_viene()` la devuelve en cada fila como
-`nueva`, solo si sigue abierta al leer. La fila dice "Ya hay una nueva
-licitación abierta", con enlace, plazo y presupuesto. Si no hay pareja,
-no se dice nada: que no la encontremos no significa que no vaya a
-haberla.
-
-**Reglas para no afirmar de más.** Semejanza de 0,6 o más y series no
-paralelas, como en Viabilidad. Y solo si el emparejamiento es único: una
-abierta que casa con dos contratos que vencen no se enlaza con ninguno, ni
-un contrato que casa con dos abiertas.
-
-**Medido (06/10/2026).** Con 49 parejas revisadas a mano (sin abrir los
-pliegos): 40 el mismo contrato, 3 probables y 6 dudosas o falsas, que
-son contratos hermanos del mismo año, otro objeto con palabras parecidas
-o proyectos con el título cortado. La semejanza no separa los aciertos de
-los fallos (hay fallos con 1,00); el importe tampoco, por los importes mal
-puestos en origen. La regla de unicidad quita 2 de las 6. Salen 278
-parejas de unos 84.000 contratos, y solo 2 de los 787 de la cuenta de
-prueba de uniformidad: menos del 1 % de lo que vence en 3 meses. Pesa
-poco en la pantalla, pero cuando sale es lo que más vale.
-
-**Lo que no se cubre.** Los fallos que quedan (hermanos del mismo año con
-el mismo título). Y que la cobertura de Viabilidad, un 22 % de las
-abiertas con edición anterior, y la de aquí, un 6 %, vienen de exigir el
-mismo órgano y CPV principal con el título casi igual.
-
----
-
 ## 49. Alta sin NIF: la web de la empresa, revisada por el cliente
 
 **Contexto.** Sin betatesters que den feedback, el 04/10/2026 se miró a
@@ -1617,6 +1578,43 @@ pequeño. Al de monitorización le baja la lista sobre todo por el
 historial corregido; sus dos reglas de importe hablan de contratos de
 3.000 y 8.000 €, así que solo se generalizan a ese tamaño. Para él, lo que
 funciona es el filtro.
+
+## 52. Lo que vence: decir cuándo ya hay una nueva licitación abierta
+
+**Contexto.** Un contrato que vence puede tener ya su nueva licitación
+abierta. Es lo más accionable de "Lo que viene" ("presenta oferta ya"),
+pero no se decía. Viabilidad ya empareja una licitación con sus ediciones
+anteriores (`serie_de`, Decisión 45); aquí se usa al revés.
+
+**Decisión.** Cada día (14:55 UTC, tras el refresco de `vencimientos`) se
+recorren las licitaciones abiertas (PUB, con plazo vigente, sin obras ni
+menores, solo las que comparten órgano y CPV principal con algo que
+vence) y se guarda en `vencimientos_nueva` la pareja *contrato que vence
+→ licitación abierta*. `lo_que_viene()` la devuelve en cada fila como
+`nueva`, solo si sigue abierta al leer. La fila dice "Ya hay una nueva
+licitación abierta", con enlace, plazo y presupuesto. Si no hay pareja,
+no se dice nada: que no la encontremos no significa que no vaya a
+haberla.
+
+**Reglas para no afirmar de más.** Semejanza de 0,6 o más y series no
+paralelas, como en Viabilidad. Y solo si el emparejamiento es único: una
+abierta que casa con dos contratos que vencen no se enlaza con ninguno, ni
+un contrato que casa con dos abiertas.
+
+**Medido (06/10/2026).** Con 49 parejas revisadas a mano (sin abrir los
+pliegos): 40 el mismo contrato, 3 probables y 6 dudosas o falsas, que
+son contratos hermanos del mismo año, otro objeto con palabras parecidas
+o proyectos con el título cortado. La semejanza no separa los aciertos de
+los fallos (hay fallos con 1,00); el importe tampoco, por los importes mal
+puestos en origen. La regla de unicidad quita 2 de las 6. Salen 278
+parejas de unos 84.000 contratos, y solo 2 de los 787 de la cuenta de
+prueba de uniformidad: menos del 1 % de lo que vence en 3 meses. Pesa
+poco en la pantalla, pero cuando sale es lo que más vale.
+
+**Lo que no se cubre.** Los fallos que quedan (hermanos del mismo año con
+el mismo título). Y que la cobertura de Viabilidad, un 22 % de las
+abiertas con edición anterior, y la de aquí, un 6 %, vienen de exigir el
+mismo órgano y CPV principal con el título casi igual.
 
 ---
 
