@@ -53,7 +53,8 @@ subir un documento si no hay web, probar antes de registrarse.
   94 % de lo vivo en las listas tiene `parecido` (el resto son veredictos
   de pasadas anteriores fuera del grupo de hoy).
 
-**Falta:** apuntarlo en `DECISIONES.md` (la siguiente es la 46).
+Apuntado como decisión 46. El aviso (abajo) se desplegó el 06/10/2026
+(#31) y es la decisión 47.
 
 ## 3. La medición del 04/10 (tanda 1)
 
@@ -110,7 +111,13 @@ marcados a la base.
 
 ## 4. Lo pendiente, rama por rama
 
-Cada rama tiene su worktree al lado del repositorio.
+**Estado al 06/10/2026.** El commit de la tanda 2 no llegó a subirse
+desde Windows; se rehízo en Mac a partir de esta sección (cf5ab4e) y la
+tanda 2 está en marcha (ejecución 37436528853, aprobada: ~4,5 $, tope
+6 $). `aviso-entrenar-lista` ya está desplegada (#31). La tabla de
+abajo es la del 04/10.
+
+Cada rama tenía su worktree al lado del repositorio (en Windows).
 
 | Rama | Worktree | Estado | Qué falta |
 |---|---|---|---|
@@ -177,5 +184,5 @@ verá la nueva.
   pruebas en seco de Python hay que usar un entorno con numpy.
 - Gasto de OpenAI de la sesión: 8,31 $ (tanda 1) + 0,055 $ (pasada del
   puntuador).
-- **Falta actualizar el LEEME:** sección 6.4 (el ruido ya está medido) y
-  sección 8 (vías abiertas), y apuntar las decisiones en `DECISIONES.md`.
+- LEEME (secciones 6.4 y 8) y DECISIONES (46 y 47) actualizados el
+  06/10.
