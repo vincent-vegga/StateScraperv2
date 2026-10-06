@@ -460,6 +460,40 @@ def licitaciones_de(ids: list[str]) -> list[dict]:
     return out
 
 
+def historial_corregido(c: "Contexto", ganados: list[dict],
+                        correcciones: list[dict]) -> list[dict]:
+    """Sin NIF, lo que corrige el cliente cambia su historial sintético, y
+    con él el grupo (propuesta 3 de docs/alta-sin-nif). Antes las
+    correcciones solo llegaban al juez: quitaban ruido del grupo, pero
+    nada que el alta hubiera dejado fuera podía entrar nunca.
+
+      - Un «me interesa» entra en el historial, como si lo hubiera ganado.
+      - Sale del historial el ejemplo que se parece a un «no me interesa»
+        (con el umbral con el que el juez ve una corrección,
+        SIM_CORRECCION) más que a cualquier «me interesa».
+
+    Lo mismo que midió scripts/medir_sintetico.py (variantes corrN_nuevo,
+    rama simulacion-web). Los títulos tienen que tener ya su huella."""
+    def vec(t):
+        r = c.fila_de_titulo(t)
+        return None if r is None else np.asarray(c.emb[r], np.float32)
+    si = [v for v in (vec(x["titulo"]) for x in correcciones if x["interesa"]) if v is not None]
+    no = [v for v in (vec(x["titulo"]) for x in correcciones if not x["interesa"]) if v is not None]
+    quedan = []
+    for g in ganados:
+        v = vec(g["titulo"])
+        if v is not None and no:
+            peor = max(float(v @ n) for n in no)
+            mejor = max((float(v @ s) for s in si), default=-1.0)
+            if peor >= SIM_CORRECCION and peor > mejor:
+                continue
+        quedan.append(g)
+    vistos = {g["id_licitacion"] for g in quedan}
+    nuevos = sorted({x["id_licitacion"] for x in correcciones
+                     if x["interesa"] and x.get("id_licitacion") and x["id_licitacion"] not in vistos})
+    return quedan + (licitaciones_de(nuevos) if nuevos else [])
+
+
 def _cpvs(x) -> list[str]:
     return [str(c) for c in x] if isinstance(x, list) else []
 
@@ -792,7 +826,7 @@ def main() -> int:
         elegidos = [x.strip() for x in args.perfil.split(",") if x.strip()]
         perfiles = [p for p in perfiles if any(p["id"].startswith(x) for x in elegidos)]
     correcciones = defaultdict(list)
-    for x in leer("correcciones", {"select": "perfil_id,titulo,organo,interesa,motivo,fecha"}):
+    for x in leer("correcciones", {"select": "perfil_id,id_licitacion,titulo,organo,interesa,motivo,fecha"}):
         correcciones[x["perfil_id"]].append(x)
 
     hechos = 0
@@ -825,6 +859,18 @@ def main() -> int:
         c.completar_huellas({g["titulo"] for g in ganados} |
                             {x["titulo"] for x in correcciones[p["id"]]},
                             guardar=not args.instantanea)
+        # Sin NIF, las correcciones cambian el historial (y el grupo). Si
+        # dejaran menos del mínimo, se queda el del alta: quedarse sin
+        # historial lo devolvería al criterio en prosa.
+        if not p.get("cif") and correcciones[p["id"]]:
+            corregido = historial_corregido(c, ganados, correcciones[p["id"]])
+            if len(corregido) >= PESOS["minimo_ganados"]:
+                antes = {g["id_licitacion"] for g in ganados}
+                ahora = {g["id_licitacion"] for g in corregido}
+                logging.info("%s: historial corregido %d → %d (+%d, −%d)", et, len(antes),
+                             len(ahora), len(ahora - antes), len(antes - ahora))
+                ganados = corregido
+                c.completar_huellas({g["titulo"] for g in ganados}, guardar=not args.instantanea)
         res = procesar_perfil(c, p, ganados, previos, correcciones[p["id"]], gasto, args.ensayo)
         veredictos = {**previos, **res["nuevos"]}
         en_grupo = {i for i, _ in res["grupo"]}
