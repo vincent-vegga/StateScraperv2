@@ -732,7 +732,8 @@ Deno.serve(async (peticion) => {
       let deLaWeb: { descripcion: string; lineas: string[] } | null = null;
       if (url) {
         try {
-          deLaWeb = await webComoCliente(await leerWeb(url));
+          const leida = await leerWeb(url);
+          deLaWeb = await webComoCliente(leida.texto, leida.nombres);
         } catch (fallo) {
           console.error("No se pudo leer la web:", (fallo as Error).name);
         }
