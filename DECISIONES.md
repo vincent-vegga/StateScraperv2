@@ -1381,6 +1381,84 @@ porque hoy esos clientes son betatesters.
 
 ---
 
+## 48. Lo que viene: los contratos que van a vencer, precalculados cada día
+
+**Contexto.** Movimientos decía quién ganó qué el último mes: interesante,
+pero no lleva a ninguna acción. Lo que sí lleva a una es saber qué
+contratos del sector terminan pronto, porque el organismo tendrá que
+volver a licitarlos. Es lo que más valoran los clientes de Tussell y
+Stotles (hoja de ruta, prioridad 2). La duración y las prórrogas se
+guardan desde el 01/10/2026; las prórrogas, solo como texto libre.
+
+**Lo medido** (04/10/2026, muestra del 2 % de la tabla y cuatro perfiles
+reales):
+
+- Fecha de fin = `coalesce(fecha_formalizacion,
+  fecha_formalizacion_estimada, fecha_adjudicacion) + duracion_meses`.
+  Sin contar los menores, la tienen el 99,5 % de las adjudicaciones.
+- Los menores son el 47 % de las adjudicaciones, pero duran un mes de
+  mediana y solo hay histórico de 2025: de 7.384 con duración, 6 vencen
+  entre 3 y 12 meses. Los basados en un acuerdo marco (10 % de los no
+  menores) duran 4 meses de mediana.
+- Lo que dura menos de 6 meses son compras y actos sueltos ("Suministro e
+  instalación de plataforma elevadora"): entre el 14 y el 29 % de lo que
+  vence en un año, según el sector. Lo que pasa de 25 años son
+  concesiones demaniales, enajenaciones y errores de unidades.
+- `prorrogas_texto` está en el 22 % de los contratos no menores. Con
+  unas reglas sencillas se lee el 63 % (48 % da meses, 14 % dice que no
+  hay, 2 % da una fecha); el resto remite al pliego. 55 de 55 textos
+  etiquetados a mano, bien.
+- Calcularlo al pedirlo no cabe en los 8 s de la API: solo leer las
+  3.478 adjudicaciones de ascensores costó 1,4 s en frío.
+
+**Decisión** (05/10/2026, sin aplicar).
+
+- Una tabla, `vencimientos`, con lo que vence en los próximos 13 meses
+  en todos los prefijos, rehecha cada día por `pg_cron` (14:45 UTC)
+  (`refrescar_vencimientos`, marcar y barrer como `refrescar_organismos`),
+  y una función de lectura, `lo_que_viene(meses, provincia, tope)`, para
+  la empresa activa: sus prefijos (también los de dos cifras de algunos
+  perfiles antiguos) y sin lo que el clasificador del mercado ya dijo que
+  no es de su sector, como Movimientos.
+- Entran contratos y acuerdos marco de 6 meses a 25 años. Fuera los
+  menores, los basados en un marco (el siguiente solo lo pueden pedir los
+  homologados), las homologaciones sin importe (su "adjudicatario" es una
+  de muchas), las obras (no se repiten, igual que en la Decisión 45) y las
+  copias republicadas.
+- Vence al terminar el plazo inicial. Si ya terminó pero las prórrogas
+  publicadas lo llevan al futuro, vence al acabar las prórrogas, y la web
+  dice "como tarde": no sabemos si se prorrogó. Las prórrogas que no se
+  entienden se enseñan como "puede tener prórrogas (ver el pliego)".
+  Hacia atrás solo se mira 5 años: la LCSP (art. 29.4) limita servicios y
+  suministros a cinco años contando las prórrogas.
+- En la web, "Lo que viene" sustituye a Movimientos en la navegación y
+  abre por defecto lo que vence, con filtros de plazo (3, 6 y 12 meses)
+  y provincia. Lo de antes queda dentro, como segunda vista, "Lo
+  adjudicado", sin cambios.
+
+**Motivo.** Calcularlo una vez al día y por prefijo sirve a todos los
+clientes, incluido el que se dio de alta hace un minuto, y cabe de sobra
+en el corte de la API (40-660 ms por lectura). Quitar Movimientos habría
+borrado los rankings y la lista de lo adjudicado, que alguien puede usar;
+dejarlo como pestaña aparte habría dejado dos pestañas para el mismo
+mercado. Y es mejor callar una prórroga que inventarla (Decisión 30).
+
+**Resultado** (probado en un bloque que se deshace, con la función
+entera): en 12 meses, 586 contratos para ascensores, 735 para
+uniformidad, 459 para espectáculos y 2.024 para consultoría; en 3 meses,
+de 122 a 533. El 8 % vence al acabar las prórrogas. Ver
+`supabase/migrations/20261005100000_lo_que_viene.sql`.
+
+**Lo que no se cubre.** No se sabe si el contrato ya se ha vuelto a
+licitar (saldría en Contratos y aquí a la vez): pediría emparejar la
+licitación abierta con la serie del contrato que vence (`serie_de`, de
+Viabilidad). Algunos suministros de 6 meses o más son compras sueltas
+("equipamiento para los nuevos vehículos de Bomberos") y salen igual. Y el
+63 % de lo que vence no trae texto de prórrogas: para esos solo se da el
+fin del plazo inicial.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
@@ -1400,3 +1478,5 @@ Cosas conocidas que se decidió no hacer, y por qué.
 | Verificación de un expediente concreto sin esperar al feed | 3-4 h. Cierra el último hueco de estados obsoletos |
 | Histórico de cambios de estado | Hoy se sobrescribe. Impide saber cuándo se adjudicó algo |
 | Registro de usuarios y suscripciones | 40-60 h. Convierte la herramienta en producto |
+| Perfiles con prefijos de dos cifras ("72,48,79") en Lo adjudicado y Organismos | `mercado_del_periodo` y `organismos_por_prefijo` cruzan por `prefijo_principal`, que tiene cuatro: a esos perfiles (dos sin NIF, contados el 04/10/2026) no les sale nada. "Lo que viene" sí los cruza por familia |
+| Saber si un contrato que vence ya se ha vuelto a licitar | Pediría emparejarlo con las abiertas por la serie de Viabilidad (`serie_de`); ver Decisión 48 |

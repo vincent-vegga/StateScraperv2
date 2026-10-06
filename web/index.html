@@ -1279,6 +1279,36 @@ select:focus{
   margin-left:8px;font-size:.74rem;font-weight:400;color:var(--tenue);
 }
 
+/* ---------- Lo que viene ----------
+   Reutiliza la fila de lo adjudicado (`.movimiento`): mismo sitio para
+   quién, qué, de quién y cuánto. Lo nuevo es la fecha en que vence, que
+   es lo que se busca al recorrer la lista, y una línea con la duración y
+   las prórrogas. */
+/* Con dos clases: `.forma` y `.vista-ficha` se definen más abajo y su
+   margen ganaba (los plazos salían empujados a la derecha). */
+.forma.vista-mov{margin:26px 0 0}
+.filtros-viene{
+  display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px;margin-top:22px;
+}
+.filtros-viene .filtro-provincia{margin-top:0}
+.filtros-viene .filtro-provincia label{white-space:nowrap}
+.forma.plazos-viene{margin-left:0}
+.plazos-viene button{font-size:.84rem;padding:7px 13px}
+.plazos-viene button + button{border-left:0}
+.plazos-viene .n{
+  margin-left:7px;font-variant-numeric:tabular-nums;opacity:.7;
+}
+.movimiento .nota-prorroga{
+  display:block;margin-top:4px;color:var(--tenue);font-size:.82rem;line-height:1.45;
+}
+.movimiento .cuando{
+  display:block;margin-top:5px;font-size:.84rem;font-weight:600;
+  font-variant-numeric:tabular-nums;
+}
+.movimiento .cuando .falta{
+  display:block;font-weight:400;color:var(--tenue);font-size:.8rem;
+}
+
 /* Ningún bloque ancho arrastra la página entera.
    Una tabla o un gráfico que no cabe debe desplazarse DENTRO de su
    caja; si empuja al body, hay que deslizar todo de lado y la cabecera
@@ -1374,6 +1404,16 @@ select:focus{
   .grupo-mov > summary{grid-template-columns:1fr;gap:6px}
   .grupo-mov > summary .cifra{text-align:left}
   .grupo-mov .dentro{margin-left:8px;padding-left:10px}
+  /* En una columna, la fecha va en una sola línea bajo el importe: dos
+     líneas a la izquierda alargaban cada fila sin decir más. */
+  .movimiento .cuando .falta{display:inline;margin-left:6px}
+  .filtros-viene{gap:12px}
+  /* Los tres plazos a todo el ancho: con su cifra al lado no cabían en
+     320 px a su tamaño natural. */
+  .plazos-viene{width:100%}
+  .plazos-viene button{flex:1;padding:7px 6px}
+  .filtros-viene .filtro-provincia{width:100%}
+  .filtros-viene .filtro-provincia select{flex:1;max-width:none}
 }
 
 /* ---------- Mercado ---------- */
@@ -2946,7 +2986,7 @@ window.addEventListener('popstate', async (ev) => {
   if (estado.vista === 'organismos')
     return pantallaOrganismos(perfil, session, true, estado.organo ?? null);
   if (estado.vista === 'movimientos')
-    return pantallaMovimientos(perfil, session, true);
+    return pantallaMovimientos(perfil, session, true, '', estado.seccion ?? null);
   if (estado.vista === 'mercado')
     return pantallaMercado(perfil, session, true, estado.cif ?? null);
   if (estado.vista === 'panel')
@@ -4549,7 +4589,7 @@ function navPrincipal(donde) {
   return `
     <div class="principales">
       <button data-nav="contratos" aria-current="${donde === 'contratos'}">Contratos</button>
-      <button data-nav="movimientos" aria-current="${donde === 'movimientos'}">Movimientos</button>
+      <button data-nav="movimientos" aria-current="${donde === 'movimientos'}">Lo que viene</button>
       <button data-nav="mercado" aria-current="${donde === 'mercado'}">Empresas</button>
       <button data-nav="organismos" aria-current="${donde === 'organismos'}">Organismos</button>
       ${VIABILIDAD_VISIBLE ? `<button data-nav="viabilidad" aria-current="${donde === 'viabilidad'}">Viabilidad</button>` : ''}
@@ -4662,6 +4702,10 @@ function precargar(donde) {
   if (donde === 'movimientos') {
     // Con los mismos argumentos que pedirá la pantalla, o no se
     // aprovecha: `pedir` guarda por nombre y argumentos.
+    if (seccionMovGuardada() === 'viene') {
+      pedir('lo_que_viene', { meses: plazoViene(), provincia_elegida: null, tope: 300 });
+      return;
+    }
     aniosDelSector().then(anios => {
       const p = periodoGuardado(anios);
       if (p.desde == null) return;
@@ -5560,12 +5604,13 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
 // Clasifica lo adjudicado que aún no tenga veredicto. Enseña progreso
 // porque la primera vez son unos segundos, y una pantalla parada sin
 // explicación se lee como que algo va mal.
-async function cribarMercado() {
+async function cribarMercado(destino = 'zona') {
   const { data: cola } = await sb.rpc('mercado_sin_cribar', { dias: 30 });
   const total = (cola ?? []).length;
   if (!total) return;
 
-  const zona = document.getElementById('zona');
+  const zona = document.getElementById(destino);
+  if (!zona) return;
   zona.innerHTML = `
     <div class="paso ancha" style="min-height:40vh">
       <h1 style="font-size:1.5rem">Revisando tu mercado</h1>
@@ -5605,13 +5650,66 @@ async function cribarMercado() {
   }
 }
 
+// ---------- Lo que viene ----------
+//
+// La pestaña que era Movimientos (hoja de ruta, prioridad 2). "Quién
+// ganó qué el último mes" era interesante pero no llevaba a ninguna
+// acción; saber qué contratos de tu sector terminan pronto, sí: el
+// organismo tendrá que volver a licitarlos, y quien lo sabe antes
+// prepara la oferta. Es lo que más valoran los clientes de Tussell y
+// Stotles.
+//
+// Lo de antes no se pierde: va dentro, como segunda vista ("Lo
+// adjudicado"), con el mismo periodo, rankings y lista. Se abre por
+// defecto lo que vence, y se recuerda cuál eligió mientras dura la sesión.
+//
+// Los datos salen de `lo_que_viene()`, que lee una tabla que se rehace
+// cada día (calcularlo al pedirlo no cabe en los 8 s de la API). Ver
+// supabase/migrations/20261005100000_lo_que_viene.sql.
+const PLAZOS_VIENE = [3, 6, 12];
+
+function seccionMovGuardada() {
+  try {
+    const s = sessionStorage.getItem('seccion-mov:' + perfilActivoId);
+    return s === 'adjudicado' ? 'adjudicado' : 'viene';
+  } catch { return 'viene'; }
+}
+
+function plazoViene() {
+  let p = null;
+  try { p = Number(sessionStorage.getItem('plazo-viene:' + perfilActivoId)); }
+  catch { /* modo privado */ }
+  return PLAZOS_VIENE.includes(p) ? p : 12;
+}
+
+// "jun 2029": para el fin con prórrogas basta el mes; el día exacto
+// depende de cuándo se acuerde cada una.
+const mesAnio = iso => fechaCorta(iso).replace(/^\d+ /, '');
+
+// "en 12 días", "en 5 meses". Por días de calendario peninsular, como los
+// plazos de Contratos.
+function faltaPara(iso) {
+  const hoy = Date.parse(diaPeninsular(new Date()) + 'T00:00:00Z');
+  const dias = Math.round((Date.parse(iso + 'T00:00:00Z') - hoy) / 864e5);
+  if (dias <= 0) return 'hoy';
+  if (dias === 1) return 'mañana';
+  if (dias < 45) return `en ${dias} días`;
+  return `en ${Math.round(dias / 30.44)} meses`;
+}
+
+// Cada vez que se cambia de vista se pide un turno: una respuesta lenta
+// de la vista anterior no puede pintar encima de la nueva.
+let turnoMov = 0;
+
 async function pantallaMovimientos(perfil, session, volviendo = false,
-                                   provinciaElegida = '') {
-  if (!volviendo) irA('movimientos');
+                                   provinciaElegida = '', seccion = null) {
+  seccion = seccion === 'adjudicado' || seccion === 'viene'
+    ? seccion : seccionMovGuardada();
+  if (!volviendo) irA('movimientos', { seccion });
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `
     <div class="cabecera-app">
-      <div><strong>Movimientos</strong>
+      <div><strong>Lo que viene</strong>
         ${cabeceraEmpresa(perfil)}
         ${navPrincipal('movimientos')}</div>
       <div style="display:flex;gap:9px;align-items:center">
@@ -5619,11 +5717,264 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
         ${menuCuenta()}
       </div>
     </div>
-    <div id="zona"><p class="guia" style="margin-top:30px">Cargando...</p></div>`;
+    <div id="zona">
+      <div class="forma vista-ficha vista-mov" role="group" aria-label="Qué ver">
+        <button type="button" data-seccion="viene">Lo que vence</button>
+        <button type="button" data-seccion="adjudicado">Lo adjudicado</button>
+      </div>
+      <div id="cuerpo-mov"><p class="guia" style="margin-top:30px">Cargando...</p></div>
+    </div>`;
 
   activarMenu(perfil, session);
   activarCampana();
   activarNav(perfil, session, 'movimientos');
+
+  const botones = [...raiz.querySelectorAll('[data-seccion]')];
+  const abrir = (cual, guardar) => {
+    botones.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.seccion === cual)));
+    if (guardar) {
+      try { sessionStorage.setItem('seccion-mov:' + perfilActivoId, cual); }
+      catch { /* modo privado */ }
+      // Se sustituye la entrada del historial, no se añade otra: cambiar
+      // de vista no es cambiar de pantalla, y "atrás" debe salir de aquí.
+      irA('movimientos', { seccion: cual }, true);
+    }
+    return cual === 'viene'
+      ? seccionLoQueViene(perfil, session)
+      : seccionAdjudicado(perfil, session, provinciaElegida);
+  };
+  botones.forEach(b => b.onclick = () => {
+    if (b.getAttribute('aria-pressed') === 'true') return;
+    abrir(b.dataset.seccion, true);
+  });
+  await abrir(seccion, false);
+}
+
+async function seccionLoQueViene(perfil, session) {
+  const turno = ++turnoMov;
+  const cuerpo = document.getElementById('cuerpo-mov');
+  if (!cuerpo) return;
+
+  let plazo = plazoViene();
+  let provincia = null;
+  const fecha = fechaCorta;
+
+  // Como en lo adjudicado: 300 primero y "Ver más" de 300 en 300. Aquí la
+  // consulta lee una tabla ya hecha y no hay riesgo de pasar de los 8 s;
+  // el techo es por lo que pesa la página (unos 800 bytes por contrato).
+  const TANDA = 300, TECHO = 1500;
+  let tope = TANDA;
+  let vuelta = 0;
+
+  cuerpo.innerHTML = `
+    <div class="cabeza-movimientos">
+      <div>
+        <h1 style="margin:0 0 12px">Lo que va a volver a licitarse</h1>
+        <p class="guia" style="margin:0">Contratos de tu sector que terminan
+        en los próximos meses. El organismo tendrá que volver a licitarlos:
+        es el momento de preparar la oferta, y de saber quién lo tiene ahora
+        y por cuánto.</p>
+      </div>
+    </div>
+    <div id="datos-viene">
+      <div class="pulso"><h4>En tu sector</h4>
+        <p class="guia" style="margin:0;font-size:.9rem">Cargando...</p></div>
+    </div>`;
+
+  async function cargar(mas = false) {
+    const t = ++vuelta;
+    const datos = document.getElementById('datos-viene');
+    if (!datos) return;
+    if (!mas) tope = TANDA;
+    datos.classList.add('cambiando');
+    const r = await pedir('lo_que_viene',
+      { meses: plazo, provincia_elegida: provincia, tope });
+    if (t !== vuelta || turno !== turnoMov) return;
+    const ahora = document.getElementById('datos-viene');
+    if (!ahora) return;
+    ahora.classList.remove('cambiando');
+
+    // Si la web llega a producción antes que la migración, la función aún
+    // no existe (PGRST202): eso es "se está preparando", no un error.
+    if (r.error?.code === 'PGRST202') {
+      pintar({ actualizado: null });
+      return;
+    }
+
+    // Un fallo no se enseña como "no hay nada": el cliente concluiría
+    // que en su sector no vence ningún contrato.
+    if (r.error) {
+      ahora.innerHTML = `
+        <div class="aviso mal" style="margin-top:26px">
+          No hemos podido cargar los contratos que vencen.
+          <div style="margin-top:10px;font-size:.86rem;color:var(--tenue)">
+            ${esc(r.error.message || 'Error desconocido')}</div>
+          <div style="margin-top:14px">
+            <button class="secundario" id="reintentar-viene">Reintentar</button>
+          </div>
+        </div>`;
+      alPulsar('reintentar-viene', () => cargar());
+      return;
+    }
+    pintar(r.data ?? {});
+  }
+
+  function pintar(d) {
+    const datos = document.getElementById('datos-viene');
+    if (!datos) return;
+
+    // La tabla se rellena una vez al día. Hasta la primera pasada está
+    // vacía, y eso no es lo mismo que "no vence nada".
+    if (!d.actualizado) {
+      datos.innerHTML = `<p class="vacio" style="margin-top:26px">Estamos
+        preparando esta pantalla: los contratos que vencen se calculan una
+        vez al día. Vuelve mañana.</p>`;
+      return;
+    }
+
+    const filas = d.filas ?? [];
+    const cuantos = d.cuantos ?? {};
+    const total = Number(cuantos[plazo]) || 0;
+    const provincias = d.provincias ?? [];
+
+    const enlaceOrgano = o => o ? `<a href="#" class="enlace-ficha"
+      data-a-organismo="${esc(o)}">${esc(o)}</a>` : '';
+
+    // Una línea por contrato: quién lo tiene, qué es, de quién, cuánto y
+    // cuándo vence. Las prórrogas solo se dicen si el organismo las
+    // publicó; si el texto remite al pliego, se dice eso y no se inventa.
+    const linea = m => {
+      const otros = (Number(m.adjudicatarios) || 1) - 1;
+      const marca = m.es_mia ? 'tu empresa' : m.la_sigo ? 'la sigues' : '';
+      const quien = m.cif
+        ? `<a href="#" class="enlace-ficha" data-a-mercado="${esc(m.cif)}">${esc(m.empresa ?? m.cif)}</a>`
+        : esc(m.empresa ?? '—');
+      // Ya pasó el plazo inicial y vence cuando acaben las prórrogas. No
+      // sabemos si se prorrogó: por eso "como tarde".
+      const enProrroga = m.fin < m.vence;
+      const dur = duracionTxt(m.duracion_meses);
+      const notas = [];
+      if (dur) notas.push(`${m.clase === 'marco' ? 'Acuerdo marco' : 'Contrato'} de ${dur}`);
+      if (m.prorroga === 'no') notas.push('sin prórroga prevista');
+      else if (m.prorroga === 'si' && enProrroga)
+        notas.push(`el plazo inicial terminó el ${esc(fecha(m.fin))}; la fecha es la del final de las prórrogas, si se han hecho`);
+      else if (m.prorroga === 'si') notas.push(`prorrogable hasta ${esc(mesAnio(m.fin_maximo))}`);
+      else if (m.prorroga === 'pliego') notas.push('puede tener prórrogas (ver el pliego)');
+      const anual = importeAnualTxt(m.importe, m.duracion_meses);
+
+      return `<div class="movimiento ${m.es_mia ? 'mia' : m.la_sigo ? 'sigo' : ''}">
+        <div>
+          <p class="gano">Lo tiene ${quien}${
+            otros > 0 ? ` <span class="cuanto">y ${otros} más</span>` : ''}${
+            marca ? `<span class="marca-mia">${marca}</span>` : ''}</p>
+          <p class="que">${tituloConEnlace(m.titulo, m.enlace)}</p>
+          <span class="donde">${enlaceOrgano(m.organo)}${
+            m.provincia ? ` · ${esc(m.provincia)}` : ''}</span>
+          ${notas.length ? `<span class="nota-prorroga">${notas.join(' · ')}</span>` : ''}
+        </div>
+        <div class="cifra">
+          <strong>${Number(m.importe) ? euros(Number(m.importe)) : '—'}</strong>
+          ${anual ? `<span class="baja">${anual}</span>` : ''}
+          <span class="cuando">${enProrroga ? 'como tarde' : 'vence'} ${esc(fecha(m.vence))}
+            <span class="falta">${faltaPara(m.vence)}</span></span>
+        </div>
+      </div>`;
+    };
+
+    datos.innerHTML = `
+      <div class="filtros-viene">
+        <div class="forma plazos-viene" role="group" aria-label="Vencen en">
+          ${PLAZOS_VIENE.map(m => `<button type="button" data-plazo="${m}"
+            aria-pressed="${m === plazo}">${m} meses<span class="n">${
+            numero(cuantos[m] ?? 0)}</span></button>`).join('')}
+        </div>
+        ${provincias.length > 1 ? `
+          <div class="filtro-provincia">
+            <label for="f-provincia-viene">Ver solo</label>
+            <select id="f-provincia-viene">
+              <option value="">Toda España</option>
+              ${provincias.map(pr => `<option value="${esc(pr)}"${
+                pr === provincia ? ' selected' : ''}>${esc(pr)}</option>`).join('')}
+            </select>
+          </div>` : ''}
+      </div>
+
+      <div class="pulso">
+        <h4>Vencen en ${plazo} meses${provincia ? ` · ${esc(provincia)}` : ''}</h4>
+        <dl>
+          <div><dt>Contratos</dt><dd>${numero(total)}</dd></div>
+          <div><dt>Importe adjudicado</dt><dd>${
+            Number(d.importe) ? eurosConDetalle(d.importe) : '—'}</dd></div>
+          ${d.mios ? `<div><dt>Son tuyos</dt><dd>${numero(d.mios)}</dd></div>` : ''}
+          <p class="destacado">Un contrato vence cuando termina el plazo con
+          el que se firmó: la fecha de formalización (o de adjudicación) más
+          su duración. Si el organismo publicó prórrogas, se dice al lado: con
+          ellas puede tardar más en volver a licitarse. No entran los
+          contratos menores, los basados en un acuerdo marco (solo pueden
+          pedirlos las empresas homologadas), las obras ni los de menos de
+          seis meses. ${d.mios ? '<strong>Los tuyos</strong> van marcados: son los que te toca defender. ' : ''}Se
+          recalcula cada día.</p>
+        </dl>
+      </div>
+
+      <div style="margin-top:32px">
+        ${total > filas.length ? `<p class="guia" style="font-size:.88rem">
+          Los ${numero(filas.length)} que vencen antes, de ${numero(total)}.</p>` : ''}
+        ${filas.length ? filas.map(linea).join('') : `<p class="vacio">No hay
+          contratos de tus sectores que venzan en los próximos ${plazo} meses${
+          provincia ? ` en ${esc(provincia)}` : ''}.</p>`}
+        ${total > filas.length && tope < TECHO ? `
+          <button class="mas" id="mas-viene">Ver ${TANDA} más
+            <span class="flechita">▾</span></button>` : ''}
+      </div>`;
+
+    datos.querySelectorAll('[data-plazo]').forEach(b => b.onclick = () => {
+      const m = Number(b.dataset.plazo);
+      if (m === plazo) return;
+      plazo = m;
+      try { sessionStorage.setItem('plazo-viene:' + perfilActivoId, String(m)); }
+      catch { /* modo privado */ }
+      cargar();
+    });
+
+    const selProv = document.getElementById('f-provincia-viene');
+    if (selProv) selProv.onchange = () => {
+      provincia = selProv.value || null;
+      cargar();
+    };
+
+    const mas = document.getElementById('mas-viene');
+    if (mas) mas.onclick = () => {
+      mas.disabled = true;
+      mas.firstChild.textContent = 'Cargando... ';
+      tope = Math.min(TECHO, tope + TANDA);
+      cargar(true);
+    };
+
+    // La empresa abre su ficha en Empresas y el organismo la suya, igual
+    // que en lo adjudicado.
+    datos.onclick = ev => {
+      const e = ev.target.closest('[data-a-mercado]');
+      const o = ev.target.closest('[data-a-organismo]');
+      if (!e && !o) return;
+      ev.preventDefault();
+      if (e) {
+        irA('mercado', { cif: e.dataset.aMercado });
+        pantallaMercado(perfil, session, true, e.dataset.aMercado);
+      } else {
+        pantallaOrganismos(perfil, session, false, o.dataset.aOrganismo);
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+  }
+
+  await cargar();
+}
+
+// Lo que era Movimientos, igual que antes: lo adjudicado en el periodo.
+async function seccionAdjudicado(perfil, session, provinciaElegida = '') {
+  const turno = ++turnoMov;
+  if (!document.getElementById('cuerpo-mov')) return;
 
   // Se criba antes de enseñar, la primera vez.
   //
@@ -5633,19 +5984,22 @@ async function pantallaMovimientos(perfil, session, volviendo = false,
   // filtra sus contratos abiertos sabe distinguirlas.
   //
   // Solo pasa una vez: el veredicto se guarda, y lo que entra a diario
-  // lo criba el propio scraper.
-  await cribarMercado();
+  // lo criba el propio scraper. Ya no se hace al entrar en la pestaña,
+  // sino al abrir esta vista: lo que vence no lo necesita.
+  await cribarMercado('cuerpo-mov');
+  if (turno !== turnoMov) return;
 
   // El periodo, compartido con Organismos y Empresas. Por defecto, el
   // último año con datos.
   const anios = await aniosDelSector();
+  if (turno !== turnoMov || !document.getElementById('cuerpo-mov')) return;
   let periodo = periodoGuardado(anios);
   let provincia = provinciaElegida || null;
 
   // La estructura primero, los datos después: reemplazar la pantalla
   // entera por «Cargando...» da sensación de salto en cada cambio de
   // pestaña o de periodo. Así la cabecera y el selector no parpadean.
-  document.getElementById('zona').innerHTML = `
+  document.getElementById('cuerpo-mov').innerHTML = `
     <div class="cabeza-movimientos">
       <div>
         <h1 style="margin:0 0 12px">Qué se ha adjudicado en tu sector</h1>
