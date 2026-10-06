@@ -227,11 +227,17 @@ language sql
 security definer
 set search_path to 'public'
 as $function$
-    update public.condiciones set
-        lectura = datos, lectura_origen = origen, lectura_estado = estado,
+    -- Un fallo al releer no borra una lectura buena: se queda la anterior.
+    update public.condiciones c set
+        lectura = case when guarda then c.lectura else datos end,
+        lectura_origen = case when guarda then c.lectura_origen else origen end,
+        lectura_estado = case when guarda then 'leido' else estado end,
         lectura_fecha = now(), lectura_coste = coste,
-        lectura_documento = documento
-    where id_licitacion = ficha;
+        lectura_documento = case when guarda then c.lectura_documento else documento end
+    from (select estado = 'error' and exists (
+              select 1 from public.condiciones x
+              where x.id_licitacion = ficha and x.lectura is not null) as guarda) g
+    where c.id_licitacion = ficha;
     insert into public.gasto_lecturas_dia as g (dia, coste, lecturas)
     values ((now() at time zone 'UTC')::date, coalesce(coste, 0), 1)
     on conflict (dia) do update

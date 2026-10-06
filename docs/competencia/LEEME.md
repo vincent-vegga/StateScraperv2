@@ -405,3 +405,69 @@ empresas que sigues va marcado, y el resumen dice cuántos son tuyos.
    suministros de un año siguen siendo compras sueltas.
 4. **"Sus contratos que van a vencer" en Organismos** sale casi gratis
    con la tabla (ver arriba, Organismos).
+
+---
+
+## Traspaso: solvencia y requisitos, noche del 06 al 07/10/2026
+
+Prioridad 4. Trabajo nocturno sin supervisión, en la rama `solvencia`
+(worktree `../StateScraperv2-solvencia`), PR hacia `main` **sin unir**.
+Detalle y cifras en la Decisión 54 de `DECISIONES.md`.
+
+### Estado
+
+- **Base: aplicado en producción** (con permiso): migraciones
+  `20261007100000_condiciones.sql` y `20261007110000_requisitos_en_la_lista.sql`.
+  Tablas `condiciones`, `requisitos_guardados` y `gasto_lecturas_dia`;
+  `mis_oportunidades` tiene una columna más al final, `requisitos`; trabajo
+  de `pg_cron` `refrescar-requisitos-guardados` (cada 10 minutos, minuto
+  5). Nada de esto cambia lo que ve la web publicada: la columna nueva se
+  ignora y las funciones nuevas no las llama nadie hasta unir la rama.
+- **Datos: cargados.** Condiciones de lo abierto (relleno desde los ZIP)
+  y lectura de la solvencia de todo lo abierto, primero lo que está en
+  listas (ver "Lo medido").
+- **Web y scraper: en la rama, sin publicar.** Hasta unir, el scraper no
+  guarda condiciones nuevas cada día y `condiciones.yml` no corre (su
+  disparador `workflow_run` solo vale desde `main`).
+
+### Lo construido
+
+| Qué | Dónde |
+|---|---|
+| Guardar solvencia (con código y umbral), clasificación, garantías por tipo, contacto y documentos de lo PUB en cada pasada | `lector_atom.py` (`extraer_condiciones`, `guardar_condiciones`) |
+| Relleno desde los ZIP del mes y los dos anteriores | `rellenar_condiciones.py` |
+| Lectura de la solvencia del anuncio o del pliego, con topes de gasto | `leer_pliegos.py` |
+| Lectura diaria tras el scraper (0,50 $/día, 10 $/mes) y relleno a mano | `.github/workflows/condiciones.yml` |
+| Bloque "Qué piden para presentarte" en la ficha de Contratos y en Viabilidad; marcas "Exigen clasificación" y "Piden facturar X al año" en la fila | `web/index.html` |
+| Decisión 54, README | `DECISIONES.md`, `README.md` |
+
+### Para ponerlo en producción
+
+1. Revisar la PR. Ojo a dos conflictos de contexto con la de la cartera
+   (Propuesta 3, rama `mis-contratos`): `DECISIONES.md` (las dos añaden
+   una decisión antes de "Deuda técnica": la 53 es la suya y la 54 la
+   mía) y la ficha de `web/index.html` (mi hueco `.requisitos` va justo
+   tras el `</dl>`, su `bloqueCartera` antes del botón de Viabilidad).
+2. Unir la PR a `main`: publica la web y deja activos el scraper nuevo y
+   `condiciones.yml`. No hace falta aplicar nada en la base.
+3. Entrar con la cuenta de prueba de uniformidad y abrir un par de fichas:
+   el bloque se carga al abrir, con "Llegas" o "Compruébalo".
+4. Al día siguiente, mirar en Actions que "Solvencia y requisitos" corrió
+   tras el scraper, y su gasto: `select * from gasto_lecturas_dia order by dia desc;`
+
+### Abierto, para decidir
+
+1. **Los topes de gasto diarios** (0,50 $/día, 10 $/mes) son míos. Lo
+   nuevo de cada día cuesta unos 0,15-0,30 $.
+2. **La solvencia técnica en la comparación** usa las tres primeras cifras
+   del CPV (art. 90.1.a). Sale "Compruébalo" en 3 de cada 5: es estricto, y
+   por eso no se marca en la fila.
+3. **El correo del órgano en Organismos** (punto de la pantalla 4) sale
+   casi gratis de `condiciones`, pero solo para órganos con algo abierto.
+   No hecho.
+4. **Avisar en el correo diario** de los contratos que exigen
+   clasificación o más facturación: el correo es de la sesión de la
+   cartera esta noche; no lo he tocado.
+5. **La rama `ejecutar-condiciones`** fue la de usar y tirar para lanzar
+   la carga desde Actions antes de que el workflow estuviera en `main`.
+   Borrada al acabar.
