@@ -205,7 +205,7 @@ Para retomar en otra sesión sin repasar la conversación.
 | El veredicto de Viabilidad en la lista de Contratos: marca en la fila y filtro | `20261004210000_viabilidad_en_la_lista.sql` + `web/index.html` | `e84f747` |
 
 Las tres migraciones están **aplicadas** en Supabase. Lo último se probó
-con sesión iniciada (cuenta de prueba SOLTEC PRO UNIFORMIDAD, 63
+con sesión iniciada (cuenta de prueba de uniformidad, 63
 contratos): el filtro, la marca de la fila y la ficha de Viabilidad con
 sus contratos enlazados funcionan con datos reales.
 
@@ -329,9 +329,9 @@ empresas que sigues va marcado, y el resumen dice cuántos son tuyos.
   63 % (48 % meses, 14 % "no hay", 2 % una fecha); 55 de 55 casos
   etiquetados a mano bien. De lo que vence, el 25 % tiene prórrogas
   leídas y el 63 % no trae texto.
-- **Por perfil** (12 meses / 3 meses): ascensores (MAINSA) 586 / 170,
-  uniformidad (SOLTEC) 735 / 178, espectáculos (SALAN) 459 / 122,
-  consultoría (RED2RED) 2.024 / 533.
+- **Por perfil** (12 meses / 3 meses): ascensores 586 / 170,
+  uniformidad 735 / 178, espectáculos 459 / 122,
+  consultoría 2.024 / 533.
 - **Tiempos.** Refresco de 8 prefijos: 7,2 s (2.800 filas, por índice).
   `lo_que_viene()`: 40-660 ms con 300 filas (230-250 KB de respuesta).
   El cálculo sobre la muestra del 2 % copiada aparte: 1,2 s.
@@ -376,7 +376,7 @@ empresas que sigues va marcado, y el resumen dice cuántos son tuyos.
    `select jobname, schedule from cron.job where jobname = 'refrescar-vencimientos';`
 5. **Unir la PR** a `main`, lo que publica la web. Si se une antes del
    paso 2 no se rompe nada: la vista dice "se está preparando".
-6. Entrar con la cuenta de prueba (SOLTEC PRO UNIFORMIDAD) y mirar "Lo
+6. Entrar con la cuenta de prueba de uniformidad y mirar "Lo
    que viene": unos 735 contratos en 12 meses, los filtros, un enlace a
    Empresas, uno a Organismos y uno al expediente.
 

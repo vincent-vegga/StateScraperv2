@@ -398,7 +398,7 @@ Deja fuera lo que de verdad le interesa: 7951 (centro de llamadas), 7934
 (atención omnicanal), 6421 (contact center) o 4800 (plataformas de IA). Y
 cuenta como suyo mucho software genérico: el juez de mercado
 (`veredictos_mercado`) marcó como ajenos 108 de 120 contratos recientes de
-sus CPV (a SOLTEC, 131 de 180).
+sus CPV (a la cuenta de prueba de uniformidad, 131 de 180).
 
 **No se puede arreglar ampliando `cpv_prefijos`**: alimenta avisos,
 cribado, Empresas y Movimientos, y en las altas con NIF no se toca.
@@ -421,7 +421,7 @@ parecidos a los tuyos".
   perfil y organismo, o limitarse a los organismos que se abran.
 
 **Antes de construir:** medirla con dos perfiles (el de atención
-ciudadana y SOLTEC) en un par de organismos, y ver qué contratos quedan
+ciudadana y uniformidad) en un par de organismos, y ver qué contratos quedan
 arriba.
 
 **Lo que no arregla:** lo que el organismo compra por contratos menores o

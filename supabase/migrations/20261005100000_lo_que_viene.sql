@@ -76,10 +76,10 @@
 -- menos de 6 meses y sin lo que el clasificador del mercado dijo que no
 -- es de su sector):
 --                                         3 meses  6 meses  12 meses
---     ascensores (MAINSA, 2 prefijos)        170      314      586
---     uniformidad (SOLTEC, 9 prefijos)       178      402      735
---     espectáculos (SALAN, 9231)             122      256      459
---     consultoría (RED2RED, 6 prefijos)      533    1.183    2.024
+--     ascensores (2 prefijos)                    170      314       586
+--     uniformidad (9 prefijos)                   178      402       735
+--     espectáculos (9231)                        122      256       459
+--     consultoría (6 prefijos)                   533    1.183     2.024
 -- De lo que vence en esos prefijos (2.800 contratos), el 25 % tiene
 -- prórrogas leídas, el 2 % dice que no las tiene, el 10 % remite al
 -- pliego y el 63 % no trae texto. El 8 % ya pasó el plazo inicial y
