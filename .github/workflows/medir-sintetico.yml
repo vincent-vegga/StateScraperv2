@@ -43,8 +43,16 @@ jobs:
       SIM_WEBS: ${{ secrets.SIM_WEBS }}
       CACHE_HUELLAS: /home/runner/.cache/huellas
       # Tope de las dos fases juntas; la exportación, como mucho 2 $.
-      MAX_GASTO: '12'
+      # Tanda 2 (aprobada el 06/10/2026, ~4,5 $ con tope 6 $).
+      MAX_GASTO: '6'
       MAX_GASTO_EXPORTAR: '2'
+      # El motor de hoy y el nuevo con las mismas 20 marcas; sin repetir
+      # limpio_desc (el ruido ya se midió en la tanda 1), y la web solo en
+      # las tres empresas en las que falló la exportación.
+      N_MARCAS: '20'
+      MARCAS_HOY: '20'
+      SIN_BIS: '1'
+      WEB_SOLO: 'P02,P08,P14'
       CRIBADO_SIMULTANEAS: '8'
     steps:
       - uses: actions/checkout@v4

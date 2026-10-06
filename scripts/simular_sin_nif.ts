@@ -83,6 +83,20 @@ const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_KE
 const arg = (nombre: string) =>
   Deno.args.find((a) => a.startsWith(`--${nombre}=`))?.split("=")[1];
 const SOLO = arg("solo");
+const WEB_SOLO = (Deno.env.get("WEB_SOLO") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+
+// Para el registro público: el tipo de error, el código HTTP si lo hay
+// («El modelo respondió 400», «embeddings 429») y la línea de este
+// script o de alta/ donde saltó. Nunca el mensaje entero.
+function porQueFallo(e: unknown): string {
+  const err = e instanceof Error ? e : new Error(String(e));
+  const http = err.message.match(/(?:respondió|embeddings) (\d{3})/)?.[1];
+  const linea = (err.stack ?? "").split("\n")
+    .map((l) => l.match(/(simular_sin_nif\.ts|alta\/[a-z]+\.ts):(\d+)/))
+    .find(Boolean);
+  return [err.name, http && `HTTP ${http}`, linea && `${linea[1]}:${linea[2]}`]
+    .filter(Boolean).join(", ");
+}
 // Licitaciones por estrato en la evaluación: dentro de sus prefijos
 // reales y fuera de ellos.
 const MUESTRA = Number(arg("muestra") ?? 100);
@@ -359,7 +373,9 @@ function textoDeHtml(html: string): string {
     .replace(/\s+/g, " ").trim();
 }
 
-async function pagina(url: string): Promise<string | null> {
+// Por qué no se pudo leer la portada: el código HTTP, «no-html» o el tipo
+// de error (certificado, tiempo agotado…). Solo eso sale en el registro.
+async function pagina(url: string, estado?: { motivo: string }): Promise<string | null> {
   try {
     const r = await fetch(url, {
       signal: AbortSignal.timeout(20_000), redirect: "follow",
@@ -370,18 +386,21 @@ async function pagina(url: string): Promise<string | null> {
                  "Accept-Language": "es-ES,es;q=0.9" },
     });
     if (!r.ok || !(r.headers.get("content-type") ?? "").includes("html")) {
+      if (estado) estado.motivo = r.ok ? "no-html" : `HTTP ${r.status}`;
       await r.body?.cancel();
       return null;
     }
     return await r.text();
-  } catch {
+  } catch (e) {
+    if (estado) estado.motivo = (e as Error).name;
     return null;
   }
 }
 
-async function leerWeb(url: string): Promise<{ texto: string; paginas: number }> {
-  const portada = await pagina(url);
-  if (!portada) return { texto: "", paginas: 0 };
+async function leerWeb(url: string): Promise<{ texto: string; paginas: number; motivo?: string }> {
+  const estado = { motivo: "" };
+  const portada = await pagina(url, estado);
+  if (!portada) return { texto: "", paginas: 0, motivo: estado.motivo };
   const base = new URL(url);
   const enlaces = new Set<string>();
   for (const m of portada.matchAll(/<a\s[^>]*href=["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
@@ -400,7 +419,10 @@ async function leerWeb(url: string): Promise<{ texto: string; paginas: number }>
   const frases = [portada, ...resto].filter((x): x is string => !!x).map(textoDeHtml)
     .flatMap((t) => t.split(/(?<=[.!?])\s+/))
     .filter((f) => f.length > 3 && !vistas.has(f) && !!vistas.add(f));
-  return { texto: frases.join(" ").slice(0, 15_000), paginas: 1 + resto.filter(Boolean).length };
+  // Cortar a 15.000 puede partir un emoji y dejar medio par sustituto: el
+  // JSON que va a OpenAI no sería válido y la llamada falla con 400.
+  return { texto: frases.join(" ").slice(0, 15_000).toWellFormed(),
+           paginas: 1 + resto.filter(Boolean).length };
 }
 
 // Lo que haría el alta con su web. Solo el «qué»: ni clientes, ni
@@ -1192,24 +1214,33 @@ for (const { codigo, p } of casos) {
       // haría el alta, y se busca por línea (un único vector de una web
       // con varias líneas no se parece a ninguna). Sin web legible, nada:
       // medir_sintetico.py lo cuenta como caída a la descripción.
-      const url = WEBS[cif];
-      const leida = url ? await leerWeb(url) : { texto: "", paginas: 0 };
-      const deLaWeb = leida.texto.length >= 300 ? await webComoCliente(leida.texto) : null;
+      // Con WEB_SOLO (códigos separados por comas), la web solo en esas.
+      // Si algo de la web falla, la empresa se exporta sin web: lo demás
+      // se sigue pudiendo medir.
+      const url = WEB_SOLO.length && !WEB_SOLO.includes(codigo) ? undefined : WEBS[cif];
+      let leida: Awaited<ReturnType<typeof leerWeb>> = { texto: "", paginas: 0 };
       let web = null;
-      if (deLaWeb) {
-        const conDesc = `${descripcion} ${deLaWeb.descripcion}`;
-        const familiasWeb = marcar((await proponer(deLaWeb.descripcion, true)).prefijos).familias;
-        const familiasWebDesc = marcar((await proponer(conDesc, true)).prefijos).familias;
-        const buscar = async (lineas: string[], desc: string, fams: string[]) => lineas.length
-          ? await buscarPorLineas(lineas, fams, franjas, cif)
-          : (await buscarVecinos(desc, fams, franjas, cif)).puros;
-        web = {
-          descripcion: deLaWeb.descripcion, lineas: deLaWeb.lineas,
-          puros: (await buscar(deLaWeb.lineas, deLaWeb.descripcion, familiasWeb)).map(fila),
-          descripcion_con_desc: conDesc,
-          puros_con_desc: (await buscar([descripcion, ...deLaWeb.lineas], conDesc,
-                                        familiasWebDesc)).map(fila),
-        };
+      try {
+        if (url) leida = await leerWeb(url);
+        const deLaWeb = leida.texto.length >= 300 ? await webComoCliente(leida.texto) : null;
+        if (deLaWeb) {
+          const conDesc = `${descripcion} ${deLaWeb.descripcion}`;
+          const familiasWeb = marcar((await proponer(deLaWeb.descripcion, true)).prefijos).familias;
+          const familiasWebDesc = marcar((await proponer(conDesc, true)).prefijos).familias;
+          const buscar = async (lineas: string[], desc: string, fams: string[]) => lineas.length
+            ? await buscarPorLineas(lineas, fams, franjas, cif)
+            : (await buscarVecinos(desc, fams, franjas, cif)).puros;
+          web = {
+            descripcion: deLaWeb.descripcion, lineas: deLaWeb.lineas,
+            puros: (await buscar(deLaWeb.lineas, deLaWeb.descripcion, familiasWeb)).map(fila),
+            descripcion_con_desc: conDesc,
+            puros_con_desc: (await buscar([descripcion, ...deLaWeb.lineas], conDesc,
+                                          familiasWebDesc)).map(fila),
+          };
+        }
+      } catch (e) {
+        web = null;
+        leida = { ...leida, motivo: `falló la web: ${porQueFallo(e)}` };
       }
 
       exportados.push({ codigo, perfil_id: p.id, cif, descripcion, familias,
@@ -1220,7 +1251,8 @@ for (const { codigo, p } of casos) {
       await Deno.writeTextFile(`${SALIDA}/sinteticos.json`, JSON.stringify(exportados));
       // Sin la dirección ni el texto: el registro es público.
       console.log(`${codigo}: exportado (${(vv.detalle.filas as unknown[]).length} vecinos, ` +
-                  `web ${url ? `${leida.paginas} páginas, ${leida.texto.length} caracteres` : "sin dirección"}` +
+                  `web ${url ? `${leida.paginas} páginas, ${leida.texto.length} caracteres` : "sin dirección o fuera de WEB_SOLO"}` +
+                  `${leida.motivo ? ` (${leida.motivo})` : ""}` +
                   `${web ? `, ${web.lineas.length} líneas` : ", no se usa"}, ` +
                   `gasto ${dolares.toFixed(2)} $)`);
       masCara = Math.max(masCara, dolares - antesDeEsta);
@@ -1260,8 +1292,9 @@ for (const { codigo, p } of casos) {
                 `vecinos ${f1("vecinos_vecindario")} ` +
                 `(${segundos} s, ${filaResumen.llamadas} llamadas)`);
   } catch (e) {
-    // Solo el tipo de fallo: el mensaje podría llevar datos del cliente.
-    console.log(`${codigo}: falló (${(e as Error).name})`);
+    // Solo el tipo, el código HTTP y la línea: el mensaje podría llevar
+    // datos del cliente.
+    console.log(`${codigo}: falló (${porQueFallo(e)})`);
     resumen.push({ codigo, fallo: (e as Error).name });
     detalle.push({ codigo, empresa_cif: cif, fallo: String((e as Error).message ?? e) });
   }

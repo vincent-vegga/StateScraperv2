@@ -31,7 +31,7 @@ simular_sin_nif.ts con MODO=exportar):
               propuestas con eso y una búsqueda por línea. Sin web
               legible, igual que limpio_desc (lo que haría el alta).
   web_desc    la descripción y lo de la web juntos.
-  corr10_hoy  el cliente marca 10 contratos de su lista (el oráculo:
+  corrN_hoy   el cliente marca N contratos de su lista (el oráculo:
               «me interesa» si están en su lista real) y el motor hace lo
               de hoy: las correcciones solo llegan al juez.
   corrN_nuevo lo mismo con 5, 10 o 20 marcas, y el motor cambiado
@@ -62,7 +62,11 @@ empresa más cara hasta ahora (con un 25 % de margen) pasaría MAX_GASTO,
 se para. Una empresa que se queda a medias no cuenta en las medias.
 
 Variables: SUPABASE_URL, SUPABASE_KEY, OPENAI_API_KEY, CACHE_HUELLAS,
-    MAX_GASTO (dólares, total de las dos fases; por defecto 3).
+    MAX_GASTO (dólares, total de las dos fases; por defecto 3),
+    N_MARCAS (con cuántas marcas se mide el motor nuevo; «5,10,20»),
+    MARCAS_HOY (y el de hoy; «10»), SIN_BIS=1 (sin repetir limpio_desc:
+    el ruido ya está medido). La web solo se mide en las empresas que la
+    exportación leyó (WEB_SOLO en simular_sin_nif.ts).
 """
 from __future__ import annotations
 
@@ -85,8 +89,13 @@ SALIDA = Path("simulacion")
 MAX_GASTO = float(os.environ.get("MAX_GASTO", "3"))
 # Cuántos contratos marca el cliente (propuesta 3), y con cuántos se mide
 # también el motor de hoy (las correcciones solo llegan al juez).
-N_MARCAS = (5, 10, 20)
-MARCAS_HOY = 10
+def _numeros(nombre: str, defecto: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in os.environ.get(nombre, defecto).split(",") if x.strip())
+
+
+N_MARCAS = _numeros("N_MARCAS", "5,10,20")
+MARCAS_HOY = _numeros("MARCAS_HOY", "10")
+SIN_BIS = os.environ.get("SIN_BIS") == "1"
 
 
 def prefijos_de(cpvs) -> set[str]:
@@ -304,8 +313,9 @@ def main() -> int:
     ia = cribador.obtener_cliente_openai() if medir_actual else None
     anteriores = os.environ.get("MEDIR_ANTERIORES") == "1"
     VARIANTES = ((["actual"] if medir_actual else []) + (["sintetico", "limpio"] if anteriores else [])
-                 + ["limpio_desc", "limpio_desc_bis", "web", "web_desc"]
-                 + [f"corr{MARCAS_HOY}_hoy"] + [f"corr{n}_nuevo" for n in N_MARCAS])
+                 + ["limpio_desc"] + ([] if SIN_BIS else ["limpio_desc_bis"])
+                 + (["web", "web_desc"] if any(x.get("web") for x in casos) else [])
+                 + [f"corr{n}_hoy" for n in MARCAS_HOY] + [f"corr{n}_nuevo" for n in N_MARCAS])
     resultados, resumen = [], []
 
     for caso in casos:
@@ -331,31 +341,32 @@ def main() -> int:
         mostrados["limpio_desc"] = con_motor(c, cif, limpios, k, gasto, desc, recuerdo=recuerdo)
         # Lo mismo otra vez, desde el filtro y sin recuerdo: lo que cambia
         # entre las dos es el ruido del modelo, no el método.
-        mostrados["limpio_desc_bis"] = con_motor(c, cif, limpiar(desc, caso["puros"], gasto),
-                                                 k, gasto, desc)
+        if not SIN_BIS:
+            mostrados["limpio_desc_bis"] = con_motor(c, cif, limpiar(desc, caso["puros"], gasto),
+                                                     k, gasto, desc)
 
-        # La web. Sin web legible, el alta seguiría con la descripción.
+        # La web, solo donde se leyó: en las demás no se mide (contarla como
+        # «igual que limpio_desc» llenaría la comparación de empates).
         w = caso.get("web")
-        extra["web"] = bool(w)
+        extra["con_web"] = bool(w)
         if w:
             mostrados["web"] = con_motor(c, cif, limpiar(w["descripcion"], w["puros"], gasto),
                                          k, gasto, w["descripcion"])
             mostrados["web_desc"] = con_motor(c, cif, limpiar(w["descripcion_con_desc"],
                                                               w["puros_con_desc"], gasto),
                                               k, gasto, w["descripcion_con_desc"])
-        else:
-            mostrados["web"] = mostrados["web_desc"] = mostrados["limpio_desc"]
 
         # Correcciones sobre lo que enseña producción. Las marcas de 10
         # incluyen las de 5, y las de 20 las de 10: el mismo cliente que
         # sigue marcando.
-        todas = marcas(c, mostrados["limpio_desc"], R, max(N_MARCAS), int(cod[1:]) * 7919)
-        for n in N_MARCAS:
+        todas = marcas(c, mostrados["limpio_desc"], R, max(N_MARCAS + MARCAS_HOY), int(cod[1:]) * 7919)
+        for n in sorted(set(N_MARCAS + MARCAS_HOY)):
             corr = todas[:n]
-            if n == MARCAS_HOY:
+            if n in MARCAS_HOY:
                 mostrados[f"corr{n}_hoy"] = con_motor(c, cif, limpios, k, gasto, desc, corr, recuerdo)
-            mostrados[f"corr{n}_nuevo"] = con_motor(c, cif, historial_corregido(c, limpios, corr),
-                                                    k, gasto, desc, corr, recuerdo)
+            if n in N_MARCAS:
+                mostrados[f"corr{n}_nuevo"] = con_motor(c, cif, historial_corregido(c, limpios, corr),
+                                                        k, gasto, desc, corr, recuerdo)
             extra[f"marcadas{n}"] = {i["id_licitacion"] for i in corr}
         extra["marcas_si"] = sum(x["interesa"] for x in todas)
         mas_cara = max(mas_cara, gasto.total - antes)
@@ -387,9 +398,15 @@ def main() -> int:
             acierto = len(S & Rv)
             return {"mostrados": len(S), "recupera": acierto / len(Rv) if Rv else None,
                     "precision": acierto / len(S) if S else None}
-        fila = {"codigo": cod, "reales": len(R), "limpios": extra["limpios"], "web": extra["web"],
-                "web_caracteres": caso.get("web_caracteres", 0), "marcas_si": extra["marcas_si"]}
+        # «con_web», no «web»: la variante web se guarda con ese nombre y
+        # lo pisaba (la tabla «solo con web legible» contaba todas).
+        fila = {"codigo": cod, "reales": len(R), "limpios": extra["limpios"],
+                "con_web": extra["con_web"], "web_caracteres": caso.get("web_caracteres", 0),
+                "marcas_si": extra["marcas_si"]}
         for v in VARIANTES:
+            if v not in mostrados:
+                fila[v] = None
+                continue
             n = int(v[4:].split("_")[0]) if v.startswith("corr") else None
             fuera = frozenset(extra[f"marcadas{n}"]) if n else frozenset()
             fila[v] = cifras(mostrados[v], fuera)
@@ -397,41 +414,54 @@ def main() -> int:
         resumen.append(fila)
         resultados.append({**fila, "perfil_id": caso["perfil_id"], "quitados": extra["quitados"],
                            "web_texto": caso.get("web"),
-                           **{f"ids_{v}": sorted(mostrados[v]) for v in VARIANTES}})
+                           **{f"ids_{v}": sorted(mostrados[v]) for v in VARIANTES if v in mostrados}})
         g = lambda x: "—" if x is None else f"{x:.2f}"
         logging.info("%s: reales %d · %s · gasto %.2f $", cod, len(R), " · ".join(
             f"{v} {fila[v]['mostrados']} (rec {g(fila[v]['recupera'])}, prec {g(fila[v]['precision'])})"
-            for v in VARIANTES), gasto.total)
+            for v in VARIANTES if fila[v]), gasto.total)
         (SALIDA / "sintetico.json").write_text(json.dumps(resultados))
 
     # ---- Resumen público: solo cifras
-    def media(v, campo, filas=None):
-        xs = [f[v][campo] for f in (resumen if filas is None else filas) if f[v][campo] is not None]
+    # Media de una variante en las empresas donde se midió. Con base=True,
+    # la de producción en esas mismas empresas y sin los mismos contratos
+    # marcados: lo único comparable con una variante de correcciones.
+    def media(v, campo, filas=None, base=False):
+        xs = [(f[v]["base"] if base else f[v])[campo] for f in (resumen if filas is None else filas)
+              if f[v] and (f[v]["base"] if base else f[v])[campo] is not None]
         return sum(xs) / len(xs) if xs else float("nan")
-    con_web = [f for f in resumen if f["web"]]
+    con_web = [f for f in resumen if f["con_web"]]
     lineas = ["## Alta sin NIF: la web, el ruido y las correcciones", "",
               "Referencia: lo que el motor enseña hoy a cada empresa con su NIF. "
-              "Con correcciones, sin contar los contratos marcados.", "",
-              "| Variante | Enseña (media) | Recupera | De lo que enseña, bueno |",
-              "|---|---|---|---|"]
+              "Con correcciones, sin contar los contratos marcados, ni en la variante ni en "
+              "producción (las columnas de la derecha): compara cada fila con su producción, "
+              "no con la de limpio_desc.", "",
+              "| Variante | Empresas | Enseña (media) | Recupera | De lo que enseña, bueno "
+              "| Producción: enseña | Recupera | Bueno |",
+              "|---|---|---|---|---|---|---|---|"]
     for v in VARIANTES:
-        lineas.append(f"| {v} | {media(v, 'mostrados'):.0f} | {media(v, 'recupera'):.2f} | "
-                      f"{media(v, 'precision'):.2f} |")
-    lineas += ["", f"Solo las {len(con_web)} empresas con web legible:", "",
-               "| Variante | Enseña (media) | Recupera | De lo que enseña, bueno |", "|---|---|---|---|"]
-    for v in ("limpio_desc", "limpio_desc_bis", "web", "web_desc"):
-        lineas.append(f"| {v} | {media(v, 'mostrados', con_web):.0f} | "
-                      f"{media(v, 'recupera', con_web):.2f} | {media(v, 'precision', con_web):.2f} |")
+        n = sum(1 for f in resumen if f[v])
+        lineas.append(f"| {v} | {n} | {media(v, 'mostrados'):.0f} | {media(v, 'recupera'):.2f} | "
+                      f"{media(v, 'precision'):.2f} | {media(v, 'mostrados', base=True):.0f} | "
+                      f"{media(v, 'recupera', base=True):.2f} | {media(v, 'precision', base=True):.2f} |")
+    if con_web:
+        lineas += ["", f"Solo las {len(con_web)} empresas con web legible:", "",
+                   "| Variante | Enseña (media) | Recupera | De lo que enseña, bueno |", "|---|---|---|---|"]
+        for v in ("limpio_desc", "limpio_desc_bis", "web", "web_desc"):
+            if v in VARIANTES:
+                lineas.append(f"| {v} | {media(v, 'mostrados', con_web):.0f} | "
+                              f"{media(v, 'recupera', con_web):.2f} | {media(v, 'precision', con_web):.2f} |")
 
     # Empresa por empresa, frente a lo que hay en producción (medido sin
     # los mismos contratos): una variante gana si recupera más sin enseñar
     # peor (o enseña mejor sin recuperar menos). Diferencias de menos de
     # 0,02 cuentan como empate. limpio_desc_bis dice cuánto «gana» o
     # «pierde» el azar solo: es el listón para las demás.
-    def compara(v):
+    def compara(v, contra=None):
         gana = pierde = 0
         for f in resumen:
-            a, b = f[v]["base"], f[v]
+            if not f[v] or (contra and not f[contra]):
+                continue
+            a, b = (f[contra] if contra else f[v]["base"]), f[v]
             if None in (a["recupera"], b["recupera"], a["precision"], b["precision"]):
                 continue
             dr, dp = b["recupera"] - a["recupera"], b["precision"] - a["precision"]
@@ -445,22 +475,30 @@ def main() -> int:
         if v != "limpio_desc":
             gana, pierde = compara(v)
             lineas.append(f"| {v} | {gana} | {pierde} |")
+    # La pregunta de las correcciones: con las mismas marcas, ¿el motor
+    # nuevo gana al de hoy? (los dos sin los mismos contratos marcados)
+    mismas = [n for n in N_MARCAS if n in MARCAS_HOY]
+    if mismas:
+        lineas += ["", "| Motor nuevo frente al de hoy, mismas marcas | Mejor en | Peor en |", "|---|---|---|"]
+        for n in mismas:
+            gana, pierde = compara(f"corr{n}_nuevo", f"corr{n}_hoy")
+            lineas.append(f"| corr{n}_nuevo frente a corr{n}_hoy | {gana} | {pierde} |")
 
     def dif(f, campo):
         a, b = f["limpio_desc"][campo], f["limpio_desc_bis"][campo]
         return "—" if None in (a, b) else f"{abs(a - b):.2f}"
-    lineas += ["", "Ruido: diferencia entre limpio_desc y limpio_desc_bis (recupera / bueno): "
-               + ", ".join(f"{f['codigo']} {dif(f, 'recupera')} / {dif(f, 'precision')}" for f in resumen)]
+    if not SIN_BIS:
+        lineas += ["", "Ruido: diferencia entre limpio_desc y limpio_desc_bis (recupera / bueno): "
+                   + ", ".join(f"{f['codigo']} {dif(f, 'recupera')} / {dif(f, 'precision')}" for f in resumen)]
 
     g = lambda x: "—" if x is None else f"{x:.2f}"
-    lineas += ["", "| Perfil | Reales | Web (caracteres) | «Me interesa» de 20 | " +
+    celda = lambda f, v: f"{g(f[v]['recupera'])} / {g(f[v]['precision'])}" if f[v] else "—"
+    lineas += ["", f"| Perfil | Reales | Web (caracteres) | «Me interesa» de {max(N_MARCAS + MARCAS_HOY)} | " +
                " | ".join(f"{v} rec / prec" for v in VARIANTES) + " |",
                "|---|---|---|---|" + "---|" * len(VARIANTES)]
     for f in resumen:
-        lineas.append(f"| {f['codigo']} | {f['reales']} | {f['web_caracteres'] if f['web'] else 'no'} | "
-                      f"{f['marcas_si']} | " +
-                      " | ".join(f"{g(f[v]['recupera'])} / {g(f[v]['precision'])}" for v in VARIANTES)
-                      + " |")
+        lineas.append(f"| {f['codigo']} | {f['reales']} | {f['web_caracteres'] if f['con_web'] else 'no'} | "
+                      f"{f['marcas_si']} | " + " | ".join(celda(f, v) for v in VARIANTES) + " |")
     lineas += ["", f"Perfiles: {len(resumen)} de {len(casos)} exportados"
                + (f" ({a_medias} a medias, fuera)" if a_medias else "")
                + f". Gasto contado, las dos fases: {gasto.total:.2f} $ (tope {MAX_GASTO:.2f} $)."]
