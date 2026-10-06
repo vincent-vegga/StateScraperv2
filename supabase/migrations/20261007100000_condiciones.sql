@@ -390,7 +390,7 @@ $function$;
 -- se exige, con su origen (feed o pliego) y una frase literal, y la
 -- comparación con lo que la empresa ya gana. Cada comprobación dice en
 -- cuántos contratos se apoya.
-create or replace function public.requisitos(ficha text)
+create or replace function public.requisitos_de(ficha text, perfil uuid)
 returns jsonb
 language plpgsql
 stable
@@ -416,9 +416,8 @@ declare
     medio_tec  text;
     anio_hoy   int := extract(year from now())::int;
 begin
-    -- Solo quien tiene una empresa dada de alta.
     select p.id, p.cif into yo
-    from public.perfiles p where p.id = public.mi_perfil_id();
+    from public.perfiles p where p.id = perfil;
     if not found then
         return jsonb_build_object('error', 'sin perfil');
     end if;
@@ -536,6 +535,21 @@ begin
         'comprobar', comprobar
     );
 end
+$function$;
+
+revoke execute on function public.requisitos_de(text, uuid) from public, anon, authenticated;
+grant execute on function public.requisitos_de(text, uuid) to service_role;
+
+-- La que llama la web: con la empresa activa (`x-perfil`). Solo quien
+-- tiene una empresa dada de alta.
+create or replace function public.requisitos(ficha text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path to 'public'
+as $function$
+    select public.requisitos_de(ficha, public.mi_perfil_id())
 $function$;
 
 revoke execute on function public.requisitos(text) from public, anon;

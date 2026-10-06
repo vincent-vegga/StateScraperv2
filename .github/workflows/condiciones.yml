@@ -11,8 +11,9 @@ name: Solvencia y requisitos
 #   - Cada día, al acabar el scraper: solo `leer`, con el tope diario y el
 #     mensual. Lo nuevo ya lo guardó el scraper.
 #   - A mano desde Actions, con las opciones de abajo.
-#   - Al subir la rama `ejecutar-condiciones`: relleno y lectura de lo que
-#     está en las listas, con el tope total de 5 $ (la primera vez).
+#   - Al subir la rama `ejecutar-condiciones`: relleno y lectura de todo
+#     lo abierto (primero lo que está en listas), con el tope total de 5 $.
+#     Fue la carga inicial del 06/10/2026; la rama se borra después.
 on:
   workflow_run:
     workflows: ["Scraper de licitaciones (eventos y cultura)"]
@@ -83,7 +84,7 @@ jobs:
         run: |
           case "${{ github.event_name }}" in
             push)
-              python leer_pliegos.py --solo-en-listas --tope 4000 --gasto-total 5 --gasto-dia 5 --gasto-mes 5 ;;
+              python leer_pliegos.py --tope 8000 --gasto-total 5 --gasto-dia 5 --gasto-mes 5 ;;
             workflow_dispatch)
               python leer_pliegos.py --tope "${{ inputs.tope }}" \
                 ${{ inputs.solo_en_listas && '--solo-en-listas' || '' }} \

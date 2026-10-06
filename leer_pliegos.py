@@ -110,7 +110,8 @@ Responde SOLO con un objeto JSON con exactamente estas claves:
 
 Reglas:
 - Importes en euros, sin IVA, como número (1.151.534,92 € -> 1151534.92).
-- Si el requisito es una regla relativa ("una vez y media el valor anual medio del contrato", "igual o superior al valor estimado"), pon "multiplo" y "base" (valor_anual = valor anual medio; valor_estimado; presupuesto = presupuesto base de licitación). Si además el texto da la cifra calculada, ponla en "importe".
+- NO calcules nada. "importe" solo si la cifra está escrita en el texto; si no, null.
+- Si el requisito es una regla relativa ("una vez y media el valor anual medio del contrato", "igual o superior al valor estimado"), pon "multiplo" y "base" (valor_anual = valor anual medio; valor_estimado; presupuesto = presupuesto base de licitación). Si la regla depende de la duración ("1,5 veces el valor estimado si dura un año o menos, y el valor anual medio si dura más"), usa base = valor_anual: se calcula con la duración. Si además el texto da la cifra ya calculada, ponla en "importe".
 - En "economica" va el medio principal de solvencia económica. Si se puede acreditar por volumen de negocios O por otro medio, usa volumen_negocios. Si solo se pide un seguro, medio = "seguro" y además rellena "seguro".
 - En "tecnica", trabajos_similares es la relación de trabajos/servicios/suministros/obras parecidos ejecutados; "anios" es cuántos años atrás cuentan (normalmente 3, o 5 en obras). El importe es el mínimo anual o acumulado que se exige.
 - "clasificacion": códigos como "G6-1" (grupo letra, subgrupo número, categoría). obligatoria = true si es exigida; false si solo sustituye a la solvencia (opcional).
@@ -118,7 +119,7 @@ Reglas:
 - "rolece" = true si exige estar inscrito en el ROLECE o en un registro autonómico de licitadores (RELI, etc.).
 - "otros": como mucho 4 habilitaciones o certificados obligatorios para presentarse (ISO 9001, inscripción en un registro sectorial, carné profesional...), en castellano y breves. No incluyas las declaraciones de trámite (capacidad de obrar, no prohibición, estar al corriente).
 - Si hay lotes con requisitos distintos, da los del lote más pequeño y pon lotes_distintos = true.
-- "texto": en castellano llano, 160 caracteres como mucho, qué hay que acreditar.
+- "texto": SIEMPRE en castellano llano, aunque el pliego esté en catalán, gallego o euskera; 160 caracteres como mucho, qué hay que acreditar.
 - "cita": frase literal (en su idioma) del requisito económico o técnico principal, 250 caracteres como mucho.
 - No inventes: si algo no aparece, null (o false, o lista vacía). Si los fragmentos no hablan de solvencia, devuelve economica y tecnica null."""
 
@@ -289,8 +290,23 @@ def preguntar(cliente, fila: dict, feed: str, trozos: str) -> tuple[dict, float]
     raise RuntimeError("el modelo no respondió")
 
 
-def limpiar(datos: dict) -> dict:
-    """Lo que el modelo devuelve, recortado al esquema."""
+def cifras_del_texto(texto: str) -> set[int]:
+    """Los importes escritos en el texto, en euros enteros ("1.151.534,92" -> 1151534)."""
+    plano = re.sub(r"(?<=\d)[.\s](?=\d{3}\b)", "", texto or "")
+    return {int(x) for x in re.findall(r"\d{3,}", plano)}
+
+
+def limpiar(datos: dict, fuente: str = "") -> dict:
+    """
+    Lo que el modelo devuelve, recortado al esquema.
+
+    Un importe que no está escrito en el anuncio ni en los trozos del
+    pliego se quita: el 06/10/2026 el modelo puso 80.036 € en un pliego
+    que solo decía "una vez y media el valor anual medio". La regla sí se
+    guarda, y la cifra la calcula la base (`importe_exigido`).
+    """
+    escritas = cifras_del_texto(fuente)
+
     def bloque(b, claves):
         if not isinstance(b, dict):
             return None
@@ -298,6 +314,10 @@ def limpiar(datos: dict) -> dict:
         for k in ("importe", "multiplo", "anios"):
             if k in salida and not isinstance(salida[k], (int, float)):
                 salida[k] = None
+        if salida.get("importe") is not None and fuente:
+            entero = int(salida["importe"])
+            if not ({entero, entero + 1, entero - 1} & escritas):
+                salida["importe"] = None
         if isinstance(salida.get("texto"), str):
             salida["texto"] = salida["texto"][:220]
         return salida
@@ -358,7 +378,7 @@ def leer_una(fila: dict, sesion: requests.Session, cliente_ia,
                 "coste": 0, "documento": documento, "trozos": trozos,
                 "feed": feed}
     datos, coste = preguntar(cliente_ia, fila, feed, trozos)
-    return {"estado": "leido", "origen": origen, "datos": limpiar(datos),
+    return {"estado": "leido", "origen": origen, "datos": limpiar(datos, f"{feed}\n{trozos}"),
             "coste": coste, "documento": documento, "trozos": trozos}
 
 
