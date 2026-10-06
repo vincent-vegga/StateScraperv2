@@ -1301,6 +1301,14 @@ select:focus{
 .movimiento .nota-prorroga{
   display:block;margin-top:4px;color:var(--tenue);font-size:.82rem;line-height:1.45;
 }
+.movimiento .ya-publicada{
+  display:block;margin-top:6px;font-size:.84rem;line-height:1.45;
+  color:var(--si);font-weight:600;
+}
+.movimiento .ya-publicada a{color:inherit;font-weight:400}
+.movimiento .ya-publicada .plazo{
+  display:block;color:var(--tenue);font-weight:400;font-size:.8rem;
+}
 .movimiento .cuando{
   display:block;margin-top:5px;font-size:.84rem;font-weight:600;
   font-variant-numeric:tabular-nums;
@@ -5840,6 +5848,17 @@ async function seccionLoQueViene(perfil, session) {
     const enlaceOrgano = o => o ? `<a href="#" class="enlace-ficha"
       data-a-organismo="${esc(o)}">${esc(o)}</a>` : '';
 
+    // La licitación que ya sustituye a este contrato, si se encontró una
+    // sola y sigue abierta. Si no hay, no se dice nada: que no la hayamos
+    // encontrado no significa que no vaya a haberla.
+    const nuevaTxt = n => n
+      ? `<span class="ya-publicada">Ya hay una nueva licitación abierta:
+          ${tituloConEnlace(n.titulo, n.enlace)}${
+          n.fecha_limite ? `<span class="plazo">Presentación hasta el ${
+            esc(fecha(String(n.fecha_limite)))}${
+            Number(n.presupuesto) ? ` · presupuesto ${euros(Number(n.presupuesto))}` : ''}</span>` : ''}</span>`
+      : '';
+
     // Una línea por contrato: quién lo tiene, qué es, de quién, cuánto y
     // cuándo vence. Las prórrogas solo se dicen si el organismo las
     // publicó; si el texto remite al pliego, se dice eso y no se inventa.
@@ -5871,6 +5890,7 @@ async function seccionLoQueViene(perfil, session) {
           <span class="donde">${enlaceOrgano(m.organo)}${
             m.provincia ? ` · ${esc(m.provincia)}` : ''}</span>
           ${notas.length ? `<span class="nota-prorroga">${notas.join(' · ')}</span>` : ''}
+          ${nuevaTxt(m.nueva)}
         </div>
         <div class="cifra">
           <strong>${Number(m.importe) ? euros(Number(m.importe)) : '—'}</strong>
