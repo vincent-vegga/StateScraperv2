@@ -382,11 +382,10 @@ empresas que sigues va marcado, y el resumen dice cuántos son tuyos.
 
 ### Abierto, para decidir
 
-1. **¿Ya se ha vuelto a licitar?** Un contrato que vence puede tener ya
-   su nueva licitación abierta (y salir también en Contratos).
-   Emparejarlos con la serie de Viabilidad (`serie_de`) permitiría
-   decir "ya está publicada" y enlazarla. Es lo siguiente que más valor
-   daría.
+1. **¿Ya se ha vuelto a licitar?** Hecho el 06/10/2026 para lo que se
+   empareja con seguridad (Decisión 52, `20261006100000_ya_publicada.sql`):
+   278 contratos de 84.000. Queda abierto cómo ampliar la cobertura sin
+   perder precisión.
 2. **Avisar por correo** de lo tuyo que vence (4-5 contratos en los
    clientes con NIF probados): es retener un contrato, no ganar uno
    nuevo.
