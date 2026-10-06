@@ -430,6 +430,22 @@ Detalle y cifras en la Decisión 54 de `DECISIONES.md`.
   guarda condiciones nuevas cada día y `condiciones.yml` no corre (su
   disparador `workflow_run` solo vale desde `main`).
 
+### Lo medido (06/10/2026)
+
+- **Lectura.** De las 4.875 licitaciones abiertas con condiciones: 4.465
+  leídas (92 %), 315 sin pliego publicado (6,5 %) y 95 con el pliego
+  escaneado o protegido (2 %). El 8 % está exento de solvencia. De las
+  que piden solvencia económica, el 87 % queda con cifra.
+- **Lista.** De 5.141 pares perfil-contrato: 349 con "Piden facturar…"
+  (solo con NIF) y 134 con "Exigen clasificación".
+- **Coste.** 3,77 $ la carga entera, con la relectura de lo de las
+  listas con el prompt final (tope que pusiste: 5 $). Unos 0,0007 $ por
+  lectura; ~1 s por contrato con 6 hilos.
+- **Precisión.** Dos muestras al azar revisadas contra el pliego (15 y
+  12). Los fallos que salieron (una cifra inventada, la cifra de la
+  técnica en la económica, una técnica mal entendida) tienen ya su
+  defensa: ver la Decisión 54.
+
 ### Lo construido
 
 | Qué | Dónde |
