@@ -2729,13 +2729,12 @@ select:focus{
     padding:2px 0;
   }
 
-  /* Encaje y opciones de ganar comparten fila; el de sector, cuando lo
-     hay, va debajo entero. Sin el de opciones (Viabilidad apagada), como
-     antes: encaje y sector juntos, o encaje solo si no hay sectores. */
-  .filtros:not(:has(#f-viabilidad[hidden])) > #f-sector{
-    grid-column:1 / -1;
-  }
-  .filtros:has(#f-viabilidad[hidden]):has(#f-sector[hidden]) #f-veredicto{
+  /* Encaje y opciones de ganar comparten fila; tamaño y sector, cuando
+     lo hay, comparten la siguiente. Sin sectores, el de tamaño va entero.
+     Sin el de opciones (Viabilidad apagada): encaje y tamaño juntos, y
+     el de sector debajo entero. */
+  .filtros:has(#f-sector[hidden]):not(:has(#f-viabilidad[hidden])) > #f-tamano,
+  .filtros:has(#f-viabilidad[hidden]) > #f-sector{
     grid-column:1 / -1;
   }
 
@@ -3342,6 +3341,17 @@ function importeAnualTxt(importe, meses) {
 // la pantalla al recargar desaparecen; no se borra nada.
 // ------------------------------------------------------------
 const VIABILIDAD_VISIBLE = true;
+
+// Tamaños de contrato: los que marca el cliente en el alta
+// (perfiles.franjas) y el filtro de la lista. Los cortes, los de
+// `franja` en supabase/functions/alta/vecinos.ts.
+const FRANJAS_TAMANO = [['<15k', 'Hasta 15.000 €'], ['15-100k', '15.000 – 100.000 €'],
+                        ['100k-1M', '100.000 € – 1 M€'], ['>1M', 'Más de 1 M€']];
+function franjaDe(importe) {
+  const x = Number(importe);
+  if (importe == null || !(x > 0)) return null;
+  return x < 15000 ? '<15k' : x < 100000 ? '15-100k' : x < 1000000 ? '100k-1M' : '>1M';
+}
 // UTEs en la ficha de empresa (decisión 42). Apagadas el 01/10/2026 (el
 // enlace a otra ficha no subía la página y la ficha de la UTE no decía
 // arriba que lo era) y encendidas el 02/10 con el interruptor
@@ -4214,8 +4224,7 @@ function pantallaDescribir(perfil, session) {
       <p class="guia" style="margin:0 0 6px;font-size:.88rem">Marca los que quieras. Si no
       lo tienes claro, déjalo en blanco.</p>
       <div class="franjas" role="group" aria-labelledby="franjas-titulo">
-        ${[['<15k', 'Hasta 15.000 €'], ['15-100k', '15.000 – 100.000 €'],
-           ['100k-1M', '100.000 € – 1 M€'], ['>1M', 'Más de 1 M€']].map(([f, texto]) => `
+        ${FRANJAS_TAMANO.map(([f, texto]) => `
           <button type="button" data-franja="${f}"
             aria-pressed="${(perfil.franjas ?? []).includes(f)}">${texto}</button>`).join('')}
       </div>
@@ -8057,6 +8066,14 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         <option value="dificil">Difícil</option>
         <option value="cerrado">Parece cerrado</option>
       </select>
+      <!-- Tamaño de contrato, con los cortes de las franjas del alta.
+           Lo elige el cliente: en septiembre, esconder por tamaño sin que
+           él lo pidiera empeoraba siempre (decisiones 38 y 39). -->
+      <select id="f-tamano" aria-label="Filtrar por tamaño de contrato">
+        <option value="">Cualquier tamaño</option>
+        ${(perfil.franjas ?? []).length ? `<option value="suyos">Los tamaños que marcaste</option>` : ''}
+        ${FRANJAS_TAMANO.map(([f, texto]) => `<option value="${f}">${texto}</option>`).join('')}
+      </select>
       <select id="f-sector" aria-label="Filtrar por sector" hidden>
         <option value="">Todos los sectores</option>
       </select>
@@ -8271,6 +8288,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     recordados = {
       veredicto: document.getElementById('f-veredicto').value || null,
       viabilidad: document.getElementById('f-viabilidad').value || null,
+      tamano: document.getElementById('f-tamano').value || null,
       sector,
       provincias: [...elegidas],
     };
@@ -8283,6 +8301,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   const hayFiltros = () =>
     !!(document.getElementById('f-veredicto').value
        || document.getElementById('f-viabilidad').value
+       || document.getElementById('f-tamano').value
        || document.getElementById('f-sector').value
        || document.getElementById('f-texto').value.trim()
        || elegidas.size);
@@ -8290,6 +8309,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   function quitarFiltros() {
     document.getElementById('f-veredicto').value = '';
     document.getElementById('f-viabilidad').value = '';
+    document.getElementById('f-tamano').value = '';
     document.getElementById('f-sector').value = '';
     document.getElementById('f-texto').value = '';
     elegidas.clear();
@@ -8335,6 +8355,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       || (viab === 'abierto' ? ['abierto', 'mio'].includes(o.viabilidad)
         : viab === 'no-cerrado' ? o.viabilidad !== 'cerrado'
         : o.viabilidad === viab);
+    // Tamaño: «los que marcaste» son sus franjas del alta. Un contrato sin
+    // importe publicado se queda siempre: no saberlo no es no ser suyo.
+    const tam = document.getElementById('f-tamano').value;
+    const franjasSuyas = perfil.franjas ?? [];
+    const pasaTamano = o => {
+      if (!tam) return true;
+      const f = franjaDe(o.presupuesto);
+      return f == null || (tam === 'suyos' ? franjasSuyas.includes(f) : f === tam);
+    };
     // Sin tildes y palabra a palabra, como en Organismos: "jardineria"
     // encontraba 3 contratos y "jardinería", 12.
     const txt = document.getElementById('f-texto').value.trim();
@@ -8345,6 +8374,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       enZona(o) &&
       (!ver || o.veredicto === ver) &&
       pasaViab(o) &&
+      pasaTamano(o) &&
       (!sector || enSector(o, sector)) &&
       (!txt || coincide(`${o.titulo} ${o.organo}`, txt)));
 
@@ -8967,12 +8997,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   if (VIABILIDAD_VISIBLE
       && [...campoViab.options].some(op => op.value === recordados.viabilidad))
     campoViab.value = recordados.viabilidad;
+  const campoTamano = document.getElementById('f-tamano');
+  if ([...campoTamano.options].some(op => op.value === recordados.tamano))
+    campoTamano.value = recordados.tamano;
   try { document.getElementById('f-texto').value = sessionStorage.getItem(CLAVE_TEXTO) ?? ''; }
   catch { /* modo privado */ }
   alPulsar('quitar-filtros', quitarFiltros);
 
   pintarEtiquetas();
-  ['f-veredicto','f-viabilidad','f-sector','f-texto'].forEach(id =>
+  ['f-veredicto','f-viabilidad','f-tamano','f-sector','f-texto'].forEach(id =>
     document.getElementById(id).addEventListener('input', repintar));
   pintar();
 
