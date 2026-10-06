@@ -91,7 +91,7 @@ acción, y se solapa con Empresas y Organismos.
       Stotles, y es el mejor argumento para el plan Pro.
       **Hecho en la rama `lo-que-viene`, pendiente de aplicar** (noche
       del 04 al 05/10/2026): `20261005100000_lo_que_viene.sql` +
-      `web/index.html`, Decisión 46. Ver el traspaso del final.
+      `web/index.html`, Decisión 48. Ver el traspaso del final.
 - [ ] Decidir si lo de "quién ganó el último mes" se queda como una
       sección dentro de "Lo que viene" o pasa a Empresas y Organismos.
       **Decidido en la rama, pendiente de aplicar:** se queda dentro,
@@ -299,7 +299,7 @@ han hecho lecturas y bloques `do` que terminan en excepción.
 |---|---|
 | Tabla `vencimientos`, vista `vencimientos_calculados`, refresco `refrescar_vencimientos(prefijos)`, lectura `lo_que_viene(meses, provincia_elegida, tope)`, lectura de prórrogas (`meses_de_prorroga`, `prorrogable_hasta`, `prorroga_de`) y trabajo de `pg_cron` `refrescar-vencimientos` (14:45 UTC) | `supabase/migrations/20261005100000_lo_que_viene.sql` |
 | La pestaña Movimientos pasa a ser "Lo que viene", con dos vistas: "Lo que vence" (por defecto) y "Lo adjudicado" (lo de antes, sin cambios) | `web/index.html` |
-| Decisión 46 y dos filas nuevas en la deuda técnica | `DECISIONES.md` |
+| Decisión 48 y dos filas nuevas en la deuda técnica | `DECISIONES.md` |
 
 Cada fila dice quién lo tiene (enlace a su ficha en Empresas), qué es
 (enlace al expediente), de qué organismo (enlace a Organismos), el

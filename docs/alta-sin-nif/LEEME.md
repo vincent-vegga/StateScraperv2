@@ -1,7 +1,9 @@
 # Alta sin NIF: todo lo que hay que saber
 
-Estado al 04/10/2026. Si vas a trabajar en el alta sin NIF, lee este
-fichero entero antes de hacer nada. Recoge lo que está repartido por el
+Estado al 06/10/2026. Si vas a trabajar en el alta sin NIF, lee este
+fichero entero antes de hacer nada, y después [TRASPASO.md](TRASPASO.md),
+con la sesión del 04/10 (la web y las correcciones) y lo que quedó a
+medias. Recoge lo que está repartido por el
 repositorio (con enlaces) y lo que no estaba escrito en ninguna parte:
 feedback de betatesters, ideas descartadas y por qué, la última medición
 y los límites de cómo medimos.
@@ -11,7 +13,7 @@ y los límites de cómo medimos.
 1. [El problema](#1-el-problema)
 2. [Cómo funciona hoy](#2-cómo-funciona-hoy)
 3. [Historia: qué se ha probado y con qué resultado](#3-historia-qué-se-ha-probado-y-con-qué-resultado)
-4. [La última medición (01/10/2026)](#4-la-última-medición-01102026)
+4. [Líneas y referentes: la medición del 01/10/2026](#4-líneas-y-referentes-la-medición-del-01102026)
 5. [Ideas descartadas y por qué](#5-ideas-descartadas-y-por-qué)
 6. [Cómo se mide, y por qué no hay que fiarse del todo](#6-cómo-se-mide-y-por-qué-no-hay-que-fiarse-del-todo)
 7. [Diagnóstico](#7-diagnóstico)
@@ -76,7 +78,11 @@ El flujo en producción (decisiones 38, 40 y 41), con sus acciones en
      casan, manda la descripción»).
 5. **Después del alta**, el cliente puede marcar «no me interesa» (tabla
    `correcciones`, acción `ajustar`). Se pide al motor que rehaga su
-   grupo.
+   grupo. Al descartar, se le dice por qué salió: «se parece a «…», un
+   contrato de otra empresa parecido a lo que nos contaste de la tuya»
+   (`veredictos.parecido`, decisión 46). Encima de la lista, un aviso le
+   dice que lo que más la afina son sus primeras correcciones, y cuántas
+   lleva (decisión 47).
 
 ### Un límite estructural que no estaba escrito
 
@@ -119,6 +125,10 @@ Detalle completo en [DECISIONES.md](../../DECISIONES.md), decisiones 37 a
 | 25/09 | Historial sintético en el motor de huellas, frente al criterio en prosa | Recupera el 62 % frente al 32 %, pero enseña 256 contratos y solo el 44 % es bueno | 40: en producción |
 | 25/09 | Historial sin diversidad, filtrado contra la descripción, y juez que ve la descripción | Enseña 176, recupera el 55 % y el 57 % es bueno. Algunas empresas pierden cobertura (una baja del 46 % al 19 %) | 41: en producción |
 | 01/10 | Líneas de producto y referentes de su tamaño, con el motor de huellas | Ninguna mejora en media (sección 4) | Sin decisión. Ver sección 8 |
+| 04/10 | La web de la empresa como entrada, junto a la descripción | F1 0,52 → 0,60 en las 8 con web legible: mejor en 4, peor en 2. Sola, peor (0,48) | Sí a pedirla. Falta diseñarla ([TRASPASO.md](TRASPASO.md), sección 5) |
+| 04/10 | El cliente marca 10 o 20 contratos; motor de hoy y motor que corrige el historial | Mejor en 5 de 11, peor en 1–2. Con 20, el nuevo recupera lo que el alta dejó fuera | Tanda 2 en curso: falta el motor de hoy con 20 |
+| 04/10 | Decir por qué salió cada contrato | Sin medición: es un hecho, no cuesta | 46: en producción |
+| 06/10 | Avisar de que la lista aprende con las primeras correcciones | Sin medición | 47: en producción |
 
 Relacionado, aunque no es del alta: **la decisión 43** (03/10, pestaña
 Empresas) midió cómo encontrar «la competencia de tu tamaño». Filtrar por
@@ -129,7 +139,10 @@ un tope por **lo que la empresa gana al año en contratos públicos**
 (`empresas_por_cif.anual`). Esto importa para la sección 4: los
 referentes «de su tamaño» se eligieron por franjas.
 
-## 4. La última medición (01/10/2026)
+## 4. Líneas y referentes: la medición del 01/10/2026
+
+La medición del 04/10 (la web y las correcciones) está en la
+[sección 3 de TRASPASO.md](TRASPASO.md#3-la-medición-del-0410-tanda-1).
 
 Rama `simulacion-lineas-producto`, ejecución 36893150878 de GitHub
 Actions. 15 empresas que van por huellas. 6,22 $ en total.
@@ -274,10 +287,11 @@ comparar con las de ahora.
 3. **Las empresas del banco no son las del alta sin NIF.** Tienen 5 o más
    contratos ganados, y el cliente real sin NIF ninguno. Puede ser más
    pequeño y describirse peor.
-4. **No hay medida del ruido.** Con temperatura 0 el modelo tampoco es
-   determinista. Diferencias de ±0,05 en una empresa pueden ser azar, y
-   no se ha medido cuánto. Una variante que «gana» por 0,02 en media no
-   demuestra nada.
+4. **El ruido es pequeño (medido el 04/10).** Con temperatura 0 el
+   modelo tampoco es determinista, pero repitiendo `limpio_desc` cada
+   empresa cambia como mucho 0,02 en recupera y 0,05 en bueno, casi
+   siempre 0,00. Una diferencia de 0,10 en una empresa es real. Una
+   variante que «gana» por 0,02 en media sigue sin demostrar nada.
 5. **Los oráculos son cotas.** Lo que en la simulación decide el
    «cliente» (familias, franjas, referentes) lo decide un oráculo con los
    datos reales de la empresa. Es lo mejor que daría ese camino si el
@@ -303,28 +317,31 @@ Opinión razonada, no medida:
 
 Ordenadas por lo que creo que aportan. Ninguna está decidida.
 
-1. **Información real de los betatesters.** Es lo único que trae
+Actualizado el 06/10. Lo hecho desde el 04/10, en
+[TRASPASO.md](TRASPASO.md).
+
+1. **La web de la empresa.** La única entrada nueva que se ha medido que
+   mejora (+0,07 de F1 junto a la descripción). Aprobada; falta
+   diseñarla en el alta después de saber por qué falló en tres de las
+   pymes del banco (tanda 2).
+2. **Información real de los betatesters.** Es lo único que trae
    información nueva, y no lo puede hacer un agente. Dos preguntas:
    - ¿Qué falla en su lista: le sobra ruido o le faltan cosas? Con
      ejemplos.
    - ¿Qué contestarían a «¿qué productos o servicios vendéis o hacéis más
      a menudo?»? Con 10–15 respuestas reales se mide `lineas` sin fuga
      (unos 3 $ con dos variantes).
-2. **Aprender después del alta.** Medir cuánto mejora la lista con N
-   correcciones, simulando que el oráculo marca «no me interesa». Para que
-   esto mejore la recuperación hay que cambiar el motor (sección 2), por
-   ejemplo:
-   - que los «me interesa» entren en el historial sintético;
-   - que los «no me interesa» saquen del historial sintético los
-     contratos que se les parecen;
-   - que el grupo se rehaga con el historial corregido.
-
-   Si la lista mejora mucho con pocas correcciones, el problema pasa a
-   ser de producto: conseguir que corrija la primera semana y explicarle
-   que la lista aprende.
-3. **Mejorar la evaluación.** Una referencia mejor que la salida del
+3. **Aprender después del alta.** Medido el 04/10: con 10 o 20 marcas
+   la lista mejora en 5 de 11 empresas. El cambio de motor (rama
+   `correcciones-al-historial`) hace que los «me interesa» entren en el
+   historial sintético, que los «no me interesa» saquen de él los
+   contratos que se les parecen y que el grupo se rehaga con lo
+   corregido. Se decide con la tanda 2 (el motor de hoy y el nuevo, los
+   dos con 20 marcas). La parte de producto ya está: el aviso de la
+   decisión 47.
+4. **Mejorar la evaluación.** Una referencia mejor que la salida del
    motor con NIF, o señales reales (lo que marcan o descartan los
-   betatesters), y medir el ruido corriendo dos veces la misma variante.
+   betatesters). El ruido ya está medido (sección 6).
 
 ## 9. Cómo lanzar una medición
 
@@ -336,7 +353,9 @@ Ordenadas por lo que creo que aportan. Ninguna está decidida.
      `scripts/simulacion_certificado.pem` y se sube como artefacto. En el
      registro solo salen cifras y perfiles anónimos.
 - **Se lanza solo** al subir cambios de los scripts a
-  `simulacion-sin-nif` o a `simulacion-lineas-producto`. Ya se lanzó una
+  `simulacion-sin-nif`, `simulacion-lineas-producto` o `simulacion-web`
+  (la última, con la web y las correcciones; parámetros por entorno:
+  `N_MARCAS`, `MARCAS_HOY`, `SIN_BIS`, `WEB_SOLO`). Ya se lanzó una
   vez sin querer. Trabaja en otra rama, o quita el disparador por push
   antes de subir, y lánzalo a mano (`workflow_dispatch`).
 - **Gasto.** La versión de `simulacion-lineas-producto` cuenta todo lo

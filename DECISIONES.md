@@ -1327,7 +1327,61 @@ Queda: 104 "Tienes opciones", 14 "difícil" y 2 "cerrado" de 120.
 
 ---
 
-## 46. Lo que viene: los contratos que van a vencer, precalculados cada día
+## 46. Decir por qué salió cada contrato
+
+**Contexto.** Sin betatesters suficientes para dar feedback del alta sin
+NIF, el 04/10/2026 se miró cómo lo hacen los competidores. Todos explican
+por qué encaja cada contrato y venden que «la lista aprende de lo que
+marcas». Nosotros no decíamos nada: el cliente sin NIF veía contratos sin
+saber de dónde salían.
+
+**Decisión** (04/10/2026, #28). Al pulsar «no me interesa», «Te lo
+enseñamos porque se parece a «…»», con el contrato del historial que más
+se le parece: «un contrato que ganaste» con NIF, «un contrato de otra
+empresa parecido a lo que nos contaste de la tuya» sin NIF. `puntuador.py`
+lo guarda en `veredictos.parecido` para todo el grupo en cada pasada, con
+los mismos vectores que los ejemplos del juez y sin llamar al modelo. La
+vista `mis_oportunidades` lleva esa columna al final.
+
+**Motivo.** No se usa `veredicto_motivo`: sin NIF, el juez escribe
+«similar a los contratos ganados» de una empresa que no ha ganado
+ninguno. El contrato parecido es un hecho, no una frase del modelo, y no
+cuesta nada. Se enseña solo al descartar, que es cuando el cliente se
+pregunta por qué le salió, para no cargar la lista.
+
+**Resultado.** La pasada manual tras desplegar: 21 perfiles, 0,055 $. El
+94 % de lo vivo en las listas tiene `parecido`. El resto son veredictos
+de pasadas anteriores, fuera del grupo de hoy.
+
+---
+
+## 47. Sin NIF: avisar de que la lista aprende con las correcciones
+
+**Contexto.** Sin NIF, la lista sale de lo que el cliente cuenta de sí
+mismo y al principio falla más. La bienvenida le decía que su filtro
+salía de «los contratos que has ganado», cosa falsa para él. En la
+medición del 04/10/2026 (`docs/alta-sin-nif/TRASPASO.md`), marcar 10 o
+20 contratos mejora la lista en 5 de 11 empresas y la empeora en 1 o 2.
+
+**Decisión** (aprobada el 06/10/2026, #31). Solo sin NIF:
+
+- encima de la lista, que su lista sale de lo que nos contó, que al
+  principio falla más y que lo que más la afina son sus primeras
+  correcciones, con «Llevas N» (contado en la base, para que valga
+  desde el móvil, y sumado al corregir);
+- la bienvenida dice de dónde sale de verdad su filtro.
+
+Sin cifra objetivo: la lista sigue mejorando de 10 a 20 sin un punto en
+el que pare, y pedir 20 asusta. Con NIF no cambia nada.
+
+**Motivo.** Es lo único que acerca a cada cliente a las cifras de la
+medición, y no cuesta nada. Usa la misma clave `sin-explicacion` del
+navegador: quien cerró la explicación antigua no ve la nueva. Se aceptó
+porque hoy esos clientes son betatesters.
+
+---
+
+## 48. Lo que viene: los contratos que van a vencer, precalculados cada día
 
 **Contexto.** Movimientos decía quién ganó qué el último mes: interesante,
 pero no lleva a ninguna acción. Lo que sí lleva a una es saber qué
@@ -1425,4 +1479,4 @@ Cosas conocidas que se decidió no hacer, y por qué.
 | Histórico de cambios de estado | Hoy se sobrescribe. Impide saber cuándo se adjudicó algo |
 | Registro de usuarios y suscripciones | 40-60 h. Convierte la herramienta en producto |
 | Perfiles con prefijos de dos cifras ("72,48,79") en Lo adjudicado y Organismos | `mercado_del_periodo` y `organismos_por_prefijo` cruzan por `prefijo_principal`, que tiene cuatro: a esos perfiles (dos sin NIF, contados el 04/10/2026) no les sale nada. "Lo que viene" sí los cruza por familia |
-| Saber si un contrato que vence ya se ha vuelto a licitar | Pediría emparejarlo con las abiertas por la serie de Viabilidad (`serie_de`); ver Decisión 46 |
+| Saber si un contrato que vence ya se ha vuelto a licitar | Pediría emparejarlo con las abiertas por la serie de Viabilidad (`serie_de`); ver Decisión 48 |

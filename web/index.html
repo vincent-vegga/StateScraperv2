@@ -7873,9 +7873,12 @@ function pantallaBienvenida(perfil, session) {
         <h1>Te damos la bienvenida</h1>
       </div>
       <div class="entra">
-        <p class="lema">Hemos montado tu filtro leyendo los contratos que
-        has ganado. Pero <strong>solo tú sabes a qué te presentarías de
-        verdad</strong>.</p>
+        <p class="lema">${perfil.cif ? `Hemos montado tu filtro leyendo los
+        contratos que has ganado. Pero <strong>solo tú sabes a qué te
+        presentarías de verdad</strong>.` : `Hemos montado tu filtro con lo
+        que nos has contado de tu empresa y con contratos parecidos que han
+        ganado otras. <strong>Al principio fallará más</strong>: solo tú
+        sabes a qué te presentarías de verdad.`}</p>
       </div>
       <div class="entra">
         <div class="dos-botones">
@@ -7884,7 +7887,8 @@ function pantallaBienvenida(perfil, session) {
         </div>
         <p class="lema">Verás estos botones en cada contrato. Úsalos cuando
         algo no encaje: a las pocas correcciones <strong>ajustamos tu
-        filtro</strong> y dejas de ver lo que no es para ti.</p>
+        filtro</strong> y dejas de ver lo que no es para ti.${perfil.cif ? '' : `
+        Las primeras son las que más lo afinan.`}</p>
       </div>
       <div class="entra">
         <!-- El aviso nace apagado (20260922180000) y la portada promete
@@ -8078,10 +8082,16 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       <button type="button" class="quitar-filtros" id="quitar-filtros" hidden>
         Quitar filtros</button>
     </div>
-    <p class="explica" id="explica">Cada vez que marcas un contrato como
-    <strong>no me interesa</strong> o <strong>sí me interesa</strong>, tu
-    filtro aprende. A las pocas correcciones lo ajustamos y vuelves a ver
-    la lista con lo que de verdad te encaja.
+    <p class="explica" id="explica">${perfil.cif ? `Cada vez que marcas un
+    contrato como <strong>no me interesa</strong> o <strong>sí me
+    interesa</strong>, tu filtro aprende. A las pocas correcciones lo
+    ajustamos y vuelves a ver la lista con lo que de verdad te encaja.` : `Tu
+    lista sale de lo que nos contaste de tu empresa, así que al principio
+    falla más que la de quien ya ha ganado contratos. <strong>Lo que más la
+    afina son tus primeras correcciones</strong>:
+    marca <strong>no me interesa</strong> en lo que no es tuyo y
+    <strong>sí me interesa</strong> en lo que sí.
+    <span id="llevas-afinar"></span>`}
     <button class="cerrar" id="cerrar-explica"
             aria-label="Dejar de mostrar esta explicación">×</button></p>
     <main id="lista"></main>`;
@@ -8103,6 +8113,29 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     explica?.remove();
     try { localStorage.setItem('sin-explicacion', '1'); } catch { /* nada */ }
   });
+
+  // Sin NIF, cuántas correcciones lleva. Sin meta: en la medición del
+  // 04/10 la lista mejora a partir de unas 10 y sigue mejorando a las 20,
+  // sin un punto en el que pare, y pedir una cifra así asusta.
+  // Se cuentan en la base (no en el navegador: puede corregir desde el
+  // móvil) y se suma en el momento al corregir, sin volver a preguntar.
+  let correccionesHechas = null;
+  const pintarLlevas = () => {
+    const sitio = document.getElementById('llevas-afinar');
+    if (!sitio || correccionesHechas == null) return;
+    sitio.textContent = correccionesHechas === 0 ? 'Aún no has hecho ninguna.'
+      : correccionesHechas === 1 ? 'Llevas una.'
+      : `Llevas ${correccionesHechas}.`;
+  };
+  if (!perfil.cif && explica?.isConnected) {
+    sb.from('correcciones').select('id', { count: 'exact', head: true })
+      .eq('perfil_id', perfil.id)
+      .then(({ count, error }) => {
+        if (error || !vigente()) return;
+        correccionesHechas = count ?? 0;
+        pintarLlevas();
+      }, () => { /* sin cuenta, el aviso se queda sin ella */ });
+  }
 
   const bloqueFecha = o => {
     if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo</span></div>`;
@@ -8499,6 +8532,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         recado('No se ha podido guardar tu respuesta. Inténtalo de nuevo.');
         return;
       }
+      if (correccionesHechas != null) { correccionesHechas++; pintarLlevas(); }
       if (vigente() && respuesta.data?.pendientes >= CORRECCIONES_PARA_AJUSTAR)
         ajustarFiltro();
     };
