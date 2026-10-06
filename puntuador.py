@@ -719,9 +719,13 @@ def procesar_perfil(c: Contexto, perfil: dict, ganados: list[dict], previos: dic
             sc = C @ v
             cerca = [corr[j] for j in np.argsort(-sc)[:CORRECCIONES] if sc[j] >= SIM_CORRECCION]
         m = mensajes_juez(f, ejemplos, cerca, reglas)
-        if not perfil.get("cif") and perfil.get("descripcion"):
+        # Lo que dice que hace y, si dio su web, lo que dice su web
+        # (decisión 49), seguidos: como en la medición y en la función alta.
+        dice = " ".join(str(perfil.get(k) or "").strip()
+                        for k in ("descripcion", "descripcion_web") if perfil.get(k))
+        if not perfil.get("cif") and dice:
             m[0]["content"] += AVISO_SIN_NIF
-            m[1]["content"] = (f"LO QUE LA EMPRESA DICE QUE HACE:\n{perfil['descripcion']}\n\n"
+            m[1]["content"] = (f"LO QUE LA EMPRESA DICE QUE HACE:\n{dice}\n\n"
                                + m[1]["content"])
         tareas.append((idl, m))
 
@@ -841,7 +845,8 @@ def main() -> int:
     try:
         # Con NIF, o sin NIF con historial sintético (alta sin NIF).
         perfiles = leer("perfiles", {
-            "select": "id,cif,sistema,criterio_version,puntuado_en,ganados_sinteticos,descripcion",
+            "select": "id,cif,sistema,criterio_version,puntuado_en,ganados_sinteticos,descripcion,"
+                      "descripcion_web",
             "activo": "is.true", "or": "(cif.not.is.null,ganados_sinteticos.not.is.null)"})
     except RuntimeError as error:
         # Sin la migración 20260924200000 no hay columna `sistema`: solo

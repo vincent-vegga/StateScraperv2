@@ -200,6 +200,7 @@ p.guia{
 
 input[type=email],
 input[type=text],
+input[type=url],
 textarea{
   width:100%;
   min-height:var(--alto);
@@ -4220,6 +4221,15 @@ function pantallaDescribir(perfil, session) {
       <div class="campo">
         <textarea id="descripcion" placeholder="Por ejemplo: somos una empresa de Zaragoza que se dedica al mantenimiento de zonas verdes y jardinería para ayuntamientos y comunidades de regantes: poda de arbolado, desbroce de cunetas y caminos, mantenimiento de parques y riego automático. También plantamos y reponemos árboles en calles y hacemos tratamientos fitosanitarios.">${esc(perfil.descripcion ?? '')}</textarea>
       </div>
+      <!-- Su web, si quiere (decisión 49): junto a lo que escribe, mejora
+           la lista; leemos qué hace, nunca a quién vende. -->
+      <p class="etiqueta-campo" id="web-titulo">La web de tu empresa
+        <span style="font-weight:400;color:var(--tenue)">(si tienes)</span></p>
+      <div class="campo" style="margin:0 0 20px">
+        <input type="url" id="web-empresa" inputmode="url" autocomplete="url"
+               aria-labelledby="web-titulo"
+               placeholder="www.tuempresa.es" value="${esc(perfil.web ?? '')}">
+      </div>
       <p class="etiqueta-campo" id="franjas-titulo">¿De qué tamaño son los contratos que te interesan?</p>
       <p class="guia" style="margin:0 0 6px;font-size:.88rem">Marca los que quieras. Si no
       lo tienes claro, déjalo en blanco.</p>
@@ -4247,11 +4257,12 @@ function pantallaDescribir(perfil, session) {
         `<div class="aviso mal">Cuéntanos un poco más, con una frase basta.</div>`;
       return;
     }
+    const web = document.getElementById('web-empresa').value.trim();
     boton.disabled = true;
-    boton.textContent = 'Analizando...';
+    boton.textContent = web ? 'Leyendo tu web...' : 'Analizando...';
     try {
-      const r = await llamar('proponer', { descripcion, franjas });
-      pantallaFamilias({ ...perfil, descripcion, franjas }, r, session);
+      const r = await llamar('proponer', { descripcion, franjas, web });
+      pantallaFamilias({ ...perfil, descripcion, franjas, web }, r, session);
     } catch (error) {
       document.getElementById('resultado').innerHTML =
         `<div class="aviso mal">No hemos podido analizarlo. Inténtalo de nuevo.</div>`;
@@ -4270,6 +4281,21 @@ function pantallaFamilias(perfil, propuesta, session) {
       Es preferible dejar de más: después revisamos cada contrato con lo que
       nos has contado, y lo que no te interese lo puedes descartar desde tu
       lista.</p>
+      ${propuesta.web?.leida ? `
+      <!-- Lo que hemos sacado de su web, para que lo corrija: todos los
+           competidores que leen la web lo enseñan. -->
+      <p class="etiqueta-campo" id="web-texto-titulo" style="margin-top:24px">Lo que hemos entendido de tu web</p>
+      <p class="guia" style="margin:0 0 6px;font-size:.88rem">Corrígelo si algo no es
+      así, y desmarca lo que no hagas o no quieras vender a la administración.</p>
+      <div class="campo" style="margin:0 0 8px">
+        <textarea id="web-texto" rows="4" aria-labelledby="web-texto-titulo">${esc(propuesta.web.descripcion)}</textarea>
+      </div>
+      <div class="franjas" role="group" aria-label="Productos y servicios de tu web">
+        ${(propuesta.web.lineas ?? []).map(l => `
+          <button type="button" data-linea="${esc(l)}" aria-pressed="true">${esc(l)}</button>`).join('')}
+      </div>` : propuesta.web ? `
+      <p class="guia" style="margin-top:20px;font-size:.88rem">No hemos podido leer
+      tu web. Seguimos con lo que nos has contado.</p>` : ''}
       <div class="propuesta">
         ${propuesta.prefijos.map((p, i) => `
           <div class="familia-bloque">
@@ -4292,6 +4318,10 @@ function pantallaFamilias(perfil, propuesta, session) {
     </div>`;
 
   document.getElementById('atras').onclick = () => pantallaDescribir(perfil, session);
+  raiz.querySelectorAll('[data-linea]').forEach(b => {
+    b.onclick = () => b.setAttribute('aria-pressed',
+      String(b.getAttribute('aria-pressed') !== 'true'));
+  });
 
   // Los contratos parecidos llegan después: la pantalla no los espera.
   // Si no hay (muestra aún vacía) o falla, simplemente no se enseñan.
@@ -4320,8 +4350,16 @@ function pantallaFamilias(perfil, propuesta, session) {
     }
     boton.disabled = true;
     boton.textContent = 'Preparando tu filtro con contratos como los tuyos...';
+    // Lo de su web, tal como lo deja: el texto corregido y las líneas
+    // que sigan marcadas.
+    const textoWeb = document.getElementById('web-texto');
+    const deLaWeb = textoWeb ? {
+      web_texto: textoWeb.value.trim(),
+      web_lineas: [...raiz.querySelectorAll('[data-linea][aria-pressed="true"]')]
+        .map(b => b.dataset.linea),
+    } : {};
     try {
-      await llamar('confirmar_familias', { prefijos });
+      await llamar('confirmar_familias', { prefijos, ...deLaWeb });
       const { data } = await sb.from('perfiles').select('*').eq('id', perfil.id).limit(1);
       pantallaCribando(data?.[0] ?? perfil, session);
     } catch (error) {
