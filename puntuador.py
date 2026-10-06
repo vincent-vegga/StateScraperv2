@@ -156,9 +156,15 @@ quien lo convoque.
 - Un descarte sin motivo no es una regla: solo dice que ese contrato \
 concreto no le interesa.
 - Lo que marcó como "SÍ le interesa" es tan fuerte como un contrato ganado.
+- Cada regla lleva entre corchetes el presupuesto del contrato que \
+corrigió. Solo cuenta si su motivo habla del importe o del tamaño: \
+entonces vale para cualquier contrato de ese presupuesto o menor (si dice \
+que es pequeño) o mayor (si dice que es grande). Si el motivo habla de \
+otra cosa, ignora el presupuesto.
 (Ejemplos de forma, de otro sector: "no trabajamos con hospitales \
 privados" vale para todo hospital privado; "no hacemos cocina sin gluten" \
-vale solo para eso.)"""
+vale solo para eso; "demasiado pequeño para nosotros" sobre un contrato \
+de 20.000 EUR vale para todo contrato de 20.000 EUR o menos.)"""
 
 
 # ==============================================================
@@ -460,6 +466,15 @@ def licitaciones_de(ids: list[str]) -> list[dict]:
     return out
 
 
+def presupuestos_de(ids: list[str]) -> list[dict]:
+    out = []
+    for a in range(0, len(ids), 100):
+        filtro = "(" + ",".join(_q(i) for i in ids[a:a + 100]) + ")"
+        out += leer("licitaciones", {"select": "id_licitacion,presupuesto",
+                                     "id_licitacion": f"in.{filtro}"})
+    return out
+
+
 def historial_corregido(c: "Contexto", ganados: list[dict],
                         correcciones: list[dict], minimo: int = 0) -> list[dict]:
     """Sin NIF, lo que corrige el cliente cambia su historial sintético, y
@@ -621,6 +636,8 @@ def mensajes_juez(f: dict, ejemplos: list[str], cercanas: list[dict],
         texto += "\n\nLO QUE EL CLIENTE NOS HA DICHO:\n" + "\n".join(
             f"- {'Le interesa' if x['interesa'] else 'No le interesa'} "
             f"«{x['titulo']}»" + (f" ({x['organo']})" if x.get("organo") else "")
+            + (f" [presupuesto {float(x['presupuesto']):,.0f} EUR]".replace(",", ".")
+               if x.get("presupuesto") is not None else "")
             + f": {x['motivo']}" for x in reglas)
     otras = [x for x in cercanas if x not in reglas]
     if otras:
@@ -839,6 +856,16 @@ def main() -> int:
     correcciones = defaultdict(list)
     for x in leer("correcciones", {"select": "perfil_id,id_licitacion,titulo,organo,interesa,motivo,fecha"}):
         correcciones[x["perfil_id"]].append(x)
+    # El presupuesto de lo corregido con motivo: el juez lo ve en la regla,
+    # y una regla de importe («demasiado pequeño») vale para todo lo de
+    # ese tamaño, no solo para ese contrato.
+    con_motivo = sorted({x["id_licitacion"] for xs in correcciones.values() for x in xs
+                         if x.get("motivo") and x.get("id_licitacion")})
+    importes = {f["id_licitacion"]: f.get("presupuesto") for f in presupuestos_de(con_motivo)}
+    for xs in correcciones.values():
+        for x in xs:
+            if x.get("motivo"):
+                x["presupuesto"] = importes.get(x.get("id_licitacion"))
 
     hechos = 0
     for p in perfiles:
