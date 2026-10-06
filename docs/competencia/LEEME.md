@@ -58,10 +58,13 @@ Le falta:
       presentado → ganado/perdido, con notas. Sin eso el usuario se lleva
       el trabajo a un Excel y deja de entrar. Licitandum lo da desde 19 €.
       Sencillo, no un tablero de 12 etapas.
-- [ ] **Enseñar lo que el feed ya trae** (Decisiones 18 y 19): requisitos
-      de solvencia (contenido real en el 77 %), correo del órgano (93 %),
-      garantía definitiva (40 %), enlaces a cada pliego. Hoy la ficha solo
-      tiene "Ver el expediente".
+- [x] **Enseñar lo que el feed ya trae** (Decisiones 18 y 19): requisitos
+      de solvencia, correo del órgano, garantía definitiva, enlaces a cada
+      pliego. Hecho el 06/10/2026, **pendiente de publicar** (rama
+      `solvencia`, Decisión 54): bloque "Qué piden para presentarte" en la
+      ficha. Medido de nuevo: la solvencia con contenido propio en el
+      anuncio es el 26 %, no el 77 % (se contaban las declaraciones de
+      trámite); el resto se lee del pliego.
 - [ ] **Contratos menores en vivo** (conjunto 1143). Hoy solo está el
       histórico de 2025. Para una pyme son la puerta de entrada, y la
       competencia los incluye. Ver también `PENDIENTES.md` §6.
@@ -152,11 +155,14 @@ pantalla "¿A cuál te presentas?" repite la lista de Contratos.
       04/10/2026): en "Quién ha ganado aquí", sin serie, cada empresa se
       abre con sus cinco contratos más recientes; en "Las convocatorias
       anteriores", el título enlaza al expediente.
-- [ ] **Comprobar la solvencia**: si el pliego pide una facturación de X o
+- [x] **Comprobar la solvencia**: si el pliego pide una facturación de X o
       una clasificación concreta, contrastarlo con el historial de la
       empresa, que ya se conoce. Ningún competidor que hayamos visto lo
-      hace de forma automática. Necesita la solvencia del feed y, en el
-      23 % que remite al pliego, leer el pliego (Decisión 19).
+      hace de forma automática. Hecho el 06/10/2026, **pendiente de
+      publicar** (Decisión 54): se lee del anuncio o del pliego, y con NIF
+      se compara con lo que la empresa gana en contratos públicos
+      ("Llegas" / "Compruébalo con tu facturación total"). También en la
+      pantalla de Viabilidad.
 
 ---
 
@@ -171,7 +177,7 @@ LicitaPilot y LICAI, y el tablero de equipo el de Licitandum. Centrarse en
 | 1 | El veredicto de viabilidad dentro de la lista de Contratos | ✅ Hecho | Marca en la fila y filtro, desde el 04/10/2026 |
 | 2 | "Lo que viene": contratos que van a vencer y volverán a licitarse | ✅ Hecho | Publicado el 06/10/2026 (Decisión 48). Las filas dicen si ya hay una nueva licitación abierta (Decisión 52) |
 | 3 | Llevar la cuenta de cada contrato, de forma sencilla | ⬜ Pendiente | |
-| 4 | Solvencia y requisitos, sacados del feed y del pliego | ⬜ Pendiente | |
+| 4 | Solvencia y requisitos, sacados del feed y del pliego | 🟡 Hecho, sin publicar | Base aplicada y rellena el 06/10/2026; falta unir la rama `solvencia` (Decisión 54). Ver el traspaso del final |
 | 5 | Contratos menores en vivo | ⬜ Pendiente | |
 
 Lo demás de cada pantalla, cuando toque trabajar en ella.

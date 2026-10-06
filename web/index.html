@@ -8291,9 +8291,12 @@ function pintarRequisitos(r) {
     const feed = (r.feed || []).filter(s => !s.es_remision);
     feed.forEach(s => fila(s.clase === 'economica' ? 'Solvencia económica' : 'Solvencia técnica',
       esc(String(s.descripcion).slice(0, 400)) + (String(s.descripcion).length > 400 ? '…' : '')));
-    aviso = r.estado === 'pendiente' || r.estado === 'sin_datos'
-      ? 'Aún no hemos leído la solvencia de este contrato en su pliego. Suele estar en un día.'
-      : 'No hemos podido leer la solvencia en el pliego (escaneado, protegido o sin pliego publicado). Está en el expediente.';
+    aviso = {
+      pendiente: 'Aún no hemos leído la solvencia en su pliego: suele estar al día siguiente de publicarse.',
+      error: 'No hemos podido leer el pliego esta vez; lo volvemos a intentar mañana.',
+      sin_datos: 'No tenemos los requisitos de este contrato: están en el expediente.',
+      sin_pliego: 'El organismo no ha publicado el pliego con el anuncio: la solvencia está en el expediente.',
+    }[r.estado] ?? 'No hemos podido leer la solvencia en el pliego (escaneado o protegido): está en el expediente.';
   }
 
   const origen = leido

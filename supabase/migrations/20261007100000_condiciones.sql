@@ -384,13 +384,16 @@ revoke execute on function public.facturacion_publica(text, text, integer) from 
 -- licitación: el valor anual medio es el presupuesto base (o, sin él, el
 -- valor estimado) dividido entre los años que dura, si dura más de uno.
 --
--- Si da las dos cosas y no cuadran (más de un 10 % de diferencia), no se
--- da ninguna cifra: el modelo ha mezclado requisitos. Pasó en 1 de 15
--- lecturas revisadas a mano el 06/10/2026 (puso en la económica los
--- 31.818 € de la técnica, que eran el 70 % y no "1,5 veces"). Mejor sin
--- cifra, con el resumen y el pliego a mano, que una cifra falsa.
+-- Si da las dos cosas y no cuadran (más de un 10 % de diferencia), manda
+-- la cifra escrita: el lector ya ha comprobado que está en el pliego, y lo
+-- que suele fallar es la regla ("múltiplo 1" para 69.200 €, que eran 1,5
+-- veces). Salvo que sea la misma cifra que la del otro requisito (`otro`):
+-- en 1 de 15 lecturas revisadas a mano el 06/10/2026 el modelo puso en la
+-- económica los 31.818 € de la técnica. Entonces, sin cifra: mejor el
+-- resumen y el pliego a mano que una cifra falsa.
 create or replace function public.importe_exigido(req jsonb, base numeric,
-                                                  estimado numeric, meses numeric)
+                                                  estimado numeric, meses numeric,
+                                                  otro jsonb default null)
 returns numeric
 language sql
 immutable
@@ -406,12 +409,15 @@ as $function$
                        when 'valor_anual' then coalesce(base, estimado)
                             / case when meses > 12 then meses / 12.0 else 1 end
                    end
-               end as calculado
+               end as calculado,
+               case when (otro->>'importe') ~ '^\d+(\.\d+)?$'
+                    then (otro->>'importe')::numeric end as del_otro
         where req is not null and jsonb_typeof(req) = 'object'
     )
     select round(case
         when escrito is not null and calculado is not null
-             and abs(escrito - calculado) > 0.1 * greatest(escrito, calculado) then null
+             and abs(escrito - calculado) > 0.1 * greatest(escrito, calculado)
+             and abs(escrito - coalesce(del_otro, -1)) < 1 then null
         else coalesce(escrito, calculado)
     end)
     from v
@@ -474,8 +480,8 @@ begin
     tec := lec->'tecnica';
     medio_eco := eco->>'medio';
     medio_tec := tec->>'medio';
-    pide_eco := public.importe_exigido(eco, l.presupuesto_base, l.valor_estimado, l.duracion_meses);
-    pide_tec := public.importe_exigido(tec, l.presupuesto_base, l.valor_estimado, l.duracion_meses);
+    pide_eco := public.importe_exigido(eco, l.presupuesto_base, l.valor_estimado, l.duracion_meses, tec);
+    pide_tec := public.importe_exigido(tec, l.presupuesto_base, l.valor_estimado, l.duracion_meses, eco);
 
     -- Clasificación: la del feed manda; si no hay, la que leyó el modelo.
     select jsonb_agg(public.clasificacion_legible(x) order by x) into clas
