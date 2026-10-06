@@ -84,6 +84,8 @@ const arg = (nombre: string) =>
   Deno.args.find((a) => a.startsWith(`--${nombre}=`))?.split("=")[1];
 const SOLO = arg("solo");
 const WEB_SOLO = (Deno.env.get("WEB_SOLO") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+const esDe = (lista: string[], codigo: string, p: Record<string, unknown>) =>
+  lista.some((x) => x.trim() === codigo || (x.trim().length >= 8 && String(p.id).startsWith(x.trim())));
 
 // Para el registro público: el tipo de error, el código HTTP si lo hay
 // («El modelo respondió 400», «embeddings 429») y la línea de este
@@ -1142,7 +1144,10 @@ const resumen: Record<string, unknown>[] = [];
 // ahora (con un 25 % de margen) pasaría el tope, se para ahí.
 let masCara = 0;
 for (const { codigo, p } of casos) {
-  if (SOLO && !SOLO.split(",").includes(codigo)) continue;
+  // --solo y WEB_SOLO aceptan códigos (P02) o el principio del id del
+  // perfil (8 cifras): los códigos se mueven cuando entra una empresa con
+  // más contratos (pasó el 06/10/2026), el id no.
+  if (SOLO && !esDe(SOLO.split(","), codigo, p)) continue;
   if (EXPORTAR && dolares + masCara * 1.25 > TOPE_EXPORTAR) {
     console.log(`Tope de gasto de la exportación: se para antes de ${codigo} ` +
                 `(${dolares.toFixed(2)} $)`);
@@ -1225,7 +1230,7 @@ for (const { codigo, p } of casos) {
       // Con WEB_SOLO (códigos separados por comas), la web solo en esas.
       // Si algo de la web falla, la empresa se exporta sin web: lo demás
       // se sigue pudiendo medir.
-      const url = WEB_SOLO.length && !WEB_SOLO.includes(codigo) ? undefined : WEBS[cif];
+      const url = WEB_SOLO.length && !esDe(WEB_SOLO, codigo, p) ? undefined : WEBS[cif];
       let leida: Awaited<ReturnType<typeof leerWeb>> = { texto: "", paginas: 0 };
       let web = null;
       try {
@@ -1258,7 +1263,7 @@ for (const { codigo, p } of casos) {
       await Deno.writeTextFile(`${SALIDA}/gasto.json`, JSON.stringify({ dolares }));
       await Deno.writeTextFile(`${SALIDA}/sinteticos.json`, JSON.stringify(exportados));
       // Sin la dirección ni el texto: el registro es público.
-      console.log(`${codigo}: exportado (${(vv.detalle.filas as unknown[]).length} vecinos, ` +
+      console.log(`${codigo} (${String(p.id).slice(0, 8)}): exportado (${(vv.detalle.filas as unknown[]).length} vecinos, ` +
                   `web ${url ? `${leida.paginas} páginas, ${leida.texto.length} caracteres` : "sin dirección o fuera de WEB_SOLO"}` +
                   `${leida.motivo ? ` (${leida.motivo})` : ""}` +
                   `${web ? `, ${web.lineas.length} líneas` : ", no se usa"}, ` +

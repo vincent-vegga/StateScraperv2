@@ -43,8 +43,8 @@ jobs:
       SIM_WEBS: ${{ secrets.SIM_WEBS }}
       CACHE_HUELLAS: /home/runner/.cache/huellas
       # Tope de las dos fases juntas.
-      # Web de P02, P08 y P14 (aprobada el 06/10/2026: 1 $). En la tanda 2
-      # la web se leyó pero las embeddings dieron 429; ahora se espera.
+      # La web de las tres en las que falló (P02, P08 y P14 de la tanda 2),
+      # por id: los códigos se movieron. Aprobado: 1 $ + 0,60 $; quedan 1 $, se esperan ~0,60 $.
       # Solo limpio_desc (la base) y web_desc, sin correcciones.
       MAX_GASTO: '1'
       MAX_GASTO_EXPORTAR: '0.3'
@@ -52,7 +52,7 @@ jobs:
       MARCAS_HOY: ''
       SIN_BIS: '1'
       SIN_WEB_SOLA: '1'
-      WEB_SOLO: 'P02,P08,P14'
+      WEB_SOLO: 'af546d7e,e3fd31ad,637a8889'
       CRIBADO_SIMULTANEAS: '8'
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +76,7 @@ jobs:
       - name: Exportar lo que daría el alta sin NIF
         env:
           MODO: exportar
-        run: deno run -A scripts/simular_sin_nif.ts --muestra=1 --solo=P02,P08,P14
+        run: deno run -A scripts/simular_sin_nif.ts --muestra=1 --solo=af546d7e,e3fd31ad,637a8889
 
       - name: Medir
         run: python scripts/medir_sintetico.py
