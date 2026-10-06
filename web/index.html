@@ -2046,6 +2046,9 @@ select:focus{
 .viab.mio{color:var(--si)}
 .viab.dificil{color:var(--acento)}
 .viab.cerrado{color:var(--no)}
+/* Lo que piden y cambia la decisión (Decisión 54): mismo formato, en el
+   color de "Difícil", porque es eso: una barrera que conviene mirar. */
+.viab.req{color:var(--acento)}
 
 .sin-verificar{
   display:inline-block;
@@ -4951,6 +4954,12 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
       return;
     }
     pintar(d, anteriores?.error ? [] : (anteriores?.data ?? []));
+    // Aparte y después: no retrasa el veredicto, y si falla no lo tumba.
+    const hueco = zona.querySelector('[data-requisitos]');
+    if (hueco) {
+      hueco.dataset.requisitos = id;
+      cargarRequisitos(hueco);
+    }
   }
 
   function pintar(d, ediciones = []) {
@@ -5013,6 +5022,9 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         ${factorBaja(org)}
         ${factorCompetencia(org, d.veredicto === 'cerrado')}
       </div>
+
+      <!-- Qué piden (Decisión 54): lo llena \`analizar\` con el id. -->
+      <div class="requisitos" data-requisitos="" style="margin-top:22px"></div>
 
       ${(inc.reparto?.length) ? `
         <div class="seccion-mercado" style="margin-top:18px">
@@ -8533,6 +8545,17 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // "Tienes opciones" sale en tres de cada cuatro contratos (medido el
   // 04/10/2026: 2.150 de 2.865) y una marca en casi todas las filas deja
   // de avisar; para quedarse con esos está el filtro.
+  // Qué piden, en la fila: solo lo que cambia la decisión (Decisión 54).
+  // "Piden facturar" dice la cifra y no un veredicto: lo que la empresa
+  // factura a privados no lo vemos.
+  const marcaRequisitos = r =>
+    r?.marca === 'clasificacion'
+      ? '<span class="viab req">Exigen clasificación</span>'
+      : r?.marca === 'facturacion' && r.pide
+        ? `<span class="viab req" title="Más de lo que ganas en contratos públicos. Mira la ficha.">Piden facturar ${
+            eurosRedondos(r.pide) ?? euros(r.pide)} al año</span>`
+        : '';
+
   const VIABILIDAD_FILA = {
     mio: 'Es tuyo: ganaste la anterior',
     dificil: 'Difícil',
@@ -8733,6 +8756,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
               SISTEMAS[o.sistema].marca}</span>` : ''}</p>
           ${VIABILIDAD_VISIBLE && VIABILIDAD_FILA[o.viabilidad] ? `<span class="viab ${
             o.viabilidad}">${VIABILIDAD_FILA[o.viabilidad]}</span>` : ''}
+          ${marcaRequisitos(o.requisitos)}
           ${o.dias_sin_verificar > 90
             ? `<span class="sin-verificar">Sin movimiento desde hace
                ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
