@@ -8106,7 +8106,9 @@ window.addEventListener('pagehide', () => {
 // Se engancha a todo el documento y no a la lista: da igual qué pinte la
 // fila o cómo se abra el detalle (clic, Intro, espacio), basta con mirar
 // después qué detalles abiertos tienen el hueco sin llenar.
-const REQUISITOS = new Map();     // id -> respuesta, mientras dure la sesión
+// Por empresa activa y contrato: la comparación depende de la empresa, y
+// una cuenta puede tener varias.
+const REQUISITOS = new Map();     // "perfil|id" -> respuesta, mientras dure la sesión
 
 const DOCUMENTO_TIPO = {
   pliego_administrativo: 'Pliego de cláusulas administrativas',
@@ -8125,7 +8127,8 @@ function llenarRequisitosAbiertos() {
 async function cargarRequisitos(hueco) {
   hueco.dataset.cargado = '1';
   const id = hueco.dataset.requisitos;
-  if (!REQUISITOS.has(id)) {
+  const clave = `${perfilActivoId}|${id}`;
+  if (!REQUISITOS.has(clave)) {
     hueco.innerHTML = `<h3>Qué piden para presentarte</h3>
       <p class="cargando">Mirando el anuncio y el pliego…</p>`;
     let r;
@@ -8142,13 +8145,13 @@ async function cargarRequisitos(hueco) {
       delete hueco.dataset.cargado;
       return;
     }
-    REQUISITOS.set(id, r);
+    REQUISITOS.set(clave, r);
   }
   // La lista puede haberse repintado mientras tanto: se llenan todos los
   // huecos de ese contrato que sigan en la página.
   document.querySelectorAll(`[data-requisitos="${CSS.escape(id)}"]`).forEach(h => {
     h.dataset.cargado = '1';
-    h.innerHTML = pintarRequisitos(REQUISITOS.get(id));
+    h.innerHTML = pintarRequisitos(REQUISITOS.get(clave));
   });
 }
 
@@ -8223,7 +8226,7 @@ function pintarRequisitos(r) {
     const medio = { volumen_negocios: 'Volumen anual de negocios',
                     seguro: 'Seguro de responsabilidad civil',
                     patrimonio: 'Patrimonio neto' }[eco.medio];
-    const pide = eco.pide ? `<span class="pide">${medio ? `${medio} de ` : ''}${euros(eco.pide)} como mínimo</span>` : '';
+    const pide = eco.pide ? `<span class="pide">${medio ?? 'Importe'} de ${euros(eco.pide)} como mínimo</span>` : '';
     fila('Solvencia económica', `${pide || esc(eco.texto || medio || '—')}${
       pide ? explicacionRequisito(eco) : ''}${
       comparacionRequisito(comparar('economica'), 'economica')}`);
