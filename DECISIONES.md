@@ -1711,12 +1711,21 @@ valor anual medio". Desde entonces:
   lecturas con las dos, casi todas bien; la de ahora deja sin cifra 9.
   Con cifra queda el 86 % de las solvencias económicas leídas.
 
+**La carga inicial** (06/10/2026, 3,77 $ en total): de las 4.875
+licitaciones abiertas con condiciones, 4.465 leídas (92 %): 3.706 del
+pliego y el resto del anuncio. El 8 % está exento de solvencia (casi todo
+por debajo de 60.000 €). De las que piden solvencia económica, el 87 %
+queda con cifra. En la lista, de 5.141 pares perfil-contrato abiertos,
+349 llevan "Piden facturar…" y 134 "Exigen clasificación".
+
 **Medido a mano** (15 lecturas de pliego al azar, sin abrir los PDF
 enteros, solo los trozos): 12 bien, 1 con la cifra de la técnica puesta
 en la económica (ahora se queda sin cifra por la regla anterior) y 1 con
 la técnica mal entendida (500.000 € eran el tamaño de las obras
 proyectadas, no lo ejecutado; el prompt ya lo excluye). La que falta
-no tenía documento con el que contrastarla.
+no tenía documento con el que contrastarla. Una segunda muestra de 12,
+con el prompt final: las cifras del modelo, bien; lo que fallaba era la
+regla de coherencia, ya corregida (ver arriba).
 
 **Lo que no se cubre, a propósito.**
 
@@ -1724,8 +1733,8 @@ no tenía documento con el que contrastarla.
   qué grupo y categoría piden y que se compruebe en el ROLECE.
 - Lo que factura a privados, ni el seguro o el patrimonio que tiene: en
   esos casos se dice lo que piden, sin comparar.
-- Pliegos escaneados o protegidos (`sin_texto`, ~1,5 %) y licitaciones
-  sin pliego publicado (`sin_pliego`, ~6 %): la ficha lo dice y enlaza al
+- Pliegos escaneados o protegidos (`sin_texto`, 2 %) y licitaciones
+  sin pliego publicado (`sin_pliego`, 6,5 %): la ficha lo dice y enlaza al
   expediente.
 - La versión del pliego: se relee si cambian sus documentos (dirección o
   huella), no si cambia el PDF detrás de la misma dirección (Decisión 16).
