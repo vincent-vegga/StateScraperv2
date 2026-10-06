@@ -366,24 +366,38 @@ revoke execute on function public.facturacion_publica(text, text, integer) from 
 -- anual medio"). La regla se resuelve aquí con los importes de la
 -- licitación: el valor anual medio es el presupuesto base (o, sin él, el
 -- valor estimado) dividido entre los años que dura, si dura más de uno.
+--
+-- Si da las dos cosas y no cuadran (más de un 10 % de diferencia), no se
+-- da ninguna cifra: el modelo ha mezclado requisitos. Pasó en 1 de 15
+-- lecturas revisadas a mano el 06/10/2026 (puso en la económica los
+-- 31.818 € de la técnica, que eran el 70 % y no "1,5 veces"). Mejor sin
+-- cifra, con el resumen y el pliego a mano, que una cifra falsa.
 create or replace function public.importe_exigido(req jsonb, base numeric,
                                                   estimado numeric, meses numeric)
 returns numeric
 language sql
 immutable
 as $function$
-    select case
-        when req is null or jsonb_typeof(req) <> 'object' then null
-        when (req->>'importe') ~ '^\d+(\.\d+)?$' and (req->>'importe')::numeric > 0
-            then round((req->>'importe')::numeric)
-        when (req->>'multiplo') ~ '^\d+(\.\d+)?$' then round(
-            (req->>'multiplo')::numeric * case req->>'base'
-                when 'valor_estimado' then coalesce(estimado, base)
-                when 'presupuesto' then coalesce(base, estimado)
-                when 'valor_anual' then coalesce(base, estimado)
-                     / case when meses > 12 then meses / 12.0 else 1 end
-            end)
-    end
+    with v as (
+        select case when (req->>'importe') ~ '^\d+(\.\d+)?$'
+                         and (req->>'importe')::numeric > 0
+                    then (req->>'importe')::numeric end as escrito,
+               case when (req->>'multiplo') ~ '^\d+(\.\d+)?$' then
+                   (req->>'multiplo')::numeric * case req->>'base'
+                       when 'valor_estimado' then coalesce(estimado, base)
+                       when 'presupuesto' then coalesce(base, estimado)
+                       when 'valor_anual' then coalesce(base, estimado)
+                            / case when meses > 12 then meses / 12.0 else 1 end
+                   end
+               end as calculado
+        where req is not null and jsonb_typeof(req) = 'object'
+    )
+    select round(case
+        when escrito is not null and calculado is not null
+             and abs(escrito - calculado) > 0.1 * greatest(escrito, calculado) then null
+        else coalesce(escrito, calculado)
+    end)
+    from v
 $function$;
 
 
