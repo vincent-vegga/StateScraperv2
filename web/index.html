@@ -8468,7 +8468,10 @@ function pintarRequisitos(r) {
       error: 'No hemos podido leer el pliego esta vez; lo volvemos a intentar mañana.',
       sin_datos: 'No tenemos los requisitos de este contrato: están en el expediente.',
       sin_pliego: 'El organismo no ha publicado el pliego con el anuncio: la solvencia está en el expediente.',
-    }[r.estado] ?? 'No hemos podido leer la solvencia en el pliego (escaneado o protegido): está en el expediente.';
+    // `sin_texto` no es solo un PDF escaneado: también un enlace que el
+    // organismo ya no sirve, un .rar o un .doc, o un expediente que solo
+    // publica el pliego técnico (muestra del 07/10/2026).
+    }[r.estado] ?? 'No hemos podido leer la solvencia en sus documentos de forma automática: está en el pliego, en el expediente.';
   }
 
   const origen = leido
