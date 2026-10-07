@@ -1712,6 +1712,14 @@ con un cliente de Supabase simulado: escritorio, móvil de 375 px, modo
 oscuro, cartera vacía, fallo al guardar, perfil sin NIF y base sin la
 migración (la pestaña no sale y "Sí me interesa" hace lo de antes).
 
+**Arreglo (07/10/2026).** Un "sí me interesa" guardado a las 15:25 UTC
+por `corregir` (una pestaña con la página de antes de publicar, o la
+cartera aún sin cargar) no pasó a la cartera, y la fila decía "Confirmado
+como tuyo". Desde `20261007160000_cartera_desde_correcciones.sql`, un
+disparador en `correcciones` mete en la cartera todo "sí" nuevo, venga del
+camino que venga. Solo al pasar a "sí": si el cliente quita algo de su
+cartera, no vuelve solo.
+
 **Lo que no se cubre.** Las UTE cuyos socios no conocemos (no se marcan
 como suyas). La comparación cuando su oferta lleva IVA y la adjudicación
 no: el campo dice "sin IVA". Lo que vigila de "Lo que viene" (contratos
