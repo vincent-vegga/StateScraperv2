@@ -8334,10 +8334,9 @@ function reglaRequisito(req) {
                  presupuesto: 'el presupuesto de licitación' }[req.base];
   if (!base) return '';
   if (veces === 1) return `igual a${base.replace(/^el /, 'l ')}`;
-  const cuanto = veces < 1
-    ? `el ${numero(Math.round(veces * 100))} % de`
-    : `${String(veces).replace('.', ',')} veces`;
-  return `${cuanto} ${base}`;
+  // "El 70 % del valor anual medio", no "de el".
+  if (veces < 1) return `el ${numero(Math.round(veces * 100))} % ${base.replace(/^el /, 'del ')}`;
+  return `${String(veces).replace('.', ',')} veces ${base}`;
 }
 
 // Bajo la cifra, de dónde sale: si el pliego la escribe, su resumen; si
@@ -8902,6 +8901,11 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const foco = recordarFoco();
     pintarSinFoco();
     restaurarFoco(foco);
+    // Las fichas que siguen abiertas (ABIERTAS) salen con el hueco de "Qué
+    // piden" vacío. Sin esto, un repintado que no viene de un clic (el
+    // refresco de la cartera tras cambiar el estado, guardar las notas, la
+    // lista que llega por detrás) lo dejaba en blanco hasta el siguiente.
+    llenarRequisitosAbiertos();
   }
 
   function pintarSinFoco() {
@@ -9408,10 +9412,12 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
   // Lo que se aprende de una adjudicación: a cuánto quedó su oferta de la
   // ganadora y cuántas se presentaron. Solo con un único adjudicatario:
-  // con lotes, no sabemos a cuál se presentó.
+  // con lotes, no sabemos a cuál se presentó. Tampoco cuando hay varios
+  // lotes y solo uno tiene ganador (el resto desiertos): `ganadores` trae
+  // uno, pero puede que su oferta fuera a otro lote.
   function comparativa(c) {
     const g = c.adjudicacion?.ganadores ?? [];
-    if (g.length !== 1) return '';
+    if (g.length !== 1 || (c.adjudicacion?.lotes ?? 1) > 1) return '';
     const x = g[0], trozos = [];
     const mia = Number(c.importe_oferta);
     if (!x.tuyo && c.importe_oferta != null && mia > 0 && x.importe != null) {
