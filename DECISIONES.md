@@ -1718,7 +1718,10 @@ cartera aún sin cargar) no pasó a la cartera, y la fila decía "Confirmado
 como tuyo". Desde `20261007160000_cartera_desde_correcciones.sql`, un
 disparador en `correcciones` mete en la cartera todo "sí" nuevo, venga del
 camino que venga. Solo al pasar a "sí": si el cliente quita algo de su
-cartera, no vuelve solo.
+cartera, no vuelve solo. Y con las reglas de la cartera
+(`20261007163000_cartera_disparador_estricto.sql`, tras la auditoría del
+mismo día): solo contratos abiertos y no sustituidos, con el plazo de la
+copia vigente y el tope de 1.000 por perfil.
 
 **Lo que no se cubre.** Las UTE cuyos socios no conocemos (no se marcan
 como suyas). La comparación cuando su oferta lleva IVA y la adjudicación
