@@ -57,8 +57,8 @@ Le falta:
 - [x] **Llevar la cuenta de cada contrato**: guardado → me presento →
       presentado → ganado/perdido, con notas. Sin eso el usuario se lleva
       el trabajo a un Excel y deja de entrar. Licitandum lo da desde 19 €.
-      Sencillo, no un tablero de 12 etapas. **Hecho el 06/10/2026, sin
-      publicar**: pestaña "Mi cartera" (`20261006230000_cartera.sql` +
+      Sencillo, no un tablero de 12 etapas. **Hecho y publicado el
+      07/10/2026**: pestaña "Mi cartera" (`20261006230000_cartera.sql` +
       `web/index.html` + `alertador.py`, Decisión 53). Seis estados, nota
       e importe de la oferta, el resultado cruzado con el NIF, su oferta
       frente a la ganadora y aviso de plazo a 7, 3 y 1 día. Ver el
@@ -175,7 +175,7 @@ LicitaPilot y LICAI, y el tablero de equipo el de Licitandum. Centrarse en
 |---|---|---|---|
 | 1 | El veredicto de viabilidad dentro de la lista de Contratos | ✅ Hecho | Marca en la fila y filtro, desde el 04/10/2026 |
 | 2 | "Lo que viene": contratos que van a vencer y volverán a licitarse | ✅ Hecho | Publicado el 06/10/2026 (Decisión 48). Las filas dicen si ya hay una nueva licitación abierta (Decisión 52) |
-| 3 | Llevar la cuenta de cada contrato, de forma sencilla | 🟡 Hecho, sin publicar | "Mi cartera", Decisión 53. Ver el traspaso del 06/10/2026 |
+| 3 | Llevar la cuenta de cada contrato, de forma sencilla | ✅ Hecho | "Mi cartera", publicada el 07/10/2026 (Decisión 53) |
 | 4 | Solvencia y requisitos, sacados del feed y del pliego | ⬜ Pendiente | |
 | 5 | Contratos menores en vivo | ⬜ Pendiente | |
 
@@ -408,6 +408,13 @@ empresas que sigues va marcado, y el resumen dice cuántos son tuyos.
 ---
 
 ## Traspaso: "Mi cartera", noche del 06 al 07/10/2026
+
+**Estado (07/10/2026): aplicado y publicado** (PR 44). La migración se
+aplicó sin cargas en marcha; pasaron a la cartera 5 "sí me interesa" de
+contratos abiertos (4 perfiles), `mi_cartera()` responde en 3 ms y, con
+datos reales, marca como suyo el contrato que la cuenta de prueba ganó.
+Queda el paso 5 (probar con sesión) y el 6 (el correo en simulacro). Lo
+que sigue cuenta cómo estaba la noche anterior.
 
 Trabajo nocturno, sin supervisión. Todo en la rama `mis-contratos` (PR
 hacia `main`). **Nada aplicado ni publicado**: en la base de producción
