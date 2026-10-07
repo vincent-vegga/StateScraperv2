@@ -63,10 +63,13 @@ Le falta:
       e importe de la oferta, el resultado cruzado con el NIF, su oferta
       frente a la ganadora y aviso de plazo a 7, 3 y 1 día. Ver el
       traspaso del final.
-- [ ] **Enseñar lo que el feed ya trae** (Decisiones 18 y 19): requisitos
-      de solvencia (contenido real en el 77 %), correo del órgano (93 %),
-      garantía definitiva (40 %), enlaces a cada pliego. Hoy la ficha solo
-      tiene "Ver el expediente".
+- [x] **Enseñar lo que el feed ya trae** (Decisiones 18 y 19): requisitos
+      de solvencia, correo del órgano, garantía definitiva, enlaces a cada
+      pliego. **Hecho y publicado el 07/10/2026** (Decisión 54): bloque
+      "Qué piden para presentarte" en la ficha. Medido de nuevo: la
+      solvencia con contenido propio en el anuncio es el 26 %, no el 77 %
+      (se contaban las declaraciones de trámite); el resto se lee del
+      pliego.
 - [ ] **Contratos menores en vivo** (conjunto 1143). Hoy solo está el
       histórico de 2025. Para una pyme son la puerta de entrada, y la
       competencia los incluye. Ver también `PENDIENTES.md` §6.
@@ -157,11 +160,14 @@ pantalla "¿A cuál te presentas?" repite la lista de Contratos.
       04/10/2026): en "Quién ha ganado aquí", sin serie, cada empresa se
       abre con sus cinco contratos más recientes; en "Las convocatorias
       anteriores", el título enlaza al expediente.
-- [ ] **Comprobar la solvencia**: si el pliego pide una facturación de X o
+- [x] **Comprobar la solvencia**: si el pliego pide una facturación de X o
       una clasificación concreta, contrastarlo con el historial de la
       empresa, que ya se conoce. Ningún competidor que hayamos visto lo
-      hace de forma automática. Necesita la solvencia del feed y, en el
-      23 % que remite al pliego, leer el pliego (Decisión 19).
+      hace de forma automática. **Hecho y publicado el
+      07/10/2026** (Decisión 54): se lee del anuncio o del pliego, y con NIF
+      se compara con lo que la empresa gana en contratos públicos
+      ("Llegas" / "Compruébalo con tu facturación total"). También en la
+      pantalla de Viabilidad.
 
 ---
 
@@ -176,7 +182,7 @@ LicitaPilot y LICAI, y el tablero de equipo el de Licitandum. Centrarse en
 | 1 | El veredicto de viabilidad dentro de la lista de Contratos | ✅ Hecho | Marca en la fila y filtro, desde el 04/10/2026 |
 | 2 | "Lo que viene": contratos que van a vencer y volverán a licitarse | ✅ Hecho | Publicado el 06/10/2026 (Decisión 48). Las filas dicen si ya hay una nueva licitación abierta (Decisión 52) |
 | 3 | Llevar la cuenta de cada contrato, de forma sencilla | ✅ Hecho | "Mi cartera", publicada el 07/10/2026 (Decisión 53) |
-| 4 | Solvencia y requisitos, sacados del feed y del pliego | ⬜ Pendiente | |
+| 4 | Solvencia y requisitos, sacados del feed y del pliego | ✅ Hecho | Publicado el 07/10/2026 (Decisión 54): qué piden en la ficha, en Viabilidad y en la fila, y si lo que ya ganas llega |
 | 5 | Contratos menores en vivo | ⬜ Pendiente | |
 
 Lo demás de cada pantalla, cuando toque trabajar en ella.
@@ -480,3 +486,88 @@ su oferta frente a la ganadora.
    casi seguro; se dejó manual por las UTE y los NIF mal publicados.
 4. **La cartera en Viabilidad.** La ficha de Viabilidad no dice si el
    contrato está en la cartera ni deja guardarlo.
+
+---
+
+## Traspaso: solvencia y requisitos, noche del 06 al 07/10/2026
+
+**Estado (07/10/2026): aplicado y publicado** (PR 45). Lo que sigue
+cuenta cómo estaba la noche del 06 al 07/10/2026, antes de unirlo.
+
+Prioridad 4. Trabajo nocturno sin supervisión, en la rama `solvencia`
+(worktree `../StateScraperv2-solvencia`). Detalle y cifras en la
+Decisión 54 de `DECISIONES.md`.
+
+### Estado
+
+- **Base: aplicado en producción** (con permiso): migraciones
+  `20261007100000_condiciones.sql` y `20261007110000_requisitos_en_la_lista.sql`.
+  Tablas `condiciones`, `requisitos_guardados` y `gasto_lecturas_dia`;
+  `mis_oportunidades` tiene una columna más al final, `requisitos`; trabajo
+  de `pg_cron` `refrescar-requisitos-guardados` (cada 10 minutos, minuto
+  5). Nada de esto cambia lo que ve la web publicada: la columna nueva se
+  ignora y las funciones nuevas no las llama nadie hasta unir la rama.
+- **Datos: cargados.** Condiciones de lo abierto (relleno desde los ZIP)
+  y lectura de la solvencia de todo lo abierto, primero lo que está en
+  listas (ver "Lo medido").
+- **Web y scraper: en la rama, sin publicar.** Hasta unir, el scraper no
+  guarda condiciones nuevas cada día y `condiciones.yml` no corre (su
+  disparador `workflow_run` solo vale desde `main`).
+
+### Lo medido (06/10/2026)
+
+- **Lectura.** De las 4.875 licitaciones abiertas con condiciones: 4.465
+  leídas (92 %), 315 sin pliego publicado (6,5 %) y 95 con el pliego
+  escaneado o protegido (2 %). El 8 % está exento de solvencia. De las
+  que piden solvencia económica, el 87 % queda con cifra.
+- **Lista.** De 5.141 pares perfil-contrato: 349 con "Piden facturar…"
+  (solo con NIF) y 134 con "Exigen clasificación".
+- **Coste.** 3,77 $ la carga entera, con la relectura de lo de las
+  listas con el prompt final (tope que pusiste: 5 $). Unos 0,0007 $ por
+  lectura; ~1 s por contrato con 6 hilos.
+- **Precisión.** Dos muestras al azar revisadas contra el pliego (15 y
+  12). Los fallos que salieron (una cifra inventada, la cifra de la
+  técnica en la económica, una técnica mal entendida) tienen ya su
+  defensa: ver la Decisión 54.
+
+### Lo construido
+
+| Qué | Dónde |
+|---|---|
+| Guardar solvencia (con código y umbral), clasificación, garantías por tipo, contacto y documentos de lo PUB en cada pasada | `lector_atom.py` (`extraer_condiciones`, `guardar_condiciones`) |
+| Relleno desde los ZIP del mes y los dos anteriores | `rellenar_condiciones.py` |
+| Lectura de la solvencia del anuncio o del pliego, con topes de gasto | `leer_pliegos.py` |
+| Lectura diaria tras el scraper (0,50 $/día, 10 $/mes) y relleno a mano | `.github/workflows/condiciones.yml` |
+| Bloque "Qué piden para presentarte" en la ficha de Contratos y en Viabilidad; marcas "Exigen clasificación" y "Piden facturar X al año" en la fila | `web/index.html` |
+| Decisión 54, README | `DECISIONES.md`, `README.md` |
+
+### Para ponerlo en producción
+
+1. Revisar la PR. Ojo a dos conflictos de contexto con la de la cartera
+   (Propuesta 3, rama `mis-contratos`): `DECISIONES.md` (las dos añaden
+   una decisión antes de "Deuda técnica": la 53 es la suya y la 54 la
+   mía) y la ficha de `web/index.html` (mi hueco `.requisitos` va justo
+   tras el `</dl>`, su `bloqueCartera` antes del botón de Viabilidad).
+2. Unir la PR a `main`: publica la web y deja activos el scraper nuevo y
+   `condiciones.yml`. No hace falta aplicar nada en la base.
+3. Entrar con la cuenta de prueba de uniformidad y abrir un par de fichas:
+   el bloque se carga al abrir, con "Llegas" o "Compruébalo".
+4. Al día siguiente, mirar en Actions que "Solvencia y requisitos" corrió
+   tras el scraper, y su gasto: `select * from gasto_lecturas_dia order by dia desc;`
+
+### Abierto, para decidir
+
+1. **Los topes de gasto diarios** (0,50 $/día, 10 $/mes) son míos. Lo
+   nuevo de cada día cuesta unos 0,15-0,30 $.
+2. **La solvencia técnica en la comparación** usa las tres primeras cifras
+   del CPV (art. 90.1.a). Sale "Compruébalo" en 3 de cada 5: es estricto, y
+   por eso no se marca en la fila.
+3. **El correo del órgano en Organismos** (punto de la pantalla 4) sale
+   casi gratis de `condiciones`, pero solo para órganos con algo abierto.
+   No hecho.
+4. **Avisar en el correo diario** de los contratos que exigen
+   clasificación o más facturación: el correo es de la sesión de la
+   cartera esta noche; no lo he tocado.
+5. **La rama `ejecutar-condiciones`** fue la de usar y tirar para lanzar
+   la carga desde Actions antes de que el workflow estuviera en `main`.
+   Borrada al acabar.

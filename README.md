@@ -74,9 +74,12 @@ Todo corre en GitHub Actions. No requiere instalación local ni servidor propio.
 | `importar_historico.py` | Carga histórico desde los ZIP oficiales |
 | `cribador.py` | Cribado semántico con LLM, por perfil de empresa |
 | `alertador.py` | Alerta diaria por correo (Resend) |
+| `leer_pliegos.py` | Lee la solvencia del anuncio o del pliego con el modelo, con topes de gasto (Decisión 54) |
+| `rellenar_condiciones.py` | Relee los ZIP del mes y guarda las condiciones de lo abierto (Decisión 54) |
 | `web/index.html` | Interfaz web completa: todo en un solo fichero |
 | `supabase/functions/alta/index.ts` | Edge Function: onboarding guiado |
 | `.github/workflows/scraper.yml` | Cron y modos de ejecución |
+| `.github/workflows/condiciones.yml` | Lectura de la solvencia al acabar el scraper; relleno a mano |
 | `DECISIONES.md` | Por qué el sistema es como es. Leer antes de tocar nada |
 
 Las migraciones SQL están en `migracion-*.sql`. Cada una explica en cabecera qué problema resuelve y por qué.
@@ -97,6 +100,7 @@ Las migraciones SQL están en `migracion-*.sql`. Cada una explica en cabecera qu
 | `seguimiento` | Empresas que el cliente ha marcado para seguir |
 | `cartera` | Contratos que el cliente lleva: estado, nota e importe de su oferta (Decisión 53) |
 | `codigos_acceso` | Códigos de acceso para el periodo de pruebas |
+| `condiciones` | Lo que piden para presentarse a cada licitación abierta: solvencia, clasificación, garantías, contacto, pliegos y la lectura del modelo (Decisión 54) |
 
 ### Tablas de caché
 
@@ -108,6 +112,7 @@ Las migraciones SQL están en `migracion-*.sql`. Cada una explica en cabecera qu
 | `organismos_por_prefijo` | Agregado de organismos **por prefijo CPV**, no por perfil | Lo rehace el robot cada noche |
 | `viabilidad_guardada` | El veredicto de Viabilidad de cada contrato abierto que está en alguna lista | 7 días; la rellena `pg_cron` cada 10 minutos |
 | `vencimientos` | Los contratos que vencen en los próximos 13 meses, **por prefijo**, con sus prórrogas leídas del texto | La rehace `pg_cron` cada día (14:45 UTC) |
+| `requisitos_guardados` | La marca de la fila de Contratos ("Exigen clasificación", "Piden facturar…") por perfil y contrato | Al cambiar la lectura, o a los 7 días; la rellena `pg_cron` cada 10 minutos |
 
 La caché existe porque calcular competencia o fichas sobre 25.000 contratos cada vez que alguien abre la pestaña agota el tiempo de espera. El resultado es el mismo; el trabajo se hace una vez.
 
@@ -131,6 +136,9 @@ La caché existe porque calcular competencia o fichas sobre 25.000 contratos cad
 | `plazos_de_cartera(perfil)` | Para el correo: lo que lleva y cierra en los próximos 8 días (solo clave de servicio) |
 | `lo_que_viene(meses, provincia, tope)` | Lo que ve en "Lo que viene": los contratos de su sector que vencen |
 | `refrescar_vencimientos(prefijos)` | Rehace `vencimientos`, entera o solo unos prefijos (`pg_cron`) |
+| `requisitos(id)` | Qué piden para presentarse y si lo que ya gana la empresa llega (ficha de Contratos y Viabilidad) |
+| `guardar_condiciones(filas)` / `condiciones_por_leer(tope)` / `guardar_lectura(...)` | Escritura del scraper y cola del lector de pliegos |
+| `refrescar_requisitos_guardados(segundos)` | Rellena `requisitos_guardados` por tandas (`pg_cron`) |
 | `comprobar_codigo(codigo)` | Dice si un código de acceso vale, sin consumirlo ni pedir sesión (primera pantalla) |
 | `canjear_codigo(codigo)` | Valida y consume un código de acceso (insensible a mayúsculas) |
 
@@ -141,6 +149,8 @@ La caché existe porque calcular competencia o fichas sobre 25.000 contratos cad
 ### Cron diario
 
 Cada mañana a las 06:00 UTC (08:00 peninsular en verano). Ejecuta el scraper, el cribado y la alerta por correo. Solo recibe correo quien haya encendido la campana: `perfiles.avisos` nace apagado. El correo sale si hay contratos nuevos o si algo de su cartera cierra dentro de 7, 3 o 1 día.
+
+Al acabar el scraper, `condiciones.yml` lee la solvencia de lo nuevo (anuncio o pliego), con un tope de 0,50 $ al día y 10 $ al mes.
 
 ### Modos manuales
 

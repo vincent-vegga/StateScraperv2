@@ -34,3 +34,9 @@ openai>=1.40,<2
 
 # Cálculo de similitudes entre títulos (vectores de 256 números).
 numpy>=1.26,<3
+
+# --- Lectura de la solvencia en los pliegos (leer_pliegos.py) ---
+
+# Texto de los PDF cuando no está pdftotext (en Actions se instala
+# poppler-utils, que es mucho más rápido; esto es la reserva).
+pypdf>=4.0,<7

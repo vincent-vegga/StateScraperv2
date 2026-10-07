@@ -1720,6 +1720,111 @@ decisión.
 
 ---
 
+## 54. Qué piden para presentarse, y si llegas
+
+**Contexto.** Prioridad 4 de `docs/competencia/LEEME.md`: "Solvencia y
+requisitos, sacados del feed y del pliego". El scraper ya extraía la
+solvencia, la garantía y el contacto (Decisión 19), pero no los guardaba,
+y la ficha de Contratos solo tenía "Ver el expediente". Comprobar la
+solvencia frente al historial de la empresa no lo hace ningún competidor
+que hayamos visto.
+
+**Lo que dijeron los datos** (06/10/2026, las 7.859 licitaciones abiertas
+de los ZIP de septiembre y octubre, 643 y 1044):
+
+| Dato | Cobertura |
+|---|---|
+| Solvencia económica o técnica con contenido propio en el anuncio | 26 % |
+| Solo remisiones al pliego ("según el PCAP") | 29 % |
+| Ninguna (todo el 1044, que no publica esos campos, y el 22 % del 643) | 45 % |
+| Umbral numérico publicado (`ThresholdQuantity`) | 12 % de las de volumen de negocio |
+| Clasificación exigida | 5 % |
+| Garantía definitiva | 41 % |
+| Correo del órgano | 71 % |
+| Algún documento | 94 % |
+
+La Decisión 19 hablaba de un 77 % "con contenido real": contaba las
+declaraciones de trámite ("Capacidad de obrar", "No prohibición para
+contratar"), que son casi todo `SpecificTendererRequirement` y no son
+solvencia. **Sin leer el pliego, tres de cada cuatro contratos se quedan
+sin saber qué piden.**
+
+**Decisión.**
+
+1. Tabla `condiciones` aparte de `licitaciones` (4,7 GB): solvencia con
+   su código y umbral, clasificación, garantías por tipo (antes se tomaba
+   la primera, que podía ser la provisional), contacto y documentos. La
+   llena el scraper con lo PUB de cada pasada y, la primera vez,
+   `rellenar_condiciones.py` con los ZIP del mes y los dos anteriores
+   (2.710 de las 2.856 abiertas que había en listas).
+2. `leer_pliegos.py` deja cada solvencia normalizada (medio, importe o
+   regla, años, clasificación, ROLECE, otros requisitos, una cita
+   literal). Si el anuncio trae la económica y la técnica con contenido,
+   lee el anuncio; si no, descarga el pliego administrativo y los anexos
+   que parecen el cuadro de características (PDF, DOCX o ZIP), saca el
+   texto y manda al modelo solo los trozos que hablan de solvencia (12.000
+   caracteres de 80.000-500.000). `gpt-4o-mini`, ~0,0007 $ por lectura, ~1
+   s por contrato con 6 hilos. Corre tras el scraper con tope de 0,50 $ al
+   día y 10 $ al mes (registro `gasto_lecturas_dia`, que solo suma).
+3. `requisitos(id)` junta todo para la ficha y, con NIF, lo compara con
+   lo que la empresa gana en contratos públicos (`facturacion_publica`):
+   cada contrato repartido por los meses que dura, el mejor de los tres
+   últimos años cerrados (art. 87.3.a LCSP); y para la técnica, lo
+   ejecutado en contratos con las tres primeras cifras del CPV iguales
+   (art. 90.1.a). Lo ganado en contratos públicos es una **cota inferior**
+   de la facturación: si llega, "Llegas"; si no, "Compruébalo con tu
+   facturación total", nunca "no llegas".
+4. En la ficha de Contratos y en Viabilidad, el bloque "Qué piden para
+   presentarte". En la fila, solo lo que cambia la decisión: "Exigen
+   clasificación" y, con NIF, "Piden facturar X al año" cuando pasa de lo
+   que le vemos (`requisitos_guardados`, por `pg_cron` cada 10 minutos).
+
+**No enseñar una cifra que no esté en el pliego.** En la primera prueba el
+modelo escribió 80.036 € en un pliego que solo decía "una vez y media el
+valor anual medio". Desde entonces:
+
+- El modelo no calcula: da la cifra si está escrita, o la regla. Un
+  importe que no aparece en el texto que se le mandó se borra.
+- La regla la resuelve la base (`importe_exigido`) con el presupuesto, el
+  valor estimado y la duración, y la ficha lo dice: "1,5 veces el valor
+  anual medio, según el pliego; la cifra es nuestra cuenta".
+- Si el modelo da cifra y regla y no cuadran (más de un 10 %), manda la
+  cifra escrita, porque lo que suele fallar es la regla. Salvo que sea la
+  misma cifra que la del otro requisito: entonces no se enseña ninguna.
+  Una primera versión, que las quitaba todas, dejaba sin cifra 71 de 183
+  lecturas con las dos, casi todas bien; la de ahora deja sin cifra 9.
+  Con cifra queda el 86 % de las solvencias económicas leídas.
+
+**La carga inicial** (06/10/2026, 3,77 $ en total): de las 4.875
+licitaciones abiertas con condiciones, 4.465 leídas (92 %): 3.706 del
+pliego y el resto del anuncio. El 8 % está exento de solvencia (casi todo
+por debajo de 60.000 €). De las que piden solvencia económica, el 87 %
+queda con cifra. En la lista, de 5.141 pares perfil-contrato abiertos,
+349 llevan "Piden facturar…" y 134 "Exigen clasificación".
+
+**Medido a mano** (15 lecturas de pliego al azar, sin abrir los PDF
+enteros, solo los trozos): 12 bien, 1 con la cifra de la técnica puesta
+en la económica (ahora se queda sin cifra por la regla anterior) y 1 con
+la técnica mal entendida (500.000 € eran el tamaño de las obras
+proyectadas, no lo ejecutado; el prompt ya lo excluye). La que falta
+no tenía documento con el que contrastarla. Una segunda muestra de 12,
+con el prompt final: las cifras del modelo, bien; lo que fallaba era la
+regla de coherencia, ya corregida (ver arriba).
+
+**Lo que no se cubre, a propósito.**
+
+- La clasificación de la empresa (no está en los datos abiertos): se dice
+  qué grupo y categoría piden y que se compruebe en el ROLECE.
+- Lo que factura a privados, ni el seguro o el patrimonio que tiene: en
+  esos casos se dice lo que piden, sin comparar.
+- Pliegos escaneados o protegidos (`sin_texto`, 2 %) y licitaciones
+  sin pliego publicado (`sin_pliego`, 6,5 %): la ficha lo dice y enlaza al
+  expediente.
+- La versión del pliego: se relee si cambian sus documentos (dirección o
+  huella), no si cambia el PDF detrás de la misma dirección (Decisión 16).
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.

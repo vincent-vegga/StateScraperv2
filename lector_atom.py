@@ -1315,30 +1315,51 @@ def extraer_condiciones(entrada: etree._Element) -> dict[str, Any]:
             "peso": a_numero(primer_texto(bloque, "WeightNumeric")),
         })
 
+    # La clase en palabras, el código CODICE y el umbral numérico cuando lo
+    # publican (ThresholdQuantity, en el 12 % de los de volumen de negocio).
+    # Las "declaraciones" (capacidad de obrar, no prohibición, estar al
+    # corriente, ROLECE) son trámite: se guardan, pero no son solvencia.
     solvencia: list[dict[str, Any]] = []
-    for etiqueta in ("TechnicalEvaluationCriteria",
-                     "FinancialEvaluationCriteria",
-                     "SpecificTendererRequirement"):
+    for etiqueta, clase, codigo in (
+            ("FinancialEvaluationCriteria", "economica", "EvaluationCriteriaTypeCode"),
+            ("TechnicalEvaluationCriteria", "tecnica", "EvaluationCriteriaTypeCode"),
+            ("SpecificTendererRequirement", "declaracion", "RequirementTypeCode")):
         for bloque in buscar_todos(entrada, etiqueta):
             descripcion = primer_texto(bloque, "Description")
             if not descripcion:
                 continue
             solvencia.append({
-                "clase": etiqueta,
-                "descripcion": descripcion,
+                "clase": clase,
+                "codigo": primer_texto(bloque, codigo) or None,
+                "descripcion": descripcion[:2000],
+                "umbral": a_numero(primer_texto(bloque, "ThresholdQuantity")),
                 "es_remision": bool(PATRON_REMISION.search(descripcion)),
             })
 
-    garantia = None
+    # Clasificación exigida: "G6-1" es grupo G, subgrupo 6, categoría 1.
+    clasificacion: list[str] = []
+    for bloque in buscar_todos(entrada, "RequiredBusinessClassificationScheme"):
+        for categoria in buscar_todos(bloque, "ClassificationCategory"):
+            valor = primer_texto(categoria, "CodeValue").strip()
+            if valor and valor not in clasificacion:
+                clasificacion.append(valor)
+
+    # Por tipo: 1 provisional, 2 definitiva, 3 complementaria. Antes se
+    # tomaba la primera que apareciera, que podía ser la provisional.
+    garantias: dict[str, float] = {}
     for bloque in buscar_todos(entrada, "RequiredFinancialGuarantee"):
-        garantia = a_numero(primer_texto(bloque, "AmountRate"))
-        if garantia is not None:
-            break
+        tipo = {"1": "provisional", "2": "definitiva", "3": "complementaria"}.get(
+            primer_texto(bloque, "GuaranteeTypeCode"))
+        porcentaje = a_numero(primer_texto(bloque, "AmountRate"))
+        if tipo and porcentaje is not None and tipo not in garantias:
+            garantias[tipo] = porcentaje
 
     return {
         "criterios_adjudicacion": criterios,
         "solvencia": solvencia,
-        "garantia_pct": garantia,
+        "clasificacion": clasificacion,
+        "garantias": garantias,
+        "garantia_pct": garantias.get("definitiva"),
         "email_contacto": primer_texto(entrada, "ElectronicMail"),
         "telefono_contacto": primer_texto(entrada, "Telephone"),
     }
@@ -2112,6 +2133,9 @@ def procesar_fuentes(cliente, diagnostico: bool) -> tuple[list[dict[str, Any]], 
             # adjudicadas o formalizadas.
             if conocidas:
                 refrescar_conocidas(cliente, conocidas)
+            # Aparte y sin arrastrar a lo demás (Decisión 29): si falla,
+            # la licitación ya está guardada y mañana se vuelve a intentar.
+            guardar_condiciones(cliente, nuevas + conocidas)
             acumuladas.extend(nuevas)
 
         except Exception as error:
@@ -2549,6 +2573,55 @@ def guardar_licitaciones(cliente, nuevas: list[dict[str, Any]]) -> int:
             logging.error("Inserción fallida en un lote de %d filas: %s", len(lote), error)
 
     logging.info("Guardadas %d licitaciones en Supabase.", guardadas)
+    return guardadas
+
+
+def fila_de_condiciones(item: dict[str, Any]) -> dict[str, Any]:
+    """Lo que va a la tabla `condiciones` (Decisión 54)."""
+    return {
+        "id_licitacion": item["id_licitacion"],
+        "version": item.get("fecha_actualizacion") or None,
+        "solvencia": item.get("solvencia") or [],
+        "clasificacion": item.get("clasificacion") or [],
+        "garantias": item.get("garantias") or {},
+        "email": item.get("email_contacto") or None,
+        "telefono": item.get("telefono_contacto") or None,
+        "documentos": [
+            {k: d.get(k) for k in ("tipo", "nombre", "extension", "url", "hash")}
+            for d in item.get("documentos") or []],
+    }
+
+
+def guardar_condiciones(cliente, items: list[dict[str, Any]]) -> int:
+    """
+    Solvencia, clasificación, garantías, contacto y documentos de lo que
+    sigue abierto, en la tabla `condiciones`.
+
+    Solo lo publicado (PUB): es lo que alguien puede preparar. Una versión
+    más antigua no pisa a una más nueva, y si cambian los documentos la
+    lectura del pliego se repite (`guardar_condiciones` en la base).
+    Nunca lanza: es un añadido y no puede tumbar la pasada.
+    """
+    filas = [fila_de_condiciones(x) for x in items
+             if x.get("estado_licitacion") == "PUB"]
+    if not filas:
+        return 0
+    guardadas = 0
+    for lote in dividir_en_lotes(filas, TAMANO_LOTE_SUPABASE):
+        lote = list(lote)
+        try:
+            n = con_reintentos(
+                lambda: cliente.rpc("guardar_condiciones",
+                                    {"filas": lote}).execute().data,
+                f"Condiciones de un lote de {len(lote)} filas")
+            if isinstance(n, list):
+                n = n[0] if n else 0
+            guardadas += int(n or 0)
+        except Exception as error:
+            logging.error("Condiciones: lote de %d filas fallido (%s).",
+                          len(lote), error)
+    logging.info("Condiciones guardadas o actualizadas: %d de %d abiertas.",
+                 guardadas, len(filas))
     return guardadas
 
 

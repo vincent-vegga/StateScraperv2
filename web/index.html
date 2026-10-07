@@ -2053,6 +2053,9 @@ select:focus{
 .viab.mio{color:var(--si)}
 .viab.dificil{color:var(--acento)}
 .viab.cerrado{color:var(--no)}
+/* Lo que piden y cambia la decisión (Decisión 54): mismo formato, en el
+   color de "Difícil", porque es eso: una barrera que conviene mirar. */
+.viab.req{color:var(--acento)}
 
 .sin-verificar{
   display:inline-block;
@@ -2761,6 +2764,60 @@ select:focus{
 .ver:hover{
   border-color:var(--texto);
   background:var(--hover);
+}
+
+/* Qué piden para presentarse (Decisión 54). Va dentro del detalle de
+   cada contrato y se carga al abrirlo: la base lo calcula con el perfil
+   activo, y cien llamadas al pintar la lista serían cien de más. */
+.requisitos{
+  max-width:760px;
+  margin:0 0 22px;
+  padding:16px 18px 6px;
+  border:1px solid var(--linea);
+  border-radius:9px;
+  background:var(--superficie);
+}
+.requisitos h3{
+  margin:0 0 12px;
+  font-size:.79rem;
+  font-weight:650;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:var(--tenue);
+}
+.requisitos .cargando,.requisitos .nota{
+  margin:0 0 12px;
+  color:var(--tenue);
+  font-size:.88rem;
+  line-height:1.5;
+}
+.requisitos dl{margin:0 0 6px}
+.requisitos .pide{font-weight:600}
+.requisitos .regla{color:var(--tenue);font-size:.86rem}
+.requisitos .compara{
+  display:block;
+  margin-top:6px;
+  padding:6px 10px;
+  border-radius:6px;
+  font-size:.86rem;
+  line-height:1.45;
+}
+.requisitos .compara.cumple{background:var(--tinte-si);color:var(--si)}
+.requisitos .compara.revisar{background:var(--tinte-acento);color:var(--texto)}
+.requisitos .compara .base{display:block;color:var(--tenue);font-size:.8rem}
+.requisitos ul{margin:0;padding-left:18px}
+.requisitos li{margin:2px 0}
+.requisitos a{color:var(--texto);text-underline-offset:2px}
+.requisitos dd{overflow-wrap:anywhere}
+.requisitos .cita{margin:4px 0 12px;font-size:.86rem;font-style:italic}
+.requisitos .origen{
+  margin:0 0 12px;
+  color:var(--tenue);
+  font-size:.8rem;
+  line-height:1.5;
+}
+@media(max-width:760px){
+  .requisitos{padding:14px 12px 4px}
 }
 
 .vacio{
@@ -5050,6 +5107,12 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
       return;
     }
     pintar(d, anteriores?.error ? [] : (anteriores?.data ?? []));
+    // Aparte y después: no retrasa el veredicto, y si falla no lo tumba.
+    const hueco = zona.querySelector('[data-requisitos]');
+    if (hueco) {
+      hueco.dataset.requisitos = id;
+      cargarRequisitos(hueco);
+    }
   }
 
   function pintar(d, ediciones = []) {
@@ -5112,6 +5175,9 @@ async function pantallaViabilidad(perfil, session, volviendo = false,
         ${factorBaja(org)}
         ${factorCompetencia(org, d.veredicto === 'cerrado')}
       </div>
+
+      <!-- Qué piden (Decisión 54): lo llena \`analizar\` con el id. -->
+      <div class="requisitos" data-requisitos="" style="margin-top:22px"></div>
 
       ${(inc.reparto?.length) ? `
         <div class="seccion-mercado" style="margin-top:18px">
@@ -8200,6 +8266,229 @@ window.addEventListener('pagehide', () => {
   for (const id of [...DESCARTES_PENDIENTES.keys()]) enviarDescarte(id, true);
 });
 
+// ---------- Qué piden para presentarse (Decisión 54) ----------
+//
+// Cada ficha de Contratos lleva un hueco `[data-requisitos]` que se llena
+// al abrirla con `requisitos()`: la solvencia leída del anuncio o del
+// pliego, la clasificación, las garantías, el contacto y los pliegos, y
+// con NIF, si lo que la empresa ya gana en contratos públicos llega.
+//
+// Se engancha a todo el documento y no a la lista: da igual qué pinte la
+// fila o cómo se abra el detalle (clic, Intro, espacio), basta con mirar
+// después qué detalles abiertos tienen el hueco sin llenar.
+// Por empresa activa y contrato: la comparación depende de la empresa, y
+// una cuenta puede tener varias.
+const REQUISITOS = new Map();     // "perfil|id" -> respuesta, mientras dure la sesión
+
+const DOCUMENTO_TIPO = {
+  pliego_administrativo: 'Pliego de cláusulas administrativas',
+  pliego_tecnico: 'Pliego de prescripciones técnicas',
+  DOC_PCAP: 'Pliego de cláusulas administrativas',
+  DOC_PPT: 'Pliego de prescripciones técnicas',
+};
+
+function llenarRequisitosAbiertos() {
+  document.querySelectorAll('.detalle.abierto [data-requisitos]:not([data-cargado])')
+    .forEach(cargarRequisitos);
+}
+['click', 'keyup'].forEach(tipo => document.addEventListener(tipo, () =>
+  setTimeout(llenarRequisitosAbiertos, 0)));
+
+async function cargarRequisitos(hueco) {
+  hueco.dataset.cargado = '1';
+  const id = hueco.dataset.requisitos;
+  const clave = `${perfilActivoId}|${id}`;
+  if (!REQUISITOS.has(clave)) {
+    hueco.innerHTML = `<h3>Qué piden para presentarte</h3>
+      <p class="cargando">Mirando el anuncio y el pliego…</p>`;
+    let r;
+    try {
+      const { data, error } = await sb.rpc('requisitos', { ficha: id });
+      r = error ? { error: error.message } : data;
+    } catch (error) {
+      r = { error: String(error) };
+    }
+    // Un fallo no se guarda: al volver a abrir, se reintenta.
+    if (r?.error && r.error !== 'no encontrado') {
+      hueco.innerHTML = `<h3>Qué piden para presentarte</h3>
+        <p class="nota">No hemos podido cargarlo. Cierra y vuelve a abrir la ficha.</p>`;
+      delete hueco.dataset.cargado;
+      return;
+    }
+    REQUISITOS.set(clave, r);
+  }
+  // La lista puede haberse repintado mientras tanto: se llenan todos los
+  // huecos de ese contrato que sigan en la página.
+  document.querySelectorAll(`[data-requisitos="${CSS.escape(id)}"]`).forEach(h => {
+    h.dataset.cargado = '1';
+    h.innerHTML = pintarRequisitos(REQUISITOS.get(clave));
+  });
+}
+
+// "1,5 veces el valor anual" a partir de lo que leyó el modelo.
+function reglaRequisito(req) {
+  if (!req?.multiplo || !req?.base) return '';
+  const veces = Number(req.multiplo);
+  const base = { valor_anual: 'el valor anual medio del contrato',
+                 valor_estimado: 'el valor estimado',
+                 presupuesto: 'el presupuesto de licitación' }[req.base];
+  if (!base) return '';
+  if (veces === 1) return `igual a${base.replace(/^el /, 'l ')}`;
+  const cuanto = veces < 1
+    ? `el ${numero(Math.round(veces * 100))} % de`
+    : `${String(veces).replace('.', ',')} veces`;
+  return `${cuanto} ${base}`;
+}
+
+// Bajo la cifra, de dónde sale: si el pliego la escribe, su resumen; si
+// la calculamos con la regla ("1,5 veces el valor anual medio"), la regla,
+// para que se vea que es nuestra cuenta y se pueda comprobar.
+function explicacionRequisito(req) {
+  const regla = reglaRequisito(req);
+  // El resumen que repite la cifra de arriba no añade nada.
+  const repite = req.importe != null && String(req.texto ?? '').replace(/\D/g, '')
+    .includes(String(Math.trunc(req.importe)));
+  const t = req.importe == null && regla
+    ? `${regla[0].toUpperCase()}${regla.slice(1)}, según el pliego; la cifra es nuestra cuenta.`
+    : repite ? '' : req.texto;
+  return t ? `<br><span class="regla">${esc(t)}</span>` : '';
+}
+
+function comparacionRequisito(c, tipo) {
+  if (!c) return '';
+  const tienes = Number(c.tienes) || 0;
+  const base = c.contratos
+    ? `Calculado con ${numero(c.contratos)} ${c.contratos === 1 ? 'contrato' : 'contratos'}${
+        tipo === 'tecnica' ? ' parecidos (mismas tres primeras cifras del CPV)' : ''}, repartiendo cada uno por los meses que dura.`
+    : '';
+  if (c.estado === 'cumple') {
+    return `<span class="compara cumple">${tipo === 'economica'
+      ? `Llegas: solo con contratos públicos facturaste unos ${euros(tienes)} en ${c.anio}.`
+      : `Llegas: en contratos públicos parecidos ejecutaste unos ${euros(tienes)} en ${c.anio}.`}
+      <span class="base">${base}</span></span>`;
+  }
+  return `<span class="compara revisar">${tipo === 'economica'
+    ? (tienes > 0
+        ? `Compruébalo con tu facturación total: en contratos públicos llegas a unos ${euros(tienes)} (${c.anio}), y aquí también cuenta lo que facturas a privados.`
+        : 'No vemos facturación tuya en contratos públicos estos años: compruébalo con tu facturación total.')
+    : (tienes > 0
+        ? `Compruébalo: en contratos públicos parecidos llegas a unos ${euros(tienes)} (${c.anio}). También cuentan los trabajos para privados.`
+        : 'No vemos contratos públicos parecidos tuyos estos años. También cuentan los trabajos para privados.')}
+    ${base ? `<span class="base">${base}</span>` : ''}</span>`;
+}
+
+function pintarRequisitos(r) {
+  const titulo = '<h3>Qué piden para presentarte</h3>';
+  if (!r || r.error) return `${titulo}<p class="nota">No tenemos los datos de este contrato.</p>`;
+
+  const filas = [];
+  const fila = (dt, dd) => filas.push(`<dt>${dt}</dt><dd>${dd}</dd>`);
+  const leido = r.estado === 'leido';
+  const comparar = que => (r.comprobar || []).find(c => c.que === que);
+
+  if (leido && r.exento) {
+    fila('Solvencia', 'No hace falta acreditarla: el pliego la exime.');
+  }
+
+  // Solvencia económica
+  const eco = r.economica;
+  if (eco && !r.exento) {
+    const medio = { volumen_negocios: 'Volumen anual de negocios',
+                    seguro: 'Seguro de responsabilidad civil',
+                    patrimonio: 'Patrimonio neto' }[eco.medio];
+    const pide = eco.pide ? `<span class="pide">${medio ?? 'Importe'} de ${euros(eco.pide)} como mínimo</span>` : '';
+    fila('Solvencia económica', `${pide || esc(eco.texto || medio || '—')}${
+      pide ? explicacionRequisito(eco) : ''}${
+      comparacionRequisito(comparar('economica'), 'economica')}`);
+  }
+
+  // Solvencia técnica
+  const tec = r.tecnica;
+  if (tec && !r.exento) {
+    const anios = tec.anios ? ` en los últimos ${tec.anios} años` : '';
+    const pide = tec.pide && tec.medio === 'trabajos_similares'
+      ? `<span class="pide">Trabajos parecidos por ${euros(tec.pide)}${anios}</span>` : '';
+    fila('Solvencia técnica', `${pide || esc(tec.texto || '—')}${
+      pide ? explicacionRequisito(tec) : ''}${
+      comparacionRequisito(comparar('tecnica'), 'tecnica')}`);
+  }
+
+  if (r.seguro?.importe && eco?.medio !== 'seguro') {
+    fila('Seguro', `Responsabilidad civil de ${euros(r.seguro.importe)}`);
+  }
+
+  if (r.clasificacion?.length) {
+    fila('Clasificación', `<ul>${r.clasificacion.map(c => `<li><strong>${esc(c.codigo)}</strong>${
+      c.nombre ? ` · ${esc(c.nombre)}` : ''}${c.categoria ? `, categoría ${esc(c.categoria)}` : ''}${
+      c.tramo ? ` <span class="regla">(${esc(c.tramo)})</span>` : ''}</li>`).join('')}</ul>${
+      r.clasificacion_obligatoria ? '' : '<span class="regla">Sirve en lugar de la solvencia; no es obligatoria.</span>'}`);
+  }
+
+  const inscripciones = [];
+  if (r.rolece) inscripciones.push('Inscripción en el ROLECE o en el registro de licitadores de la comunidad');
+  (r.otros || []).forEach(x => inscripciones.push(x));
+  if (inscripciones.length) {
+    fila('También piden', `<ul>${inscripciones.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`);
+  }
+
+  const g = r.garantias || {};
+  const garantias = [
+    g.definitiva != null && `definitiva del ${numero(g.definitiva)} % del importe de adjudicación`,
+    g.provisional != null && `provisional del ${numero(g.provisional)} %`,
+    g.complementaria != null && `complementaria del ${numero(g.complementaria)} %`,
+  ].filter(Boolean);
+  if (garantias.length) {
+    const t = garantias.join('; ');
+    fila('Garantía', `${t[0].toUpperCase()}${t.slice(1)}`);
+  }
+
+  if (r.email || r.telefono) {
+    fila('Contacto del órgano', [
+      r.email && `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`,
+      r.telefono && `<a href="tel:${esc(String(r.telefono).replace(/\s/g, ''))}">${esc(r.telefono)}</a>`,
+    ].filter(Boolean).join(' · '));
+  }
+
+  const docs = (r.documentos || []).filter(d => /^https?:\/\//i.test(d.url ?? ''));
+  if (docs.length) {
+    fila('Pliegos y anexos', `<ul class="docs">${docs.slice(0, 8).map(d =>
+      `<li><a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">${
+        esc(DOCUMENTO_TIPO[d.tipo] ?? d.nombre ?? 'Documento')}</a>${
+        DOCUMENTO_TIPO[d.tipo] && d.nombre ? ` <span class="regla">${esc(d.nombre)}</span>` : ''}</li>`).join('')}${
+      docs.length > 8 ? `<li class="regla">y ${numero(docs.length - 8)} más en el expediente</li>` : ''}</ul>`);
+  }
+
+  // Sin lectura, lo que dice el anuncio tal cual: mejor eso que nada.
+  let aviso = '';
+  if (!leido) {
+    const feed = (r.feed || []).filter(s => !s.es_remision);
+    feed.forEach(s => fila(s.clase === 'economica' ? 'Solvencia económica' : 'Solvencia técnica',
+      esc(String(s.descripcion).slice(0, 400)) + (String(s.descripcion).length > 400 ? '…' : '')));
+    aviso = {
+      pendiente: 'Aún no hemos leído la solvencia en su pliego: suele estar al día siguiente de publicarse.',
+      error: 'No hemos podido leer el pliego esta vez; lo volvemos a intentar mañana.',
+      sin_datos: 'No tenemos los requisitos de este contrato: están en el expediente.',
+      sin_pliego: 'El organismo no ha publicado el pliego con el anuncio: la solvencia está en el expediente.',
+    }[r.estado] ?? 'No hemos podido leer la solvencia en el pliego (escaneado o protegido): está en el expediente.';
+  }
+
+  const origen = leido
+    ? `Leído ${r.origen === 'pliego'
+        ? `del pliego${r.documento_leido ? ` (${esc(r.documento_leido)})` : ''}`
+        : 'del anuncio de licitación'} de forma automática: compruébalo en el pliego antes de presentarte.${
+        r.comprobar?.length ? ' Lo que ganas sale de los contratos públicos que tenemos de tu empresa; es lo mínimo que facturas, no el total.' : ''}`
+    : '';
+
+  return `${titulo}${aviso ? `<p class="nota">${aviso}</p>` : ''}${
+    filas.length ? `<dl>${filas.join('')}</dl>` : ''}${
+    // La frase literal, solo si dice algo concreto (una cifra): "serán los
+    // exigidos en el Anexo 4" no ayuda, y repetir el resumen tampoco.
+    leido && /\d/.test(r.cita ?? '') && !/anexo\s+n?º?\.?\s*\d+\.?»?$/i.test(r.cita)
+      && ![r.economica?.texto, r.tecnica?.texto].includes(r.cita)
+      ? `<p class="cita">«${esc(r.cita)}»</p>` : ''}${
+    origen ? `<p class="origen">${origen}</p>` : ''}`;
+}
+
 async function pantallaOportunidades(perfil, session, volviendo = false,
                                      pestanaInicial = 'todo') {
   const miLista = ++listaVigente;
@@ -8454,6 +8743,17 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // "Tienes opciones" sale en tres de cada cuatro contratos (medido el
   // 04/10/2026: 2.150 de 2.865) y una marca en casi todas las filas deja
   // de avisar; para quedarse con esos está el filtro.
+  // Qué piden, en la fila: solo lo que cambia la decisión (Decisión 54).
+  // "Piden facturar" dice la cifra y no un veredicto: lo que la empresa
+  // factura a privados no lo vemos.
+  const marcaRequisitos = r =>
+    r?.marca === 'clasificacion'
+      ? '<span class="viab req">Exigen clasificación</span>'
+      : r?.marca === 'facturacion' && r.pide
+        ? `<span class="viab req" title="Más de lo que ganas en contratos públicos. Mira la ficha.">Piden facturar ${
+            eurosRedondos(r.pide) ?? euros(r.pide)} al año</span>`
+        : '';
+
   const VIABILIDAD_FILA = {
     mio: 'Es tuyo: ganaste la anterior',
     dificil: 'Difícil',
@@ -8674,6 +8974,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
               SISTEMAS[o.sistema].marca}</span>` : ''}</p>
           ${VIABILIDAD_VISIBLE && VIABILIDAD_FILA[o.viabilidad] ? `<span class="viab ${
             o.viabilidad}">${VIABILIDAD_FILA[o.viabilidad]}</span>` : ''}
+          ${marcaRequisitos(o.requisitos)}
           ${o.dias_sin_verificar > 90
             ? `<span class="sin-verificar">Sin movimiento desde hace
                ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
@@ -8721,6 +9022,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
             o.dias_sin_verificar > 90
               ? ' — lleva mucho parado, conviene comprobarlo' : ''}</dd>
         </dl>
+        <div class="requisitos" data-requisitos="${esc(o.id_licitacion)}"></div>
         ${bloqueCartera(o.id_licitacion)}
         ${VIABILIDAD_VISIBLE ? `<button class="principal" data-analizar="${esc(o.id_licitacion)}"
                 style="margin-right:10px">Analizar viabilidad</button>` : ''}
