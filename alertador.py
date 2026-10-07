@@ -457,7 +457,7 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
       {enlace_cartera_html}
     </td></tr>"""
         bloque_plazos_texto = ("PLAZOS DE TU CARTERA\n\n" + bloque_plazos_texto
-                               + f"Ver tu cartera: {URL_CARTERA}\n\n")
+                               + f"\nVer tu cartera: {URL_CARTERA}\n\n")
 
     filas_html, filas_texto = [], []
     for it in items:
@@ -573,6 +573,9 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
     else:
         boton_texto, boton_url = "Ver tu cartera", URL_CARTERA
         bloque_plazos_html = bloque_plazos_html.replace(enlace_cartera_html, "")
+        # Igual en el texto plano: el pie ya dice "Ver tu cartera".
+        bloque_plazos_texto = bloque_plazos_texto.replace(
+            f"\nVer tu cartera: {URL_CARTERA}\n\n", "")
 
     cuerpo_html = f"""<!DOCTYPE html>
 <html lang="es"><body style="margin:0;padding:0;background:#F5F4F1;">
