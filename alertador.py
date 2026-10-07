@@ -13,6 +13,11 @@ Dos decisiones que gobiernan este paso:
     nada" acaba en la papelera sin abrir, y con él los días en que sí
     había algo. El silencio también informa.
 
+  · LOS PLAZOS DE LA CARTERA también son novedad. Lo que el cliente lleva
+    como "Me interesa" o "Preparo la oferta" se le recuerda 7, 3 y 1 día
+    antes de que cierre (Decisión 53). Es una tarea con fecha, así que
+    justifica el correo aunque ese día no haya contratos nuevos.
+
   · NOVEDAD ES LO DE LA ÚLTIMA PASADA, no lo de hoy según el calendario.
     Si el robot se cae un día, al volver detecta lo acumulado y todo eso
     se envía. Así no se pierde ninguna oportunidad por una avería. Es la
@@ -53,6 +58,8 @@ REMITENTE = os.environ.get("REMITENTE_ALERTA", "onboarding@resend.dev")
 URL_INTERFAZ = os.environ.get(
     "URL_INTERFAZ", "https://statescraper.com"
 )
+# La pestaña de la cartera: la web la abre al entrar con este ancla.
+URL_CARTERA = URL_INTERFAZ.rstrip("/") + "/#cartera"
 # Holgura sobre la última detección. Una pasada tarda minutos, no horas,
 # pero el margen absorbe ejecuciones que se solapen o se retrasen.
 # Ventana de novedad. Mayor que un día a propósito: el cron de GitHub
@@ -197,9 +204,77 @@ def novedades(cliente, perfil_id: str) -> list[dict]:
         return []
 
 
+# A cuántos días del cierre se recuerda un plazo de la cartera. Como
+# Licitandum: una semana para organizarse, tres días para cerrar la
+# oferta y la víspera. Más avisos serían ruido; uno solo, poco margen.
+DIAS_AVISO_PLAZO = (7, 3, 1)
+
+
+def dias_para(limite: str | None) -> int | None:
+    """
+    Días de calendario peninsular hasta el plazo, o None si ya pasó.
+
+    Un plazo a las 00:00 en punto es el final del día anterior (casi
+    siempre el organismo publicó solo la fecha), igual que en la web: si
+    no, "mañana" sería en realidad "esta noche".
+    """
+    fecha = a_fecha(limite)
+    if not fecha:
+        return None
+    ahora = datetime.now(timezone.utc)
+    if fecha < ahora:
+        return None
+    local = fecha.astimezone(ZONA_ESPANA)
+    if local.hour == 0 and local.minute == 0:
+        local -= timedelta(minutes=1)
+    return (local.date() - ahora.astimezone(ZONA_ESPANA).date()).days
+
+
+def plazos_de_cartera(cliente, perfil_id: str) -> list[dict]:
+    """
+    Lo de su cartera cuyo plazo cierra justo dentro de 7, 3 o 1 día.
+
+    Un fallo aquí no tumba el correo de novedades: sin la función en la
+    base (la migración aún no aplicada) simplemente no hay plazos.
+    """
+    try:
+        respuesta = cliente.rpc("plazos_de_cartera", {"perfil": perfil_id}).execute()
+    except Exception as error:
+        logging.warning("No se pudieron leer los plazos de la cartera: %s", error)
+        return []
+    plazos = []
+    for it in respuesta.data or []:
+        dias = dias_para(it.get("fecha_limite"))
+        if dias in DIAS_AVISO_PLAZO:
+            plazos.append({**it, "dias": dias})
+    return plazos
+
+
 # ==============================================================
 # 3. EL CORREO
 # ==============================================================
+
+ESTADO_CARTERA = {"interesa": "Te interesa", "preparando": "Preparas la oferta"}
+
+
+def cuando_cierra(dias: int) -> str:
+    return "mañana" if dias == 1 else f"en {dias} días"
+
+
+def hasta(limite: str | None) -> str:
+    """
+    "hasta el 07/10 a las 14:00", o "hasta el 08/10 a medianoche" para un
+    plazo a las 00:00: "el 09/10 a las 00:00" se leía como que quedaba
+    todo el día 9.
+    """
+    fecha = a_fecha(limite)
+    if not fecha:
+        return ""
+    local = fecha.astimezone(ZONA_ESPANA)
+    if local.hour == 0 and local.minute == 0:
+        return f"hasta el {(local - timedelta(minutes=1)).strftime('%d/%m')} a medianoche"
+    return f"hasta el {local.strftime('%d/%m a las %H:%M')}"
+
 
 def euros(valor) -> str:
     if valor is None:
@@ -288,6 +363,14 @@ def acortar(titulo: str) -> str:
     return corte.rstrip(" ,;:.") + "…"
 
 
+def acortar_a(titulo: str, largo: int) -> str:
+    """El título ya limpio, cortado por palabra entera para un asunto."""
+    limpio = acortar(titulo)
+    if len(limpio) <= largo:
+        return limpio
+    return limpio[:largo].rsplit(" ", 1)[0].rstrip(" ,;:.") + "…"
+
+
 def provincia_de(codigo_postal: str | None) -> str:
     cp = "".join(c for c in (codigo_postal or "") if c.isdigit())
     if len(cp) == 4:
@@ -296,7 +379,7 @@ def provincia_de(codigo_postal: str | None) -> str:
 
 
 def componer(items: list[dict], seguidas: list[dict] | None = None,
-             empresa: str = "") -> tuple[str, str, str]:
+             empresa: str = "", plazos: list[dict] | None = None) -> tuple[str, str, str]:
     """
     Devuelve (asunto, cuerpo HTML, cuerpo en texto plano).
 
@@ -306,11 +389,23 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
     `seguidas` son adjudicaciones ganadas por empresas que el cliente
     vigila. Van en el mismo correo y no en uno aparte: dos correos al día
     del mismo remitente se convierten en uno que se ignora.
+
+    `plazos` son contratos de su cartera a punto de cerrar. Van arriba:
+    son lo único del correo que caduca en días.
     """
     seguidas = seguidas or []
+    plazos = plazos or []
     n = len(items)
 
-    if n and seguidas:
+    if plazos and not n:
+        # El asunto dice cuál y cuándo: es lo que hace abrirlo.
+        if len(plazos) == 1:
+            p = plazos[0]
+            asunto = (f"Cierra {cuando_cierra(p['dias'])}: "
+                      f"{acortar_a(p.get('titulo') or '', 70)}")
+        else:
+            asunto = f"{len(plazos)} plazos de tu cartera cierran pronto"
+    elif n and seguidas:
         asunto = (f"{n} {'contrato nuevo' if n == 1 else 'contratos nuevos'} "
                   f"y movimientos de tu competencia")
     elif n:
@@ -319,6 +414,50 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
     else:
         asunto = ("Tu competencia ha ganado un contrato" if len(seguidas) == 1
                   else f"Tu competencia ha ganado {len(seguidas)} contratos")
+    if plazos and n:
+        asunto += (" · 1 plazo de tu cartera cierra pronto" if len(plazos) == 1
+                   else f" · {len(plazos)} plazos de tu cartera cierran pronto")
+
+    # ---- Los plazos de su cartera ----
+    bloque_plazos_html = bloque_plazos_texto = ""
+    enlace_cartera_html = (f'<p style="margin:14px 0 0;font-size:14px;">'
+                           f'<a href="{html.escape(URL_CARTERA)}" style="color:#17171A;">'
+                           f'Ver tu cartera</a></p>')
+    if plazos:
+        filas = []
+        for it in plazos:
+            titulo = acortar(it.get("titulo") or "") or "(sin título)"
+            organo = it.get("organo") or ""
+            cierra = hasta(it.get("fecha_limite"))
+            estado = ESTADO_CARTERA.get(it.get("estado") or "", "")
+            enlace = it.get("enlace") or URL_CARTERA
+            urge = it["dias"] == 1
+            filas.append(f"""
+            <tr><td style="padding:16px 0;border-bottom:1px solid #E4E2DD;">
+              <div style="color:{'#B65347' if urge else '#17171A'};font-size:13px;font-weight:600;">
+                Cierra {cuando_cierra(it['dias'])} · {html.escape(estado)}</div>
+              <a href="{html.escape(enlace, quote=True)}"
+                 style="color:#17171A;font-size:15px;font-weight:600;text-decoration:none;
+                        line-height:1.45;display:block;margin-top:4px;">{html.escape(titulo)}</a>
+              <div style="color:#6E6E75;font-size:13px;margin-top:5px;">
+                {html.escape(organo)} · {html.escape(cierra)}</div>
+            </td></tr>""")
+            bloque_plazos_texto += (
+                f"- Cierra {cuando_cierra(it['dias'])} ({estado.lower()}): {titulo}\n"
+                f"  {organo} · {cierra}\n"
+                f"  {enlace}\n"
+            )
+        bloque_plazos_html = f"""
+    <tr><td style="padding-top:18px;">
+      <h2 style="margin:0 0 4px;font-size:16px;font-weight:600;color:#17171A;">
+        Plazos de tu cartera</h2>
+      <p style="margin:0 0 4px;color:#6E6E75;font-size:14px;line-height:1.6;">
+        Contratos que guardaste y cuyo plazo para presentar oferta termina pronto.</p>
+      <table width="100%" cellpadding="0" cellspacing="0">{''.join(filas)}</table>
+      {enlace_cartera_html}
+    </td></tr>"""
+        bloque_plazos_texto = ("PLAZOS DE TU CARTERA\n\n" + bloque_plazos_texto
+                               + f"Ver tu cartera: {URL_CARTERA}\n\n")
 
     filas_html, filas_texto = [], []
     for it in items:
@@ -415,8 +554,25 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
             'line-height:1.6;">Licitaciones abiertas que encajan con '
             f'{quien}, detectadas esta madrugada.</p>'
         )
-        lista_html = ('<tr><td><table width="100%" cellpadding="0" '
+        # Con plazos delante, las novedades llevan su propio título: si no,
+        # la frase de arriba parecía hablar de los plazos.
+        titulo_lista = ('<h2 style="margin:0 0 4px;font-size:16px;font-weight:600;'
+                        'color:#17171A;">Contratos nuevos</h2>') if plazos else ""
+        if plazos:
+            # La frase va con su lista, debajo de los plazos.
+            titulo_lista += intro_html
+            intro_html = ""
+        lista_html = (f'<tr><td style="padding-top:{"30px" if plazos else "0"};">'
+                      f'{titulo_lista}<table width="100%" cellpadding="0" '
                       f'cellspacing="0">{"".join(filas_html)}</table></td></tr>')
+
+    # Sin contratos nuevos, el botón lleva a la cartera, que es de lo que
+    # habla el correo; y el enlace de la sección sobra.
+    if items or not plazos:
+        boton_texto, boton_url = "Ver todos los contratos abiertos", URL_INTERFAZ
+    else:
+        boton_texto, boton_url = "Ver tu cartera", URL_CARTERA
+        bloque_plazos_html = bloque_plazos_html.replace(enlace_cartera_html, "")
 
     cuerpo_html = f"""<!DOCTYPE html>
 <html lang="es"><body style="margin:0;padding:0;background:#F5F4F1;">
@@ -431,18 +587,19 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
       </h1>
       {intro_html}
     </td></tr>
+    {bloque_plazos_html}
     {lista_html}
     {bloque_seguidas_html}
     <tr><td style="padding-top:28px;">
-      <a href="{html.escape(URL_INTERFAZ)}"
+      <a href="{html.escape(boton_url)}"
          style="display:inline-block;background:#17171A;color:#FFFFFF;
                 padding:12px 22px;border-radius:3px;text-decoration:none;
-                font-size:15px;font-weight:500;">Ver todos los contratos abiertos</a>
+                font-size:15px;font-weight:500;">{boton_texto}</a>
     </td></tr>
     <tr><td style="padding-top:26px;color:#8B8B92;font-size:12px;line-height:1.6;">
       Datos de la Plataforma de Contratación del Sector Público y de las
       plataformas autonómicas agregadas. Solo recibes este correo los días
-      que hay novedades.
+      que hay novedades o se acerca un plazo de tu cartera.
     </td></tr>
   </table>
 </td></tr></table>
@@ -456,9 +613,10 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
 
     cuerpo_texto = (
         f"{asunto}\n\n"
+        + bloque_plazos_texto
         + intro_texto
         + bloque_seguidas_texto
-        + f"\nVer todos los contratos abiertos: {URL_INTERFAZ}\n"
+        + f"\n{boton_texto}: {boton_url}\n"
     )
 
     return asunto, cuerpo_html, cuerpo_texto
@@ -576,20 +734,22 @@ def main() -> int:
         # dentro del correo, que es suyo.
         etiqueta = "perfil " + str(perfil["id"])[:8]
         items = novedades(cliente, perfil["id"])
+        plazos = plazos_de_cartera(cliente, perfil["id"])
         # Las adjudicaciones de la competencia NO van por correo: el correo
         # es para lo que caduca, y una adjudicación ya cerrada no exige
         # actuar hoy. Están en la pestaña de Movimientos.
         seguidas = []
 
-        if not items:
+        if not items and not plazos:
             # Silencio deliberado: un correo que dice "hoy no hay nada"
             # enseña a ignorar el remitente, y con él los días que sí
             # importan.
             sin_novedades += 1
             continue
 
-        logging.info("[%s] %d novedades.", etiqueta, len(items))
-        asunto, cuerpo_html, cuerpo_texto = componer(items, seguidas, nombre)
+        logging.info("[%s] %d novedades, %d plazos de cartera.",
+                     etiqueta, len(items), len(plazos))
+        asunto, cuerpo_html, cuerpo_texto = componer(items, seguidas, nombre, plazos)
 
         if opciones.simulacro:
             logging.info("  Asunto: %s", asunto)

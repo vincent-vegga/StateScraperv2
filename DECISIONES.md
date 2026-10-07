@@ -1634,6 +1634,92 @@ mismo órgano y CPV principal con el título casi igual.
 
 ---
 
+## 53. Mi cartera: llevar la cuenta de cada contrato
+
+**Contexto.** Prioridad 3 de la hoja de ruta (`docs/competencia/LEEME.md`).
+La lista solo enseña lo abierto: el contrato al que alguien decide
+presentarse desaparece de ella al cerrar el plazo, y con él la única pista
+de que lo estaba preparando. Sin un sitio para eso, el cliente se lo lleva
+a un Excel y deja de entrar. Licitandum lo da desde 19 € con un tablero de
+doce etapas, sobres, tareas y un registro de go/no-go; El Vínculo, con un
+tablero de cinco columnas (en revisión, candidata, en curso, presentada,
+ganada) más "descartada", notas y recordatorios de cierre.
+
+**Decisión.** Una tercera pestaña en Contratos, "Mi cartera", con seis
+estados: *Me interesa*, *Preparo la oferta*, *Oferta presentada*,
+*Ganada*, *Perdida* y *No me presento*. Por contrato, una nota libre y el
+importe de su oferta. Nada de etapas por sobre ni tareas: una pyme lleva
+una o dos ofertas a la vez, y el tablero de equipo es terreno de
+Licitandum (ver "Prioridades" en la hoja de ruta).
+
+- **"Sí me interesa" guarda en la cartera.** Guardar es decir que
+  interesa, así que `poner_en_cartera` apunta también la corrección
+  positiva si no la había, y a las tres se ajusta el filtro como siempre.
+  Un solo gesto, no dos botones parecidos. Los "sí me interesa" que ya
+  había en contratos abiertos entran como "Me interesa".
+- **"No me presento" no es "no me interesa".** El contrato encaja pero no
+  compensa (plazo, solvencia, competencia): no enseña nada al filtro. El
+  motivo va en la nota, que se ve en la fila.
+- **El resultado llega solo, pero no se aplica solo.** `mi_cartera()` cruza
+  la adjudicación, lote a lote, con el NIF del perfil y con las UTE de las
+  que es socio (`ute_socios`). La fila dice "Adjudicado a tu empresa
+  (lote 2)" o "Adjudicado a X por 42.300 €" con un botón para marcarlo.
+  No cambia el estado por él: un NIF mal publicado o una UTE que no
+  conocemos lo dejarían ganado o perdido sin serlo. Sin NIF, se le
+  pregunta si la ganadora era su empresa.
+- **Su oferta frente a la ganadora.** Con el importe que apunta y la
+  adjudicación de un único adjudicatario: "La ganadora ofertó un 6 % menos
+  que tú", o "un 10,6 % más que tú: pesaron otros criterios, no solo el
+  precio", con cuántas ofertas hubo y su horquilla. Con lotes no se
+  compara: no sabemos a cuál se presentó. Ningún competidor que hayamos
+  visto lo da, y sale de datos que ya tenemos.
+- **Plazos.** Si el organismo cambia el plazo de algo que lleva, la fila
+  lo dice ("antes 8 oct, ahora 10 oct") hasta que pulsa "Entendido". Si
+  lo republica con otro identificador, se enseña la copia vigente
+  (`licitacion_vigente`, la misma regla que `marcar_sustituidas`). Lo que
+  lleva como "Me interesa" o "Preparo la oferta" se le recuerda en el
+  correo diario a 7, 3 y 1 día del cierre, como Licitandum, y solo a
+  quien tiene la campana encendida (los avisos siguen naciendo apagados).
+  Es lo único que justifica el correo un día sin contratos nuevos.
+- **Agrupada por lo que toca hacer**: por presentar (por plazo), plazo
+  terminado ("¿Presentaste oferta?"), esperando resultado (lo que ya
+  tiene adjudicación, arriba) y cerrados, plegados. Arriba, cuántas ha
+  presentado y cuántas ha ganado (el porcentaje, con tres resueltas o más).
+- **Plan Básico.** Es lo que hace volver cada día, no inteligencia de
+  mercado.
+
+**Cómo se escribe.** La tabla `cartera` solo se lee con RLS; se escribe
+con `poner_en_cartera`, `anotar_en_cartera`, `quitar_de_cartera` y
+`dar_plazo_por_visto`, que van a la empresa activa (`mi_perfil_id()`).
+Tope de 1.000 contratos por perfil. La web cambia la pantalla al
+instante y lo deshace si la base falla; quitar se puede deshacer, con
+sus notas. No toca `mis_oportunidades`: la lista se cruza con la cartera
+en el navegador.
+
+**Medido (06/10/2026).** De los contratos que salieron en las listas con
+plazo en septiembre, 18 ya están adjudicados con NIF, 608 en evaluación y
+985 siguen como publicados con el plazo pasado: el resultado llega a los
+meses de cerrar el plazo, y solo si el feed trae el cambio de estado (ver
+"Refrescar el estado de las filas antiguas" en la deuda técnica). Por eso
+hay "Esperando la adjudicación" y el botón para marcarlo a mano.
+
+**Probado.** La migración, en un PostgreSQL 16 local con el esquema
+mínimo y datos inventados (no se pudo probar en la base de producción ni
+siquiera en un bloque que se deshace): estados, errores, resultado por
+lotes, UTE, desierto, anulado, republicación, plazos del correo, RLS y
+permisos entre dos empresas de la misma cuenta y entre cuentas. La web,
+con un cliente de Supabase simulado: escritorio, móvil de 375 px, modo
+oscuro, cartera vacía, fallo al guardar, perfil sin NIF y base sin la
+migración (la pestaña no sale y "Sí me interesa" hace lo de antes).
+
+**Lo que no se cubre.** Las UTE cuyos socios no conocemos (no se marcan
+como suyas). La comparación cuando su oferta lleva IVA y la adjudicación
+no: el campo dice "sin IVA". Lo que vigila de "Lo que viene" (contratos
+que vencen) no entra en la cartera: sería otro estado, "vigilar", y otra
+decisión.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
