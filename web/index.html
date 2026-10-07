@@ -1979,6 +1979,13 @@ select:focus{
   background:var(--texto);
 }
 
+.pestana .rotulo-corto{display:none}
+@media(max-width:480px){
+  .pestanas{gap:20px}
+  .pestana .rotulo-largo{display:none}
+  .pestana .rotulo-corto{display:inline}
+}
+
 .pestana .cuantas{
   margin-left:6px;
   color:var(--tenue);
@@ -2055,6 +2062,148 @@ select:focus{
   margin-top:8px;
   color:var(--no);
   font-size:.78rem;
+}
+
+/* ---------- Mi cartera ----------
+   El estado va como el veredicto de Viabilidad: un punto y una palabra,
+   sin caja. Solo lo cerrado lleva color de resultado; lo que está en
+   marcha va en el color del texto, porque no es ni bueno ni malo. */
+.en-cartera{
+  display:block;
+  width:fit-content;
+  margin:9px 0 0;
+  color:var(--texto);
+  font-size:.79rem;
+  font-weight:600;
+}
+.en-cartera::before{content:'● ';font-size:.7em;vertical-align:1px;color:var(--acento)}
+.en-cartera.e-interesa::before{color:var(--fuerte)}
+.en-cartera.e-presentada::before{color:var(--texto)}
+.en-cartera.e-ganada{color:var(--si)}
+.en-cartera.e-ganada::before{color:var(--si)}
+.en-cartera.e-perdida,
+.en-cartera.e-descartada{color:var(--tenue)}
+.en-cartera.e-perdida::before,
+.en-cartera.e-descartada::before{color:var(--fuerte)}
+
+.situacion{
+  display:block;
+  max-width:64ch;
+  margin-top:8px;
+  color:var(--texto);
+  font-size:.86rem;
+  line-height:1.5;
+}
+.situacion.tenue{color:var(--tenue)}
+.situacion.buena{color:var(--si);font-weight:600}
+.situacion .acciones{margin-top:8px}
+.situacion > .accion{margin-left:6px}
+.aviso-plazo{
+  padding:8px 11px;
+  border-left:3px solid var(--acento);
+  border-radius:0 6px 6px 0;
+  background:var(--tinte-acento);
+}
+
+.bloque-cartera{
+  max-width:640px;
+  margin:0 0 21px;
+  padding:15px 16px 13px;
+  border:1px solid var(--linea);
+  border-radius:9px;
+  background:var(--superficie);
+}
+.rotulo-cartera{
+  margin:0 0 10px;
+  color:var(--tenue);
+  font-size:.78rem;
+  font-weight:650;
+  letter-spacing:.055em;
+  text-transform:uppercase;
+}
+.estados-cartera{display:flex;flex-wrap:wrap;gap:7px}
+.estado-cartera{
+  min-height:34px;
+  padding:5px 12px;
+  border:1px solid var(--linea);
+  border-radius:7px;
+  background:var(--superficie);
+  color:var(--texto);
+  font:inherit;
+  font-size:.85rem;
+  cursor:pointer;
+  transition:border-color .15s,background-color .15s,color .15s;
+}
+.estado-cartera:hover{border-color:var(--fuerte);background:var(--hover)}
+.estado-cartera[aria-pressed="true"]{
+  border-color:var(--btn-fondo);
+  background:var(--btn-fondo);
+  color:var(--btn-texto);
+  font-weight:600;
+}
+.notas-cartera{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 190px;
+  gap:12px;
+  margin-top:15px;
+}
+.notas-cartera label{margin:0}
+.notas-cartera textarea,
+.notas-cartera input{
+  margin-top:6px;
+  min-height:42px;
+  padding:9px 11px;
+  font-size:.92rem;
+  font-weight:400;
+  letter-spacing:0;
+  text-transform:none;
+}
+.notas-cartera textarea{min-height:84px}
+.pie-cartera{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px 16px;
+  margin-top:12px;
+}
+.pie-cartera .ver{min-height:36px;padding:6px 14px;background:none;font:inherit;font-size:.88rem;font-weight:600;cursor:pointer}
+.ayuda-cartera{margin:10px 0 0;color:var(--tenue);font-size:.82rem;line-height:1.5}
+.ayuda-cartera:empty{display:none}
+
+.resumen-cartera{
+  margin:22px 0 0;
+  color:var(--tenue);
+  font-size:.92rem;
+}
+.grupo-cartera{margin-top:30px}
+.grupo-cartera h2{
+  margin:0 0 4px;
+  font-size:1.02rem;
+  font-weight:650;
+}
+.grupo-cartera h2 .cuantas{margin-left:8px;color:var(--tenue);font-size:.84rem;font-weight:500}
+.explica-grupo{margin:0 0 6px;color:var(--tenue);font-size:.88rem}
+.cerradas summary{cursor:pointer;list-style:none;padding:4px 0 8px}
+.cerradas summary::-webkit-details-marker{display:none}
+.cerradas summary h2{display:inline}
+.cerradas summary::after{content:' ▾';color:var(--tenue);font-size:.8rem}
+.cerradas[open] summary::after{content:' ▴'}
+.nota-fila{font-style:italic}
+.ganador{display:block}
+.tuyo{color:var(--si);font-size:.82rem;font-weight:600}
+.vacio-cartera{
+  max-width:520px;
+  margin:44px auto;
+  color:var(--tenue);
+  text-align:center;
+  line-height:1.6;
+}
+.vacio-cartera strong{color:var(--texto)}
+.vacio-cartera .ver{margin-top:8px;background:none;font:inherit;font-weight:600;cursor:pointer}
+
+@media(max-width:640px){
+  .notas-cartera{grid-template-columns:1fr}
+  .bloque-cartera{padding:13px 12px 11px}
 }
 
 /* ---------- Bienvenida ----------
@@ -3709,7 +3858,11 @@ async function arrancar(volviendo = false) {
     // La primera vez que llega a su lista, se le presenta cómo funciona.
     if (!perfil.vio_bienvenida && !volviendo)
       return pantallaBienvenida(perfil, session);
-    return pantallaOportunidades(perfil, session, volviendo);
+    // El correo de plazos enlaza a la cartera (statescraper.com/#cartera).
+    // Se consume al entrar: recargar después no debe volver a ella.
+    const aCartera = location.hash === '#cartera';
+    if (aCartera) history.replaceState(history.state, '', location.pathname + location.search);
+    return pantallaOportunidades(perfil, session, volviendo, aCartera ? 'cartera' : 'todo');
   }
   if (perfil.paso_alta === 'cribando') return pantallaCribando(perfil, session);
   // 'entrenando' era el paso de las tarjetas, que ya no existen: quien
@@ -8062,6 +8215,23 @@ function pantallaBienvenida(perfil, session) {
 const DESCARTES_PENDIENTES = new Map();
 const ESPERA_DESHACER = 6000;
 
+// ---------- Mi cartera (Decisión 53) ----------
+//
+// Seis estados y no los doce de Licitandum: una pyme lleva una o dos
+// ofertas a la vez y quiere saber qué tiene entre manos, no gestionar un
+// proyecto. "No me presento" no es "no me interesa": encaja, pero no
+// compensa, y no enseña nada al filtro.
+const ESTADOS_CARTERA = {
+  interesa:   'Me interesa',
+  preparando: 'Preparo la oferta',
+  presentada: 'Oferta presentada',
+  ganada:     'Ganada',
+  perdida:    'Perdida',
+  descartada: 'No me presento',
+};
+// Lo que aún reclama algo: presentarse o esperar el resultado.
+const ACTIVOS = ['interesa', 'preparando', 'presentada'];
+
 // Envía ya un descarte pendiente. Por fetch y no por la librería por dos
 // motivos: con la empresa del descarte fija en `x-perfil` (si entre medias
 // se cambia de empresa, la librería mandaría la nueva), y con keepalive,
@@ -8323,10 +8493,15 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
                                      pestanaInicial = 'todo') {
   const miLista = ++listaVigente;
   const vigente = () => miLista === listaVigente;
-  if (!volviendo) irA('contratos', { pestana: 'todo' }, true);
+  if (!volviendo) irA('contratos', { pestana: pestanaInicial }, true);
   raiz.className = 'envoltorio ancho';
   raiz.innerHTML = `<div class="centro"><p class="guia">Cargando tus contratos...</p></div>`;
 
+
+  // A la vez que la lista, no después: son independientes.
+  const promesaCartera = pedir('mi_cartera', {}, {
+    alCambiar: d => { if (vigente()) ponerCartera(d); },
+  });
 
   const { data, error } = await pedirContratos(perfil.id, nuevos => {
     // Si algo cambió por detrás, se repinta sin que el cliente
@@ -8349,6 +8524,13 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     .map(o => ({ ...o, dias: diasHasta(o.fecha_limite) }))
     .sort((a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9));
   const DATOS = preparar(data);
+
+  // La cartera de esta empresa, por contrato (ver `pintarCartera`). Vacía
+  // y sin pestaña hasta que llega; si la base no tiene la función (la web
+  // publicada antes que la migración), todo sigue como antes de existir.
+  const CARTERA = new Map();
+  let CARTERA_DISPONIBLE = false;
+  let carteraCargada = false;
 
   // Datos nuevos llegados por detrás (refresco de la caché o cribado de
   // fondo). Antes solo se repintaba la lista: el contador de la pestaña y
@@ -8392,9 +8574,16 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     <h1 id="titular" style="margin-top:30px"></h1>
     <div class="pestanas" role="tablist">
       <button class="pestana" role="tab" id="p-todo" aria-selected="true">
-        Todos los abiertos<span class="cuantas" id="c-todo"></span></button>
+        <!-- En el móvil, "Abiertos": con la tercera pestaña, "Mi cartera"
+             quedaba cortada fuera de la pantalla. -->
+        <span class="rotulo-largo">Todos los abiertos</span><span class="rotulo-corto">Abiertos</span><span class="cuantas" id="c-todo"></span></button>
       <button class="pestana" role="tab" id="p-hoy" aria-selected="false">
         Novedades<span class="cuantas" id="c-hoy"></span></button>
+      <!-- Lo que el cliente lleva: guardado, preparando, presentado y su
+           resultado (Decisión 53). Oculta hasta saber que la base la
+           tiene: así la web puede publicarse antes que la migración. -->
+      <button class="pestana" role="tab" id="p-cartera" aria-selected="false" hidden>
+        Mi cartera<span class="cuantas" id="c-cartera"></span></button>
     </div>
     <div class="filtros">
       <select id="f-veredicto">
@@ -8449,7 +8638,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     <p class="explica" id="explica">${perfil.cif ? `Cada vez que marcas un
     contrato como <strong>no me interesa</strong> o <strong>sí me
     interesa</strong>, tu filtro aprende. A las pocas correcciones lo
-    ajustamos y vuelves a ver la lista con lo que de verdad te encaja.` : `Tu
+    ajustamos y vuelves a ver la lista con lo que de verdad te encaja. Lo
+    que te interesa queda en <strong>Mi cartera</strong>, con su plazo.` : `Tu
     lista sale de lo que nos contaste de tu empresa, así que al principio
     falla más que la de quien ya ha ganado contratos. <strong>Lo que más la
     afina son tus primeras correcciones</strong>:
@@ -8501,7 +8691,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
       }, () => { /* sin cuenta, el aviso se queda sin ella */ });
   }
 
-  const bloqueFecha = o => {
+  // `pasado`: cómo se dice un plazo ya cerrado. En la cartera no es
+  // "vencido" (suena a descuido), es simplemente "cerrado".
+  const bloqueFecha = (o, pasado = 'vencido') => {
     if (o.dias == null) return `<div class="fecha sinplazo"><span class="dia">Sin plazo</span></div>`;
     // El día que vale de verdad: un plazo a las 00:00 es el final del
     // anterior (ver `plazoEfectivo`).
@@ -8512,7 +8704,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     //
     // De otro año, el año en vez de la cuenta: "6 feb · en 1221 días" no
     // decía de qué año era, y una cifra así no se lee de un vistazo.
-    const c = o.dias < 0 ? 'vencido'
+    const c = o.dias < 0 ? pasado
             : o.dias === 0 ? 'hoy'
             : o.dias === 1 ? 'mañana'
             : +p.year !== anioEnCurso() ? `de ${p.year}`
@@ -8520,7 +8712,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     // Tres días, no siete. Con siete se marcaba media lista, y un aviso
     // que sale en la mayoría de las filas deja de avisar: se convierte
     // en ruido y enseña a ignorarlo.
-    return `<div class="fecha ${o.dias <= 3 ? 'apura' : ''}">
+    return `<div class="fecha ${o.dias >= 0 && o.dias <= 3 ? 'apura' : ''}">
       <span class="dia">${p.day} ${MESES[+p.month-1]}</span>
       <span class="cuenta-dias">${c}</span></div>`;
   };
@@ -8701,8 +8893,28 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   // mientras tanto o si tiene menos de dos.
   let SECTORES = [];
 
+  // Cada pintado rehace la lista entera. Lo que el cliente tenía a medio
+  // escribir en unas notas y dónde estaba el foco se recogen antes y se
+  // devuelven después: si no, un refresco de fondo le borraba la nota
+  // que estaba escribiendo.
   function pintar() {
     if (!vigente() || !document.getElementById('lista')) return;
+    const foco = recordarFoco();
+    pintarSinFoco();
+    restaurarFoco(foco);
+  }
+
+  function pintarSinFoco() {
+    engancharLista();
+    // En la cartera los filtros no aplican (es lo suyo, no lo abierto), y
+    // la explicación habla de corregir el filtro.
+    const enCartera = pestana === 'cartera';
+    // Con `style` y no con `hidden`: la hoja le da `display:flex`, que
+    // gana al atributo.
+    document.querySelector('.filtros').style.display = enCartera ? 'none' : '';
+    const explica_ = document.getElementById('explica');
+    if (explica_) explica_.style.display = enCartera ? 'none' : '';
+    if (enCartera) return pintarCartera();
     guardarFiltros();
     document.getElementById('quitar-filtros').hidden = !hayFiltros();
     const ver = document.getElementById('f-veredicto').value;
@@ -8753,8 +8965,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     // de pantalla los leía como texto suelto.
     document.getElementById('lista').innerHTML = vistos.length ? vistos.map((o,i) => `
       <div class="fila-envoltorio">
-      <div class="fila" data-i="${i}" role="button" tabindex="0"
-           aria-expanded="false" aria-controls="d${i}">
+      <div class="fila" data-i="${i}" data-id="${esc(o.id_licitacion)}" role="button" tabindex="0"
+           aria-expanded="${ABIERTAS.has(o.id_licitacion)}" aria-controls="d${i}">
         ${bloqueFecha(o)}
         <div><p class="t">${esc(o.titulo)}</p>
           <p class="meta">${esc([o.organo, lugar(o)].filter(Boolean).join(' · '))}${
@@ -8766,7 +8978,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           ${o.dias_sin_verificar > 90
             ? `<span class="sin-verificar">Sin movimiento desde hace
                ${o.dias_sin_verificar} días · comprueba en el expediente</span>` : ''}
-          ${o.correccion
+          ${CARTERA.has(o.id_licitacion)
+            ? marcaCartera(CARTERA.get(o.id_licitacion).estado)
+            : o.correccion
             ? `<span class="confirmado">Confirmado como tuyo</span>`
             : `<span class="acciones">
                  <button type="button" class="accion si" data-si="${esc(o.id_licitacion)}">Sí me interesa</button>
@@ -8777,7 +8991,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         <div class="derecha"><div class="importe">${euros(o.presupuesto) ?? 'sin importe'}</div>
           <span class="marca ${o.veredicto}">${o.veredicto === 'si' ? 'para mí' : 'puede ser para mí'}</span></div>
       </div>
-      <section class="detalle" id="d${i}">
+      <section class="detalle ${ABIERTAS.has(o.id_licitacion) ? 'abierto' : ''}" id="d${i}">
         <!-- El motivo del cribado NO se enseña.
              Es el razonamiento interno del clasificador —"mantenimiento de
              dispositivos CR, pero no se especifica que sean de diagnóstico
@@ -8809,6 +9023,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
               ? ' — lleva mucho parado, conviene comprobarlo' : ''}</dd>
         </dl>
         <div class="requisitos" data-requisitos="${esc(o.id_licitacion)}"></div>
+        ${bloqueCartera(o.id_licitacion)}
         ${VIABILIDAD_VISIBLE ? `<button class="principal" data-analizar="${esc(o.id_licitacion)}"
                 style="margin-right:10px">Analizar viabilidad</button>` : ''}
         ${o.enlace ? `<a class="ver" href="${esc(o.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
@@ -8829,27 +9044,13 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     document.querySelector('[data-quitar-filtros]')
       ?.addEventListener('click', quitarFiltros);
 
-    // El botón de analizar vive en el DETALLE, que es hermano de la
-    // fila y no hijo suyo. Enganchado a `.fila` como los demás, el clic
-    // no llegaba nunca: hay que escuchar en la lista, que contiene los
-    // dos.
-    const lista_ = document.getElementById('lista');
-    if (!lista_.dataset.conAnalisis) {
-      lista_.dataset.conAnalisis = '1';
-      lista_.addEventListener('click', ev => {
-        const b = ev.target.closest('[data-analizar]');
-        if (!b) return;
-        ev.stopPropagation();
-        pantallaViabilidad(perfil, session, false, b.dataset.analizar);
-      });
-    }
-
     raiz.querySelectorAll('.fila').forEach(f => {
       const alternar = () => {
         const abierta = document.getElementById('d' + f.dataset.i)
           .classList.toggle('abierto');
         // Lo dice al lector de pantalla y, por CSS, deja el título entero.
         f.setAttribute('aria-expanded', String(abierta));
+        if (abierta) ABIERTAS.add(f.dataset.id); else ABIERTAS.delete(f.dataset.id);
       };
       f.onclick = ev => {
         // Los botones de corrección viven dentro de la fila para que
@@ -8858,13 +9059,587 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         const accion = ev.target.closest('.accion');
         if (accion) {
           ev.stopPropagation();
-          if (accion.dataset.si) corregir(accion.dataset.si, true);
+          // Con la cartera, "sí me interesa" la guarda ahí (y la base apunta
+          // la corrección igual). Sin ella, como siempre.
+          if (accion.dataset.si && CARTERA_DISPONIBLE) ponerEstado(accion.dataset.si, 'interesa');
+          else if (accion.dataset.si) corregir(accion.dataset.si, true);
           else pedirMotivo(accion.dataset.no, accion);
           return;
         }
         alternar();
       };
       // Lo que un <button> traía de serie: Intro y espacio la despliegan.
+      f.onkeydown = ev => {
+        if (ev.target !== f || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+        ev.preventDefault();
+        alternar();
+      };
+    });
+  }
+
+  // ---------- Mi cartera ----------
+  //
+  // Lo que el cliente lleva entre manos: lo que le interesa, lo que
+  // prepara, lo presentado y su resultado (Decisión 53). Sin esto, quien
+  // decide presentarse se lleva el contrato a un Excel y deja de entrar:
+  // la lista solo enseña lo abierto, y lo presentado desaparece de ella
+  // al cerrar el plazo.
+  //
+  // El resultado llega solo: la base cruza la adjudicación con su NIF
+  // (`mi_cartera`). Se propone y el cliente lo confirma con un clic; no
+  // se cambia el estado por él, porque un NIF mal publicado o una UTE
+  // que no conocemos lo dejarían ganado o perdido sin serlo.
+
+  // Detalles desplegados, por contrato. Un cambio de estado repinta la
+  // lista, y sin esto la ficha en la que estaba trabajando se cerraba.
+  const ABIERTAS = new Set();
+  // Notas e importes escritos y aún sin guardar, por contrato. Se apuntan
+  // al teclear (`engancharLista`), no comparando la página con los datos:
+  // así, si los datos cambian por detrás (deshacer, un refresco), lo
+  // viejo de la página no se toma por algo que escribió él.
+  const BORRADORES = new Map();
+
+  // Un selector que vuelva a encontrar el elemento enfocado en la lista
+  // nueva, y dónde estaba el cursor si era un campo de texto.
+  function recordarFoco() {
+    const a = document.activeElement;
+    if (!a || a === document.body || !document.getElementById('lista')?.contains(a)) return null;
+    const caja = a.closest('.bloque-cartera[data-id]');
+    const id = caja ? CSS.escape(caja.dataset.id) : null;
+    let sel = null;
+    if (a.dataset.cartera) sel = `[data-cartera="${CSS.escape(a.dataset.cartera)}"][data-estado="${a.dataset.estado}"]`;
+    else if (caja && a.matches('[data-nota]')) sel = `.bloque-cartera[data-id="${id}"] [data-nota]`;
+    else if (caja && a.matches('[data-oferta]')) sel = `.bloque-cartera[data-id="${id}"] [data-oferta]`;
+    else if (a.dataset.guardarNota) sel = `[data-guardar-nota="${CSS.escape(a.dataset.guardarNota)}"]`;
+    else if (a.matches('.fila[data-id]')) sel = `.fila[data-id="${CSS.escape(a.dataset.id)}"]`;
+    if (!sel) return null;
+    return { sel, inicio: a.selectionStart, fin: a.selectionEnd };
+  }
+
+  function restaurarFoco(foco) {
+    if (!foco) return;
+    const b = document.querySelector(foco.sel);
+    if (!b) return;
+    b.focus({ preventScroll: true });
+    if (foco.inicio != null && b.setSelectionRange) {
+      try { b.setSelectionRange(foco.inicio, foco.fin); } catch { /* no es de texto */ }
+    }
+  }
+  let cerradasAbiertas = false;
+  // Cada escritura invalida los refrescos que estuvieran en camino: si
+  // llegara uno pedido antes, devolvería el estado de antes del clic.
+  let escrituras = 0;
+
+  function ponerCartera(filas) {
+    CARTERA.clear();
+    (Array.isArray(filas) ? filas : []).forEach(c => CARTERA.set(c.id_licitacion, c));
+    CARTERA_DISPONIBLE = true;
+    carteraCargada = true;
+    const boton = document.getElementById('p-cartera');
+    if (boton) boton.hidden = false;
+    pintarContadores();
+    pintar();
+  }
+
+  // Lo que se acaba de cambiar ya está aquí; por detrás se trae lo que
+  // dice la base (resultado de la adjudicación, copia vigente...).
+  function refrescarCartera() {
+    const yo = ++escrituras;
+    olvidar('mi_cartera');
+    pedir('mi_cartera').then(r => {
+      if (!r.error && vigente() && yo === escrituras) ponerCartera(r.data);
+    }, () => { /* el refresco nunca estorba */ });
+  }
+
+  // Abierto para presentarse: publicado y con plazo por delante.
+  const sigueAbierto = c => (c.estado_licitacion ?? 'PUB') === 'PUB'
+    && (c.fecha_limite == null || diasHasta(c.fecha_limite) >= 0);
+
+  const marcaCartera = estado =>
+    `<span class="en-cartera e-${estado}">${ESTADOS_CARTERA[estado] ?? ''}</span>`;
+
+  const porcentaje = x => new Intl.NumberFormat('es-ES',
+    { style: 'percent', maximumFractionDigits: 1 }).format(x);
+
+  // "45.000", "45.000,50", "45000.5" o "45000 €". Vacío es "sin importe";
+  // lo que no se entiende, NaN.
+  function leerImporte(texto) {
+    const t = String(texto ?? '').replace(/[€\s]/g, '');
+    if (!t) return null;
+    if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(t)) return Number(t.replace(/\./g, '').replace(',', '.'));
+    if (/^\d+(,\d{1,2})?$/.test(t)) return Number(t.replace(',', '.'));
+    if (/^\d+(\.\d{1,2})?$/.test(t)) return Number(t);
+    return NaN;
+  }
+  const importeEditable = n => n == null ? '' : new Intl.NumberFormat('es-ES',
+    { useGrouping: 'always', maximumFractionDigits: 2 }).format(n);
+
+  // Los botones de estado y, si ya lo lleva, sus notas. Va en la ficha de
+  // la lista de abiertos y en la de la cartera.
+  function bloqueCartera(id) {
+    if (!CARTERA_DISPONIBLE) return '';
+    const c = CARTERA.get(id);
+    const abierto = c ? sigueAbierto(c) : true;
+    // Con el plazo abierto, ganar o perder todavía no existe.
+    const estados = abierto
+      ? ['interesa', 'preparando', 'presentada', 'descartada']
+      : Object.keys(ESTADOS_CARTERA);
+    const avisos = perfil.avisos
+      ? 'Te recordamos el plazo por correo 7, 3 y 1 día antes de que cierre.'
+      : 'Si enciendes los avisos (la campana de arriba), te recordamos el plazo por correo 7, 3 y 1 día antes.';
+    const borrador = BORRADORES.get(id);
+    return `
+      <div class="bloque-cartera" data-id="${esc(id)}">
+        <p class="rotulo-cartera">${c ? 'En tu cartera' : 'Llévalo en tu cartera'}</p>
+        <div class="estados-cartera" role="group" aria-label="Estado en tu cartera">${
+          estados.map(e => `<button type="button" class="estado-cartera" data-cartera="${esc(id)}"
+            data-estado="${e}" aria-pressed="${c?.estado === e}">${ESTADOS_CARTERA[e]}</button>`).join('')}</div>
+        ${c ? `
+          <div class="notas-cartera">
+            <label class="campo-nota">Notas
+              <textarea data-nota maxlength="2000" rows="3"
+                placeholder="Qué falta, con quién has hablado, por qué no vas...">${esc(borrador?.nota ?? c.nota ?? '')}</textarea></label>
+            <label class="campo-oferta">Tu oferta, sin IVA
+              <input type="text" data-oferta inputmode="decimal" autocomplete="off"
+                placeholder="Por ejemplo, 45.000" value="${esc(borrador?.oferta ?? importeEditable(c.importe_oferta))}"></label>
+          </div>
+          <div class="pie-cartera">
+            <button type="button" class="ver" data-guardar-nota="${esc(id)}">Guardar notas</button>
+            <button type="button" class="enlace" data-quitar="${esc(id)}">Quitar de la cartera</button>
+          </div>
+          <p class="ayuda-cartera">${c.importe_oferta == null && ['preparando', 'presentada', 'perdida'].includes(c.estado)
+            ? (c.adjudicacion?.resultado === 'otra'
+                ? 'Apunta tu oferta y te diremos a cuánto quedaste de la ganadora.'
+                : 'Apunta tu oferta: cuando se adjudique te diremos a cuánto quedaste de la ganadora.')
+            : abierto ? avisos : ''}</p>`
+        : `<p class="ayuda-cartera">${avisos}</p>`}
+      </div>`;
+  }
+
+  async function ponerEstado(id, estado, base = null) {
+    const antes = CARTERA.get(id);
+    const o = DATOS.find(x => x.id_licitacion === id) ?? base;
+    if ((!antes && !o) || antes?.estado === estado) return;
+    const ahora = new Date().toISOString();
+    CARTERA.set(id, antes ? { ...antes, estado, cambiado: ahora } : {
+      id_licitacion: id, estado, nota: null, importe_oferta: null,
+      creado: ahora, cambiado: ahora, plazo_visto: o.fecha_limite,
+      republicada: false, titulo: o.titulo, organo: o.organo,
+      provincia: o.provincia, comunidad: o.comunidad,
+      presupuesto: o.presupuesto, presupuesto_base: o.presupuesto_base,
+      duracion_meses: o.duracion_meses, enlace: o.enlace,
+      fecha_limite: o.fecha_limite, estado_licitacion: o.estado_licitacion ?? 'PUB',
+      sistema: o.sistema, viabilidad: o.viabilidad, adjudicacion: o.adjudicacion ?? null,
+    });
+    // Guardar es decir que interesa: la base apunta la corrección si no
+    // la había, y la fila deja de preguntar.
+    const enLista = DATOS.find(x => x.id_licitacion === id);
+    const corregidaAntes = enLista?.correccion;
+    if (enLista) enLista.correccion = true;
+    escrituras++;
+    pintarContadores();
+    pintar();
+
+    let r;
+    try {
+      r = await sb.rpc('poner_en_cartera', { licitacion: id, nuevo_estado: estado });
+    } catch (error) {
+      r = { error };
+    }
+    if (r.error || !r.data?.ok) {
+      if (antes) CARTERA.set(id, antes); else CARTERA.delete(id);
+      if (enLista) enLista.correccion = corregidaAntes;
+      pintarContadores();
+      pintar();
+      recado('No se ha podido guardar. Inténtalo de nuevo.');
+      return;
+    }
+    olvidar('contratos', 'analizables');
+    refrescarCartera();
+
+    if (antes) {
+      recado(`Marcado como «${ESTADOS_CARTERA[estado]}»`);
+      return;
+    }
+    recado('Guardado en tu cartera', pestana === 'cartera' ? null
+      : { texto: 'Ver mi cartera', hacer: () => cambiarPestana('cartera') });
+    // Cuenta como un "sí me interesa" nuevo: a las tres, se ajusta el
+    // filtro, como con el botón.
+    if (enLista && corregidaAntes == null) {
+      if (correccionesHechas != null) { correccionesHechas++; pintarLlevas(); }
+      if (vigente() && r.data.pendientes >= CORRECCIONES_PARA_AJUSTAR) ajustarFiltro();
+    }
+  }
+
+  async function quitarDeCartera(id) {
+    const antes = CARTERA.get(id);
+    if (!antes) return;
+    CARTERA.delete(id);
+    ABIERTAS.delete(id);
+    BORRADORES.delete(id);
+    escrituras++;
+    pintarContadores();
+    pintar();
+    let r;
+    try {
+      r = await sb.rpc('quitar_de_cartera', { licitacion: id });
+    } catch (error) {
+      r = { error };
+    }
+    if (r.error || !r.data?.ok) {
+      CARTERA.set(id, antes);
+      pintarContadores();
+      pintar();
+      recado('No se ha podido quitar. Inténtalo de nuevo.');
+      return;
+    }
+    olvidar('mi_cartera');
+    // Deshacer lo devuelve tal cual, con sus notas.
+    recado('Quitado de tu cartera', {
+      texto: 'Deshacer',
+      hacer: async () => {
+        await ponerEstado(id, antes.estado, antes);
+        if (antes.nota || antes.importe_oferta != null)
+          await guardarNotas(id, null, antes.nota, antes.importe_oferta);
+      },
+    }, ESPERA_DESHACER);
+  }
+
+  // Desde la ficha (`boton`) o, al deshacer, con los valores dados.
+  async function guardarNotas(id, boton, nota = null, importe = null) {
+    if (boton) {
+      const caja = boton.closest('.bloque-cartera');
+      const campo = caja.querySelector('[data-oferta]');
+      nota = caja.querySelector('[data-nota]').value.trim() || null;
+      importe = leerImporte(campo.value);
+      if (Number.isNaN(importe)) {
+        recado('No entendemos ese importe. Escríbelo así: 45.000 o 45.000,50');
+        campo.focus();
+        return;
+      }
+      boton.disabled = true;
+    }
+    let r;
+    try {
+      r = await sb.rpc('anotar_en_cartera', { licitacion: id, texto: nota, importe });
+    } catch (error) {
+      r = { error };
+    }
+    if (boton?.isConnected) boton.disabled = false;
+    if (r.error || !r.data?.ok) {
+      recado('No se han podido guardar las notas. Inténtalo de nuevo.');
+      return;
+    }
+    const c = CARTERA.get(id);
+    if (c) CARTERA.set(id, { ...c, nota, importe_oferta: importe });
+    BORRADORES.delete(id);
+    refrescarCartera();
+    if (boton) recado('Notas guardadas');
+    // Se repinta para que la fila diga "tu oferta" y los campos queden
+    // como se guardaron; la ficha sigue abierta (ABIERTAS) y el foco, en
+    // el botón.
+    pintar();
+  }
+
+  async function plazoVisto(id) {
+    const c = CARTERA.get(id);
+    if (!c) return;
+    CARTERA.set(id, { ...c, plazo_visto: c.fecha_limite });
+    escrituras++;
+    pintar();
+    try { await sb.rpc('dar_plazo_por_visto', { licitacion: id }); }
+    catch { /* si no llega, vuelve a avisar la próxima vez: nada se pierde */ }
+    olvidar('mi_cartera');
+  }
+
+  // Los botones de la lista y de las fichas. Se escucha en la lista, que
+  // contiene a las dos (la ficha es hermana de la fila, no hija), y una
+  // sola vez: la lista se repinta, pero el elemento es el mismo.
+  function engancharLista() {
+    const lista_ = document.getElementById('lista');
+    if (!lista_ || lista_.dataset.enganchada) return;
+    lista_.dataset.enganchada = '1';
+    lista_.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-analizar], [data-cartera], [data-guardar-nota], '
+        + '[data-quitar], [data-visto], [data-a-mercado], [data-ir-todo]');
+      if (!b) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      const d = b.dataset;
+      if (d.analizar) return pantallaViabilidad(perfil, session, false, d.analizar);
+      if (d.cartera) return ponerEstado(d.cartera, d.estado);
+      if (d.guardarNota) return guardarNotas(d.guardarNota, b);
+      if (d.quitar) return quitarDeCartera(d.quitar);
+      if (d.visto) return plazoVisto(d.visto);
+      if (d.irTodo !== undefined) return cambiarPestana('todo');
+      if (d.aMercado) {
+        irA('mercado', { cif: d.aMercado });
+        pantallaMercado(perfil, session, true, d.aMercado);
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      }
+    });
+    lista_.addEventListener('input', ev => {
+      const caja = ev.target.closest('.bloque-cartera[data-id]');
+      if (!caja || !ev.target.matches('[data-nota], [data-oferta]')) return;
+      BORRADORES.set(caja.dataset.id, {
+        nota: caja.querySelector('[data-nota]').value,
+        oferta: caja.querySelector('[data-oferta]').value,
+      });
+    });
+    // Ctrl/Cmd + Intro en las notas guarda, como en el motivo del descarte.
+    lista_.addEventListener('keydown', ev => {
+      if (ev.key !== 'Enter' || !(ev.metaKey || ev.ctrlKey)) return;
+      const caja = ev.target.closest('.bloque-cartera');
+      caja?.querySelector('[data-guardar-nota]')?.click();
+    });
+  }
+
+  // Quién ganó, en una línea: "Limpiezas X por 42.000 €", y si hay varios
+  // lotes, cuántas empresas más.
+  function quienGano(adj) {
+    const g = (adj?.ganadores ?? []).filter(x => !x.tuyo);
+    if (!g.length) return 'otra empresa';
+    const primero = `${esc(g[0].empresa ?? 'otra empresa')}${
+      g[0].importe != null ? ` por ${euros(g[0].importe)}` : ''}`;
+    return g.length > 1
+      ? `${primero} y ${plural(g.length - 1, 'empresa más', 'empresas más')} (por lotes)`
+      : primero;
+  }
+
+  // Lo que se aprende de una adjudicación: a cuánto quedó su oferta de la
+  // ganadora y cuántas se presentaron. Solo con un único adjudicatario:
+  // con lotes, no sabemos a cuál se presentó.
+  function comparativa(c) {
+    const g = c.adjudicacion?.ganadores ?? [];
+    if (g.length !== 1) return '';
+    const x = g[0], trozos = [];
+    const mia = Number(c.importe_oferta);
+    if (!x.tuyo && c.importe_oferta != null && mia > 0 && x.importe != null) {
+      const dif = (Number(x.importe) - mia) / mia;
+      trozos.push(Math.abs(dif) < 0.005 ? 'La ganadora ofertó prácticamente lo mismo que tú'
+        : dif < 0 ? `La ganadora ofertó un ${porcentaje(-dif)} menos que tú`
+        : `La ganadora ofertó un ${porcentaje(dif)} más que tú: pesaron otros criterios, no solo el precio`);
+    }
+    if (x.licitadores) trozos.push(`se presentaron ${plural(x.licitadores, 'oferta', 'ofertas')}`);
+    if (x.oferta_baja && x.oferta_alta && x.oferta_alta > x.oferta_baja)
+      trozos.push(`entre ${euros(x.oferta_baja)} y ${euros(x.oferta_alta)}`);
+    if (!trozos.length) return '';
+    const texto = trozos.join(', ');
+    return `<span class="situacion tenue">${texto[0].toUpperCase() + texto.slice(1)}.</span>`;
+  }
+
+  // La línea de estado de cada fila de la cartera, con la acción que toca.
+  function situacion(c) {
+    const id = esc(c.id_licitacion);
+    const boton = (estado, texto) => `<button type="button" class="accion" data-cartera="${id}"
+      data-estado="${estado}">${texto}</button>`;
+    const quitar = `<button type="button" class="accion" data-quitar="${id}">Quitar de la cartera</button>`;
+    const adj = c.adjudicacion;
+    const abierto = sigueAbierto(c);
+    const trozos = [];
+
+    // El organismo amplía o adelanta el plazo: se dice hasta que lo ve.
+    if (abierto && c.plazo_visto && c.fecha_limite
+        && Math.abs(new Date(c.fecha_limite) - new Date(c.plazo_visto)) > 60_000)
+      trozos.push(`<span class="situacion aviso-plazo">El organismo ha cambiado el plazo:
+        antes ${fechaCorta(plazoEfectivo(c.plazo_visto))}, ahora ${fechaCorta(plazoEfectivo(c.fecha_limite))}.
+        <button type="button" class="accion" data-visto="${id}">Entendido</button></span>`);
+
+    if (c.estado === 'interesa' || c.estado === 'preparando') {
+      if (adj?.resultado === 'retirada')
+        trozos.push(`<span class="situacion">El organismo lo ha anulado. ${quitar}</span>`);
+      else if (!abierto)
+        trozos.push(`<span class="situacion">¿Presentaste oferta?
+          <span class="acciones">${boton('presentada', 'Sí, la presenté')}${
+            boton('descartada', 'No me presenté')}</span></span>`);
+    } else if (c.estado === 'presentada') {
+      const r = adj?.resultado;
+      if (r === 'tuya') {
+        const mios = (adj.ganadores ?? []).filter(x => x.tuyo);
+        const lotes = adj.lotes > 1 && mios.some(x => x.lote)
+          ? ` (${mios.length === 1 ? 'lote' : 'lotes'} ${mios.map(x => esc(x.lote)).join(', ')})` : '';
+        const ute = mios.find(x => x.en_ute);
+        trozos.push(`<span class="situacion buena">Adjudicado a ${ute
+          ? `la UTE ${esc(ute.empresa)}, de la que tu empresa es socia` : 'tu empresa'}${lotes}.
+          <span class="acciones">${boton('ganada', 'Marcar como ganada')}</span></span>`);
+      } else if (r === 'otra') {
+        // Sin NIF no sabemos si la ganadora es él: se le pregunta.
+        trozos.push(`<span class="situacion">Adjudicado a ${quienGano(adj)}.
+          <span class="acciones">${boton('perdida', 'Marcar como perdida')}${
+            perfil.cif ? '' : boton('ganada', 'Era mi empresa')}</span></span>`);
+      } else if (r === 'desierta') {
+        trozos.push(`<span class="situacion">Ha quedado desierto: no se adjudicó a nadie.
+          <span class="acciones">${quitar}</span></span>`);
+      } else if (r === 'retirada') {
+        trozos.push(`<span class="situacion">El organismo lo ha retirado.
+          <span class="acciones">${quitar}</span></span>`);
+      } else {
+        trozos.push(`<span class="situacion tenue">${adj?.evaluando || c.estado_licitacion === 'EV'
+          ? 'El organismo está valorando las ofertas.'
+          : 'Esperando la adjudicación. Te diremos quién gana en cuanto se publique.'}</span>`);
+      }
+      trozos.push(comparativa(c));
+    } else if (c.estado === 'ganada' || c.estado === 'perdida') {
+      if (c.estado === 'perdida' && adj?.resultado === 'otra')
+        trozos.push(`<span class="situacion tenue">Lo ganó ${quienGano(adj)}.</span>`);
+      trozos.push(comparativa(c));
+    }
+    return trozos.join('');
+  }
+
+  // Quién ganó cada lote, en la ficha, con enlace a su ficha en Empresas.
+  function detalleAdjudicacion(c) {
+    const adj = c.adjudicacion;
+    if (sigueAbierto(c)) return '';
+    if (!adj?.resultado) return `<dt>Adjudicación</dt><dd><span style="color:var(--tenue)">${
+      adj?.evaluando || c.estado_licitacion === 'EV' ? 'en evaluación' : 'todavía no publicada'}</span></dd>`;
+    const textos = {
+      desierta: 'Desierto: no se adjudicó a nadie.',
+      retirada: 'Anulado o retirado por el organismo.',
+    };
+    if (textos[adj.resultado]) return `<dt>Adjudicación</dt><dd>${textos[adj.resultado]}</dd>`;
+    const TOPE = 6;
+    const g = adj.ganadores ?? [];
+    const lineas = g.slice(0, TOPE).map(x => `<span class="ganador">${
+      adj.lotes > 1 && x.lote ? `Lote ${esc(x.lote)}: ` : ''}${
+      x.tuyo ? `<strong>${esc(x.empresa)}</strong> <span class="tuyo">${x.en_ute ? 'tu UTE' : 'tu empresa'}</span>`
+      : x.cif ? `<a href="#" class="enlace-ficha" data-a-mercado="${esc(x.cif)}">${esc(x.empresa)}</a>`
+      : esc(x.empresa)}${x.importe != null ? ` · ${euros(x.importe)}` : ''}${
+      x.licitadores ? ` · ${plural(x.licitadores, 'oferta', 'ofertas')}` : ''}</span>`);
+    if (g.length > TOPE) lineas.push(`<span class="ganador" style="color:var(--tenue)">y ${
+      plural(g.length - TOPE, 'lote más', 'lotes más')}</span>`);
+    return `<dt>Adjudicación</dt><dd>${adj.fecha ? `${fechaCorta(adj.fecha)}<br>` : ''}${lineas.join('')}</dd>`;
+  }
+
+  function filaCartera(c, i) {
+    const abierta = ABIERTAS.has(c.id_licitacion);
+    const abierto = sigueAbierto(c);
+    return `
+      <div class="fila-envoltorio">
+      <div class="fila" data-c="${i}" data-id="${esc(c.id_licitacion)}" role="button" tabindex="0"
+           aria-expanded="${abierta}" aria-controls="c${i}">
+        ${bloqueFecha(c, 'cerrado')}
+        <div><p class="t">${esc(c.titulo || 'Contrato sin título')}</p>
+          <p class="meta">${esc([c.organo, lugar(c)].filter(Boolean).join(' · '))}${
+            SISTEMAS[c.sistema] ? `<span class="marca-ute marca-sistema">${
+              SISTEMAS[c.sistema].marca}</span>` : ''}</p>
+          ${marcaCartera(c.estado)}${abierto && VIABILIDAD_VISIBLE && VIABILIDAD_FILA[c.viabilidad]
+            ? `<span class="viab ${c.viabilidad}">${VIABILIDAD_FILA[c.viabilidad]}</span>` : ''}
+          ${situacion(c)}
+          ${c.nota ? `<span class="situacion tenue nota-fila">${esc(c.nota.length > 120
+            ? c.nota.slice(0, 117).trimEnd() + '…' : c.nota)}</span>` : ''}
+        </div>
+        <div class="derecha"><div class="importe">${euros(c.presupuesto) ?? 'sin importe'}</div>
+          ${c.importe_oferta != null ? `<span class="marca">tu oferta: ${euros(c.importe_oferta)}</span>` : ''}</div>
+      </div>
+      <section class="detalle ${abierta ? 'abierto' : ''}" id="c${i}">
+        <dl>
+          ${c.republicada ? `<dt>Aviso</dt><dd>El organismo volvió a publicar este
+            contrato. Te enseñamos la publicación nueva, que es la que vale.</dd>` : ''}
+          ${SISTEMAS[c.sistema] ? `<dt>Tipo</dt><dd>${esc(c.sistema)}
+            <br><span style="color:var(--tenue)">${SISTEMAS[c.sistema].explica}</span></dd>` : ''}
+          <dt>Órgano</dt><dd>${esc(c.organo ?? '—')}</dd>
+          <dt>Provincia</dt><dd>${esc(c.provincia
+            ?? (c.comunidad ? `sin precisar (${c.comunidad})` : 'no informada'))}</dd>
+          <dt>Presupuesto</dt><dd>${euros(c.presupuesto) ?? 'sin importe publicado'}</dd>
+          ${duracionTxt(c.duracion_meses) ? `<dt>Duración</dt><dd>${duracionTxt(c.duracion_meses)}</dd>` : ''}
+          <dt>Plazo</dt><dd>${plazoLargo(c.fecha_limite)}</dd>
+          ${detalleAdjudicacion(c)}
+          <dt>En tu cartera</dt><dd>desde el ${fechaCorta(c.creado)}</dd>
+        </dl>
+        ${bloqueCartera(c.id_licitacion)}
+        ${VIABILIDAD_VISIBLE && abierto ? `<button class="principal" data-analizar="${esc(c.id_licitacion)}"
+                style="margin-right:10px">Analizar viabilidad</button>` : ''}
+        ${c.enlace ? `<a class="ver" href="${esc(c.enlace)}" target="_blank" rel="noopener">Ver el expediente</a>` : ''}
+      </section></div>`;
+  }
+
+  function pintarCartera() {
+    const lista = document.getElementById('lista');
+    const titular = document.getElementById('titular');
+    if (!carteraCargada) {
+      titular.textContent = 'Tu cartera';
+      lista.innerHTML = `<p class="vacio">Cargando tu cartera...</p>`;
+      return;
+    }
+    const todas = [...CARTERA.values()].map(c => ({ ...c, dias: diasHasta(c.fecha_limite) }));
+    const porFecha = (a, b) => (a.dias ?? 9e9) - (b.dias ?? 9e9);
+    const recientes = (a, b) => String(b.fecha_limite ?? '').localeCompare(String(a.fecha_limite ?? ''));
+    const previas = todas.filter(c => c.estado === 'interesa' || c.estado === 'preparando');
+    const porPresentar = previas.filter(sigueAbierto).sort(porFecha);
+    const terminadas = previas.filter(c => !sigueAbierto(c)).sort(recientes);
+    // Lo que ya tiene resultado, arriba: es lo que pide un clic.
+    const esperando = todas.filter(c => c.estado === 'presentada')
+      .sort((a, b) => (!!b.adjudicacion?.resultado - !!a.adjudicacion?.resultado) || recientes(a, b));
+    const cerradas = todas.filter(c => !ACTIVOS.includes(c.estado))
+      .sort((a, b) => String(b.cambiado).localeCompare(String(a.cambiado)));
+
+    // El titular dice lo más urgente; el resto, la línea de debajo.
+    titular.textContent = !todas.length ? 'Tu cartera está vacía'
+      : porPresentar.length ? `Tienes ${plural(numero(porPresentar.length), 'contrato', 'contratos')} por presentar`
+      : terminadas.length ? `${plural(numero(terminadas.length), 'contrato', 'contratos')} con el plazo terminado`
+      : esperando.length ? `Esperas el resultado de ${plural(numero(esperando.length), 'oferta', 'ofertas')}`
+      : 'Nada pendiente en tu cartera';
+
+    if (!todas.length) {
+      lista.innerHTML = `
+        <div class="vacio-cartera">
+          <p><strong>Aquí llevas los contratos a los que te presentas.</strong></p>
+          <p>Pulsa <strong>Sí me interesa</strong> en un contrato, o ábrelo y
+          elige <strong>Preparo la oferta</strong>. Lo verás aquí con su plazo
+          y, cuando se adjudique, te diremos quién lo ha ganado.</p>
+          <p>${perfil.avisos
+            ? 'Te recordaremos cada plazo por correo 7, 3 y 1 día antes de que cierre.'
+            : 'Si enciendes los avisos (la campana de arriba), te recordaremos cada plazo por correo 7, 3 y 1 día antes.'}</p>
+          <button type="button" class="ver" data-ir-todo>Ver los contratos abiertos</button>
+        </div>`;
+      return;
+    }
+
+    // Lo que ha presentado y cómo le ha ido. El porcentaje, solo con tres
+    // resueltas: con una o dos, "ganas el 50 %" no dice nada.
+    const ganadas = todas.filter(c => c.estado === 'ganada').length;
+    const perdidas = todas.filter(c => c.estado === 'perdida').length;
+    const presentadas = ganadas + perdidas + esperando.length;
+    const resumen = presentadas ? `<p class="resumen-cartera">Has presentado
+      ${plural(presentadas, 'oferta', 'ofertas')}: ${[
+        ganadas && plural(ganadas, 'ganada', 'ganadas'),
+        perdidas && plural(perdidas, 'perdida', 'perdidas'),
+        esperando.length && `${numero(esperando.length)} sin resolver`,
+      ].filter(Boolean).join(', ')}.${ganadas + perdidas >= 3
+        ? ` Has ganado el ${porcentaje(ganadas / (ganadas + perdidas))} de las resueltas.` : ''}</p>`
+      : `<p class="resumen-cartera">${plural(numero(todas.length), 'contrato', 'contratos')} en tu cartera.</p>`;
+
+    let i = 0;
+    const grupo = (titulo, filas, explica) => filas.length ? `
+      <section class="grupo-cartera">
+        <h2>${titulo}<span class="cuantas">${numero(filas.length)}</span></h2>
+        ${explica ? `<p class="explica-grupo">${explica}</p>` : ''}
+        ${filas.map(c => filaCartera(c, i++)).join('')}
+      </section>` : '';
+
+    lista.innerHTML = resumen
+      + grupo('Por presentar', porPresentar)
+      + grupo('El plazo ha terminado', terminadas,
+              'Dinos si presentaste oferta y seguimos el resultado por ti.')
+      + grupo('Esperando resultado', esperando)
+      + (cerradas.length ? `
+        <details class="grupo-cartera cerradas" ${cerradasAbiertas ? 'open' : ''}>
+          <summary><h2>Cerrados<span class="cuantas">${numero(cerradas.length)}</span></h2></summary>
+          ${cerradas.map(c => filaCartera(c, i++)).join('')}
+        </details>` : '');
+
+    lista.querySelector('details.cerradas')?.addEventListener('toggle', ev => {
+      cerradasAbiertas = ev.target.open;
+    });
+    lista.querySelectorAll('.fila[data-c]').forEach(f => {
+      const alternar = () => {
+        const abierta = document.getElementById('c' + f.dataset.c).classList.toggle('abierto');
+        f.setAttribute('aria-expanded', String(abierta));
+        if (abierta) ABIERTAS.add(f.dataset.id); else ABIERTAS.delete(f.dataset.id);
+      };
+      // Los botones de la fila los atiende la lista (`engancharLista`).
+      f.onclick = ev => { if (!ev.target.closest('button, a')) alternar(); };
       f.onkeydown = ev => {
         if (ev.target !== f || (ev.key !== 'Enter' && ev.key !== ' ')) return;
         ev.preventDefault();
@@ -9300,6 +10075,10 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     const nuevas = DATOS.filter(o => o.es_novedad).length;
     document.getElementById('c-hoy').textContent = nuevas ? numero(nuevas) : '';
     document.getElementById('c-todo').textContent = numero(DATOS.length);
+    // Lo que tiene algo pendiente: por presentar o esperando resultado.
+    // Lo cerrado (ganado, perdido, no me presento) no reclama nada.
+    const vivas = [...CARTERA.values()].filter(c => ACTIVOS.includes(c.estado)).length;
+    document.getElementById('c-cartera').textContent = vivas ? numero(vivas) : '';
   }
   pintarContadores();
 
@@ -9326,10 +10105,12 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     if (!volviendo) irA('contratos', { pestana: cual });
     document.getElementById('p-hoy').setAttribute('aria-selected', cual === 'hoy');
     document.getElementById('p-todo').setAttribute('aria-selected', cual === 'todo');
+    document.getElementById('p-cartera').setAttribute('aria-selected', cual === 'cartera');
     repintar();
   }
   alPulsar('p-hoy', () => cambiarPestana('hoy'));
   alPulsar('p-todo', () => cambiarPestana('todo'));
+  alPulsar('p-cartera', () => cambiarPestana('cartera'));
   if (pestanaInicial !== 'todo') cambiarPestana(pestanaInicial, true);
 
   // La visita se marca por HABER ENTRADO, no solo por abrir la pestaña
@@ -9368,6 +10149,18 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
   ['f-veredicto','f-viabilidad','f-tamano','f-sector','f-texto'].forEach(id =>
     document.getElementById(id).addEventListener('input', repintar));
   pintar();
+
+  promesaCartera.then(r => {
+    if (!vigente()) return;
+    if (r.error) {
+      // Sin cartera en la base: la pestaña no aparece. Si se llegó a ella
+      // (enlace del correo, atrás del navegador), a la lista de siempre.
+      console.warn('Sin cartera:', r.error);
+      if (pestana === 'cartera') cambiarPestana('todo', true);
+      return;
+    }
+    ponerCartera(r.data);
+  }, () => { if (vigente() && pestana === 'cartera') cambiarPestana('todo', true); });
 
   // Por detrás: la primera vez puede tardar unos segundos (los escribe el
   // modelo), y la lista no tiene por qué esperarlos.
