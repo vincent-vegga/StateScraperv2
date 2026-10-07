@@ -1823,6 +1823,18 @@ regla de coherencia, ya corregida (ver arriba).
 - La versión del pliego: se relee si cambian sus documentos (dirección o
   huella), no si cambia el PDF detrás de la misma dirección (Decisión 16).
 
+**Añadido el 07/10/2026: presentarse no es ganar.** Un contrato salía
+"Difícil" en la fila y, en la ficha, todo era "Llegas". No se
+contradecían: la solvencia dice si puedes presentarte, y Viabilidad, si es
+fácil ganarlo (ahí, el 50 % de la puntuación era juicio de valor). Pero
+nada lo decía. Ahora la fila dice "Difícil de ganar", y la ficha pone
+encima de "Qué piden para presentarte" un apartado "Para ganarlo" con el
+porqué (`viabilidad_guardada.motivos`, migración
+`20261007170000_motivos_de_viabilidad.sql`). En la pantalla de Viabilidad
+no sale, porque allí el veredicto ya está arriba. De paso, "Confirmado
+como tuyo" (lo que marcó con "Sí me interesa") pasa a "Te interesa": se
+leía como "lo has ganado".
+
 ---
 
 ## Deuda técnica anotada

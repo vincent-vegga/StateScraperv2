@@ -2809,6 +2809,11 @@ select:focus{
 .requisitos li{margin:2px 0}
 .requisitos a{color:var(--texto);text-underline-offset:2px}
 .requisitos dd{overflow-wrap:anywhere}
+.requisitos .ganarlo{margin:0 0 16px;font-size:.92rem;line-height:1.5}
+.requisitos .ganarlo .regla{display:block;margin-top:2px}
+.requisitos .ganarlo.dificil strong{color:var(--acento)}
+.requisitos .ganarlo.cerrado strong{color:var(--no)}
+.requisitos .ganarlo.mio strong{color:var(--si)}
 .requisitos .cita{margin:4px 0 12px;font-size:.86rem;font-style:italic}
 .requisitos .origen{
   margin:0 0 12px;
@@ -8321,7 +8326,9 @@ async function cargarRequisitos(hueco) {
   // huecos de ese contrato que sigan en la página.
   document.querySelectorAll(`[data-requisitos="${CSS.escape(id)}"]`).forEach(h => {
     h.dataset.cargado = '1';
-    h.innerHTML = pintarRequisitos(REQUISITOS.get(clave));
+    // En Viabilidad, el veredicto ya está arriba con todo su análisis.
+    h.innerHTML = pintarRequisitos(REQUISITOS.get(clave),
+                                   { conViabilidad: !!h.closest('.detalle') });
   });
 }
 
@@ -8376,8 +8383,24 @@ function comparacionRequisito(c, tipo) {
     ${base ? `<span class="base">${base}</span>` : ''}</span>`;
 }
 
-function pintarRequisitos(r) {
-  const titulo = '<h3>Qué piden para presentarte</h3>';
+// Para ganarlo: el veredicto de Viabilidad con su porqué, encima de lo
+// que piden. Son dos preguntas: un contrato puede pedir lo que ya tienes
+// ("Llegas") y ser difícil de ganar (la mitad de la puntuación a juicio
+// de valor). Sin el porqué, el "Difícil" de la fila parecía contradecir
+// el "Llegas" de la ficha (07/10/2026). Solo lo que la fila marca.
+function pintarParaGanarlo(v) {
+  const etiqueta = { dificil: 'Difícil de ganar', cerrado: 'Parece cerrado',
+                     mio: 'Es tuyo: ganaste la anterior' }[v?.veredicto];
+  if (!VIABILIDAD_VISIBLE || !etiqueta) return '';
+  const motivos = (v.motivos || []).map(m => `${m[0].toUpperCase()}${m.slice(1)}.`);
+  return `<h3>Para ganarlo</h3>
+    <p class="ganarlo ${esc(v.veredicto)}"><strong>${etiqueta}</strong>${
+      motivos.length ? `: ${esc(motivos.join(' '))}` : '.'}
+      <span class="regla">El análisis completo está en «Analizar viabilidad».</span></p>`;
+}
+
+function pintarRequisitos(r, { conViabilidad = true } = {}) {
+  const titulo = `${conViabilidad ? pintarParaGanarlo(r?.viabilidad) : ''}<h3>Qué piden para presentarte</h3>`;
   if (!r || r.error) return `${titulo}<p class="nota">No tenemos los datos de este contrato.</p>`;
 
   const filas = [];
@@ -8601,7 +8624,7 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
         <option value="">Viabilidad: todas</option>
         <option value="abierto">Tienes opciones</option>
         <option value="no-cerrado">Sin los cerrados</option>
-        <option value="dificil">Difícil</option>
+        <option value="dificil">Difícil de ganar</option>
         <option value="cerrado">Parece cerrado</option>
       </select>
       <!-- Tamaño de contrato, con los cortes de las franjas del alta.
@@ -8758,7 +8781,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
 
   const VIABILIDAD_FILA = {
     mio: 'Es tuyo: ganaste la anterior',
-    dificil: 'Difícil',
+    // "de ganar": junto a "Qué piden para presentarte" (Decisión 54), un
+    // "Difícil" a secas se leía como "no llegas", y es otra pregunta.
+    dificil: 'Difícil de ganar',
     cerrado: 'Parece cerrado',
   };
 
@@ -8988,7 +9013,9 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
           ${CARTERA.has(o.id_licitacion)
             ? marcaCartera(CARTERA.get(o.id_licitacion).estado)
             : o.correccion
-            ? `<span class="confirmado">Confirmado como tuyo</span>`
+            // Es lo que marcó con "Sí me interesa". Antes decía "Confirmado
+            // como tuyo", que se leía como "lo has ganado".
+            ? `<span class="confirmado">Te interesa</span>`
             : `<span class="acciones">
                  <button type="button" class="accion si" data-si="${esc(o.id_licitacion)}">Sí me interesa</button>
                  <button type="button" class="accion no" data-no="${esc(o.id_licitacion)}">No me interesa</button>
