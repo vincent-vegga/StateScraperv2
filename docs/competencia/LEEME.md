@@ -112,8 +112,10 @@ es "Lo que viene" y esa vista queda como "Lo adjudicado".
 
 La comparación con empresas de tu tamaño es una buena idea. Le falta:
 
-- [ ] **Avisar cuando una empresa que sigues gana algo**, por correo o al
-      entrar. Hoy seguir no avisa de nada.
+- [x] **Avisar cuando una empresa que sigues gana algo**, por correo o al
+      entrar. Hoy seguir no avisa de nada. **Hecho el 10/10/2026** por
+      correo (Decisión 56, `20261010100000_seguir_avisa.sql`): va con lo
+      demás o, solo, como mucho una vez por semana. Al entrar, no.
 - [ ] **Cómo baja precios cada competidor**: la distribución de sus bajas
       (Licitandum lo enseña como histograma), no solo cuánto gana al año.
 - [ ] **Comparar tu empresa con otra**: los organismos donde coincidís,
@@ -123,7 +125,9 @@ La comparación con empresas de tu tamaño es una buena idea. Le falta:
 
 Le falta:
 
-- [ ] **Seguir un organismo** y recibir avisos de sus licitaciones nuevas.
+- [x] **Seguir un organismo** y recibir avisos de sus licitaciones nuevas.
+      **Hecho el 10/10/2026** (Decisión 56): botón en la ficha; avisa de
+      lo que publica en las familias CPV del perfil.
 - [ ] **Sus contratos que van a vencer** (lo mismo que "Lo que viene",
       filtrado por organismo). Con la tabla `vencimientos` es
       una consulta por `organo`; falta la función y el bloque en la ficha.
@@ -480,7 +484,11 @@ su oferta frente a la ganadora.
    la oferta" en la ficha de un contrato sin corregir.
 2. **¿Vigilar contratos de "Lo que viene"?** Un estado "vigilar" para los
    que vencen y se volverán a licitar, con aviso cuando salga la nueva
-   licitación (Decisión 52). Encajaría en la cartera.
+   licitación (Decisión 52). Encajaría en la cartera. **Hecho el
+   10/10/2026, fuera de la cartera** (Decisión 56): tabla `vigilados`,
+   botón «Vigilar» en cada fila de Lo que viene. La cartera es de
+   licitaciones abiertas con plazo; lo vigilado es un contrato
+   adjudicado.
 3. **¿Aplicar el resultado solo cuando el NIF coincide?** Hoy se propone y
    el cliente confirma. Con NIF y un solo adjudicatario el acierto sería
    casi seguro; se dejó manual por las UTE y los NIF mal publicados.

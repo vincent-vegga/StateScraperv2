@@ -1889,6 +1889,61 @@ la ficha de la UTE.
 
 ---
 
+## 56. Que seguir avise: empresas, organismos y contratos que vencen
+
+**Contexto.** Propuesta 3 del informe de competencia del 09/10/2026.
+Seguir a una empresa solo la subía en la pestaña Empresas: no avisaba de
+nada, y avisar es lo que hace volver cada día. Licitandum y LICAI avisan
+cuando gana un competidor.
+
+**Decisión.** Se siguen tres cosas y las tres llegan en el correo diario:
+
+- **Empresas** (`seguimiento`, ya existía): lo que ganan.
+- **Organismos** (`seguimiento_organismos`, botón «Seguir» en su ficha):
+  lo que publican en las familias CPV del perfil (dos cifras), aunque el
+  filtro no lo haya elegido. Seguir un organismo es una señal fuerte: se
+  quiere ver todo lo suyo del ramo, no solo lo que el filtro da por bueno.
+- **Contratos que vencen** (`vigilados`, botón «Vigilar» en Lo que
+  viene): su nueva licitación. Segura si la empareja `vencimientos_nueva`
+  (Decisión 52); posible si es una licitación nueva del mismo órgano y
+  CPV principal, y entonces se dice «puede ser», nunca que lo es. Se
+  copian los datos del contrato porque `vencimientos` lo borra al vencer
+  y la nueva licitación puede salir después.
+
+**Qué dispara el correo.** El 10/09/2026 se sacaron del correo las
+adjudicaciones de la competencia: "el correo es para lo que caduca".
+Se mantiene la idea: lo de organismos y vigilados son licitaciones
+abiertas y disparan el correo como cualquier novedad; lo que gana la
+competencia va dentro del correo cuando hay otra cosa, y solo como mucho
+una vez por semana (`DIAS_RESUMEN_COMPETENCIA`), agrupado por empresa
+con sus tres contratos de más importe. Cada licitación sale una vez: lo
+vigilado manda sobre las novedades y las novedades sobre lo de los
+organismos.
+
+**Nada se repite.** `avisos_seguimiento` guarda lo contado y la escribe
+`alertador.py` solo cuando el correo sale (en simulacro no). Las
+ventanas son de días (3 de detección y 7 de publicación para lo
+publicado; 45 días y hasta 30 antes de empezar a seguir para lo
+ganado), así que una caída del robot no pierde nada.
+
+**En la web.** Botones en la ficha de organismo y en cada fila de Lo que
+viene; un bloque «Lo que sigues» en Configurar mis avisos con las tres
+listas y «Dejar de seguir». Al seguir algo, el recado dice que se
+avisará por correo, o que hay que encender la campana si está apagada.
+
+**Medido (09/10/2026).** Con un perfil que sigue 18 empresas, un
+organismo y dos contratos: `novedades_de_seguimiento` en 0,8 s; 16
+adjudicaciones en los últimos 45 días, una licitación del organismo y
+dos de los contratos (una segura y una posible). Licitaciones nuevas al
+día por pareja órgano-CPV: como mucho 2-4, así que lo «posible» mete
+poco ruido.
+
+**Lo que no se cubre.** No hay aviso dentro de la web (solo correo): con
+la campana apagada, seguir no avisa. El 09/10/2026 solo 1 de 36 perfiles
+tiene la campana encendida.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.

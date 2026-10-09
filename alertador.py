@@ -18,6 +18,12 @@ Dos decisiones que gobiernan este paso:
     antes de que cierre (Decisión 53). Es una tarea con fecha, así que
     justifica el correo aunque ese día no haya contratos nuevos.
 
+  · LO QUE SIGUE (Decisión 56). La nueva licitación de un contrato que
+    vigila en "Lo que viene" y lo que publican en su ramo los organismos
+    que sigue son licitaciones abiertas: cuentan como novedad. Lo que
+    gana la competencia no caduca: va con lo demás y, si no hay nada
+    más, en un resumen como mucho semanal.
+
   · NOVEDAD ES LO DE LA ÚLTIMA PASADA, no lo de hoy según el calendario.
     Si el robot se cae un día, al volver detecta lo acumulado y todo eso
     se envía. Así no se pierde ninguna oportunidad por una avería. Es la
@@ -153,37 +159,37 @@ def clientes_a_avisar(cliente) -> list[dict]:
         sys.exit(1)
 
 
-def adjudicaciones_seguidas(cliente, perfil_id: str) -> list[dict]:
+def novedades_de_seguimiento(cliente, perfil_id: str) -> dict:
     """
-    Lo que han ganado las empresas de su lista de seguimiento.
+    Lo que hay que contar de lo que sigue y aún no se le ha contado
+    (Decisión 56): lo que han ganado las empresas que sigue, lo que han
+    publicado en su ramo los organismos que sigue y la nueva licitación
+    de los contratos que vigila en "Lo que viene".
 
-    Es información que no da nadie: que tu competencia acaba de cerrar un
-    contrato, con qué organismo y a qué porcentaje del presupuesto.
+    Un fallo aquí no tumba el correo de novedades: sin la función en la
+    base simplemente no hay nada de esto.
     """
     try:
-        respuesta = cliente.rpc("adjudicaciones_seguidas",
-                                {"perfil": perfil_id,
-                                 "horas": HORAS_NOVEDAD}).execute()
-        return respuesta.data or []
+        respuesta = cliente.rpc("novedades_de_seguimiento",
+                                {"perfil": perfil_id}).execute()
+        return respuesta.data or {}
     except Exception as error:
-        logging.error("No se pudieron leer las adjudicaciones seguidas: %s", error)
-        return []
+        logging.warning("No se pudo leer lo que sigue: %s", error)
+        return {}
 
 
-def marcar_avisadas(cliente, perfil_id: str, expedientes: list[str]) -> None:
+def marcar_avisos_seguimiento(cliente, perfil_id: str, avisos: list[dict]) -> None:
     """
-    Deja constancia de lo ya avisado.
-
-    Un expediente reaparece en el feed con cada cambio de estado, así que
-    sin esto la misma adjudicación se enviaría varios días seguidos.
+    Deja constancia de lo ya contado, para no repetirlo mañana. Solo se
+    llama si el correo ha salido.
     """
-    if not expedientes:
+    if not avisos:
         return
     try:
-        cliente.rpc("marcar_avisadas",
-                    {"perfil": perfil_id, "expedientes": expedientes}).execute()
+        cliente.rpc("marcar_avisos_seguimiento",
+                    {"perfil": perfil_id, "avisos": avisos}).execute()
     except Exception as error:
-        logging.error("No se pudo marcar lo avisado: %s", error)
+        logging.error("No se pudo marcar lo avisado de lo que sigue: %s", error)
 
 
 def novedades(cliente, perfil_id: str) -> list[dict]:
@@ -208,6 +214,13 @@ def novedades(cliente, perfil_id: str) -> list[dict]:
 # Licitandum: una semana para organizarse, tres días para cerrar la
 # oferta y la víspera. Más avisos serían ruido; uno solo, poco margen.
 DIAS_AVISO_PLAZO = (7, 3, 1)
+
+# Lo que gana la competencia, cuando no hay nada más que contar, sale
+# como mucho una vez cada tantos días (Decisión 56).
+DIAS_RESUMEN_COMPETENCIA = 7
+# Tope de licitaciones de lo que sigue por correo, por si un organismo
+# grande publica muchas el mismo día. Lo que no cabe sale al día siguiente.
+MAX_SEGUIMIENTO = 30
 
 
 def dias_para(limite: str | None) -> int | None:
@@ -379,7 +392,9 @@ def provincia_de(codigo_postal: str | None) -> str:
 
 
 def componer(items: list[dict], seguidas: list[dict] | None = None,
-             empresa: str = "", plazos: list[dict] | None = None) -> tuple[str, str, str]:
+             empresa: str = "", plazos: list[dict] | None = None,
+             organismos: list[dict] | None = None,
+             vigilados: list[dict] | None = None) -> tuple[str, str, str]:
     """
     Devuelve (asunto, cuerpo HTML, cuerpo en texto plano).
 
@@ -387,17 +402,23 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
     HTML, y un mensaje que llega en blanco es peor que no llegar.
 
     `seguidas` son adjudicaciones ganadas por empresas que el cliente
-    vigila. Van en el mismo correo y no en uno aparte: dos correos al día
+    sigue. Van en el mismo correo y no en uno aparte: dos correos al día
     del mismo remitente se convierten en uno que se ignora.
 
     `plazos` son contratos de su cartera a punto de cerrar. Van arriba:
     son lo único del correo que caduca en días.
+
+    `vigilados` son nuevas licitaciones de contratos que vigila en "Lo que
+    viene", y `organismos`, lo que han publicado en su ramo los organismos
+    que sigue (Decisión 56). Son licitaciones abiertas, como las novedades.
     """
     seguidas = seguidas or []
     plazos = plazos or []
+    organismos = organismos or []
+    vigilados = vigilados or []
     n = len(items)
 
-    if plazos and not n:
+    if plazos and not (n or vigilados or organismos):
         # El asunto dice cuál y cuándo: es lo que hace abrirlo.
         if len(plazos) == 1:
             p = plazos[0]
@@ -405,16 +426,31 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
                       f"{acortar_a(p.get('titulo') or '', 70)}")
         else:
             asunto = f"{len(plazos)} plazos de tu cartera cierran pronto"
+    elif vigilados:
+        # Lo más concreto: un contrato que esperaba ha vuelto a salir.
+        if len(vigilados) == 1:
+            asunto = ("Ya ha salido la nueva licitación de un contrato que vigilas"
+                      if vigilados[0].get("seguro") else
+                      "Puede haber salido la nueva licitación de un contrato que vigilas")
+        else:
+            asunto = f"{len(vigilados)} licitaciones nuevas de contratos que vigilas"
+        if n:
+            asunto += (" · 1 contrato nuevo para ti" if n == 1
+                       else f" · {n} contratos nuevos para ti")
     elif n and seguidas:
         asunto = (f"{n} {'contrato nuevo' if n == 1 else 'contratos nuevos'} "
                   f"y movimientos de tu competencia")
     elif n:
         asunto = (f"{n} contrato nuevo para ti" if n == 1
                   else f"{n} contratos nuevos para ti")
+    elif organismos:
+        asunto = ("Un organismo que sigues ha publicado un contrato de tu sector"
+                  if len(organismos) == 1 else
+                  f"{len(organismos)} contratos nuevos de organismos que sigues")
     else:
         asunto = ("Tu competencia ha ganado un contrato" if len(seguidas) == 1
                   else f"Tu competencia ha ganado {len(seguidas)} contratos")
-    if plazos and n:
+    if plazos and (n or vigilados or organismos):
         asunto += (" · 1 plazo de tu cartera cierra pronto" if len(plazos) == 1
                    else f" · {len(plazos)} plazos de tu cartera cierran pronto")
 
@@ -492,61 +528,143 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
             f"  {enlace}\n"
         )
 
+    # ---- Licitaciones abiertas de lo que sigue ----
+    #
+    # Una fila como las de las novedades, con una línea encima que dice
+    # por qué sale (de qué contrato vigilado viene, o de qué organismo).
+    def fila_abierta(it: dict, encima: str, encima_color: str = "#6E6E75") -> tuple[str, str]:
+        titulo = acortar(it.get("titulo") or "") or "(sin título)"
+        organo = it.get("organo") or ""
+        prov = provincia_de(it.get("codigo_postal"))
+        contexto = " · ".join(x for x in (organo, prov) if x)
+        enlace = it.get("enlace") or URL_INTERFAZ
+        importe = euros(it.get("presupuesto"))
+        plazo = dias_restantes(it.get("fecha_limite"))
+        linea_encima = (f'<div style="color:{encima_color};font-size:13px;line-height:1.5;'
+                        f'margin-bottom:4px;">{html.escape(encima)}</div>') if encima else ""
+        fila_html = f"""
+            <tr><td style="padding:16px 0;border-bottom:1px solid #E4E2DD;">
+              {linea_encima}
+              <a href="{html.escape(enlace, quote=True)}"
+                 style="color:#17171A;font-size:15px;font-weight:600;text-decoration:none;
+                        line-height:1.45;display:block;">{html.escape(titulo)}</a>
+              <div style="color:#6E6E75;font-size:13px;margin-top:5px;">{html.escape(contexto)}</div>
+              <div style="color:#17171A;font-size:14px;margin-top:6px;">
+                <strong>{importe}</strong>
+                <span style="color:#6E6E75;">· {plazo}</span>
+              </div>
+            </td></tr>"""
+        fila_texto = ((f"- {encima}\n  {titulo}\n" if encima else f"- {titulo}\n")
+                      + f"  {contexto}\n  {importe} · {plazo}\n  {enlace}\n")
+        return fila_html, fila_texto
+
+    def seccion(titulo: str, guia: str, filas: list[str], arriba: str = "30px") -> str:
+        return f"""
+    <tr><td style="padding-top:{arriba};">
+      <h2 style="margin:0 0 4px;font-size:16px;font-weight:600;color:#17171A;">
+        {titulo}</h2>
+      <p style="margin:0 0 4px;color:#6E6E75;font-size:14px;line-height:1.6;">
+        {guia}</p>
+      <table width="100%" cellpadding="0" cellspacing="0">{''.join(filas)}</table>
+    </td></tr>"""
+
+    # Lo vigilado: lo seguro dice que es la nueva; lo posible, que puede
+    # serlo. Nunca se afirma lo que no se ha emparejado (Decisión 52).
+    bloque_vigilados_html = bloque_vigilados_texto = ""
+    if vigilados:
+        filas, texto = [], ""
+        for it in vigilados:
+            antes = acortar_a(it.get("anterior_titulo") or "", 90) or "un contrato que vigilas"
+            if it.get("seguro"):
+                encima = f"Nueva licitación de «{antes}»"
+            else:
+                encima = (f"Mismo organismo y mismo tipo de contrato: puede ser "
+                          f"la nueva licitación de «{antes}»")
+            h, t = fila_abierta(it, encima, "#17171A" if it.get("seguro") else "#6E6E75")
+            filas.append(h)
+            texto += t
+        bloque_vigilados_html = seccion(
+            "Contratos que vigilas",
+            "Contratos que guardaste en «Lo que viene» y que han vuelto a licitarse.",
+            filas, "30px" if plazos else "18px")
+        bloque_vigilados_texto = "CONTRATOS QUE VIGILAS\n\n" + texto + "\n"
+
+    bloque_organismos_html = bloque_organismos_texto = ""
+    if organismos:
+        filas, texto = [], ""
+        for it in organismos:
+            # El órgano ya va debajo del título: encima no hace falta nada.
+            h, t = fila_abierta(it, "")
+            filas.append(h)
+            texto += t
+        bloque_organismos_html = seccion(
+            "De los organismos que sigues",
+            "Contratos de tu sector publicados por organismos que sigues, "
+            "aunque no estén entre los que te elegimos.",
+            filas)
+        bloque_organismos_texto = ("\nDE LOS ORGANISMOS QUE SIGUES\n\n" + texto)
+
     # ---- Lo que ha ganado la competencia ----
     #
     # Debajo de las oportunidades: lo primero es a qué puede presentarse
-    # él; esto es contexto de mercado, no una tarea.
+    # él; esto es contexto de mercado, no una tarea. Por empresa: un rival
+    # grande gana varios a la semana, y uno debajo de otro taparían el
+    # resto. Las tres de más importe de cada una y cuántas más.
     bloque_seguidas_html = bloque_seguidas_texto = ""
     if seguidas:
-        filas = []
+        por_empresa: dict[str, list[dict]] = {}
         for it in seguidas:
-            quien = it.get("empresa") or "?"
-            titulo = acortar(it.get("titulo") or "") or "(sin título)"
-            organo = it.get("organo") or ""
-            importe = euros(it.get("importe"))
-            # Sin el porcentaje sobre el presupuesto: medido sobre 263.412
-            # contratos, los dos campos no comparan lo mismo y el resultado
-            # era disparatado. Está explicado en migracion-movimientos.sql.
-            baja = ""
-            enlace = it.get("enlace") or URL_INTERFAZ
-
+            por_empresa.setdefault(it.get("cif") or it.get("empresa") or "?", []).append(it)
+        grupos = sorted(por_empresa.values(),
+                        key=lambda g: (-len(g), -sum(float(x.get("importe") or 0) for x in g)))
+        MAX_EMPRESAS, MAX_CONTRATOS = 8, 3
+        filas = []
+        for grupo in grupos[:MAX_EMPRESAS]:
+            quien = grupo[0].get("empresa") or "?"
+            cuantos = (f"{len(grupo)} contrato" if len(grupo) == 1
+                       else f"{len(grupo)} contratos")
+            mejores = sorted(grupo, key=lambda x: -float(x.get("importe") or 0))[:MAX_CONTRATOS]
+            lineas_html, lineas_texto = [], ""
+            for it in mejores:
+                titulo = acortar(it.get("titulo") or "") or "(sin título)"
+                organo = it.get("organo") or ""
+                importe = euros(it.get("importe"))
+                enlace = it.get("enlace") or URL_INTERFAZ
+                lineas_html.append(f"""
+                <a href="{html.escape(enlace, quote=True)}"
+                   style="color:#17171A;font-size:15px;text-decoration:none;
+                          line-height:1.45;display:block;margin-top:8px;">{html.escape(titulo)}</a>
+                <div style="color:#6E6E75;font-size:13px;margin-top:3px;">
+                  {html.escape(organo)} · <strong style="color:#17171A;">{importe}</strong></div>""")
+                lineas_texto += f"  · {titulo}\n    {organo} · {importe}\n    {enlace}\n"
+            resto = len(grupo) - len(mejores)
+            mas = (f'<div style="color:#6E6E75;font-size:13px;margin-top:8px;">'
+                   f'y {resto} más</div>') if resto else ""
             filas.append(f"""
             <tr><td style="padding:16px 0;border-bottom:1px solid #E4E2DD;">
-              <div style="color:#17171A;font-size:14px;font-weight:600;">{html.escape(quien)}</div>
-              <a href="{html.escape(enlace, quote=True)}"
-                 style="color:#17171A;font-size:15px;text-decoration:none;
-                        line-height:1.45;display:block;margin-top:4px;">{html.escape(titulo)}</a>
-              <div style="color:#6E6E75;font-size:13px;margin-top:5px;">
-                {html.escape(organo)}</div>
-              <div style="color:#17171A;font-size:14px;margin-top:6px;">
-                <strong>{importe}</strong><span style="color:#6E6E75;">{html.escape(baja)}</span>
-              </div>
+              <div style="color:#17171A;font-size:14px;font-weight:600;">
+                {html.escape(quien)} <span style="color:#6E6E75;font-weight:400;">· {cuantos}</span></div>
+              {''.join(lineas_html)}{mas}
             </td></tr>""")
-
-            bloque_seguidas_texto += (
-                f"- {quien}: {titulo}\n"
-                f"  {organo}\n"
-                f"  {importe}{baja}\n"
-                f"  {enlace}\n"
-            )
-
-        bloque_seguidas_html = f"""
-    <tr><td style="padding-top:30px;">
-      <h2 style="margin:0 0 4px;font-size:16px;font-weight:600;color:#17171A;">
-        Lo que ha ganado tu competencia</h2>
-      <p style="margin:0 0 4px;color:#6E6E75;font-size:14px;line-height:1.6;">
-        Empresas de tu lista de seguimiento.</p>
-      <table width="100%" cellpadding="0" cellspacing="0">{''.join(filas)}</table>
-    </td></tr>"""
+            bloque_seguidas_texto += (f"- {quien} · {cuantos}\n{lineas_texto}"
+                                      + (f"  y {resto} más\n" if resto else ""))
+        otras = len(grupos) - MAX_EMPRESAS
+        guia = "Adjudicaciones de las empresas que sigues desde el último aviso."
+        if otras > 0:
+            guia += f" Y {otras} empresas más: las ves en su ficha."
+        bloque_seguidas_html = seccion("Lo que ha ganado tu competencia", guia, filas)
         bloque_seguidas_texto = (
             "\nLO QUE HA GANADO TU COMPETENCIA\n"
-            "(empresas de tu lista de seguimiento)\n\n" + bloque_seguidas_texto)
+            "(empresas que sigues, desde el último aviso)\n\n" + bloque_seguidas_texto)
 
     # Las partes que dependen de si hay una cosa u otra se preparan aquí:
     # meterlas dentro de la plantilla con condicionales la vuelve
     # ilegible.
     intro_html = ""
     lista_html = ""
+    # Con algo delante (plazos o vigilados), las novedades llevan su propio
+    # título: si no, la frase de arriba parecía hablar de lo de arriba.
+    hay_antes = bool(plazos or vigilados)
     if items:
         quien = html.escape(empresa) if empresa else "tu negocio"
         intro_html = (
@@ -554,21 +672,19 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
             'line-height:1.6;">Licitaciones abiertas que encajan con '
             f'{quien}, detectadas esta madrugada.</p>'
         )
-        # Con plazos delante, las novedades llevan su propio título: si no,
-        # la frase de arriba parecía hablar de los plazos.
         titulo_lista = ('<h2 style="margin:0 0 4px;font-size:16px;font-weight:600;'
-                        'color:#17171A;">Contratos nuevos</h2>') if plazos else ""
-        if plazos:
-            # La frase va con su lista, debajo de los plazos.
+                        'color:#17171A;">Contratos nuevos</h2>') if hay_antes else ""
+        if hay_antes:
+            # La frase va con su lista, debajo de lo de arriba.
             titulo_lista += intro_html
             intro_html = ""
-        lista_html = (f'<tr><td style="padding-top:{"30px" if plazos else "0"};">'
+        lista_html = (f'<tr><td style="padding-top:{"30px" if hay_antes else "0"};">'
                       f'{titulo_lista}<table width="100%" cellpadding="0" '
                       f'cellspacing="0">{"".join(filas_html)}</table></td></tr>')
 
-    # Sin contratos nuevos, el botón lleva a la cartera, que es de lo que
-    # habla el correo; y el enlace de la sección sobra.
-    if items or not plazos:
+    # Sin contratos nuevos y con plazos, el botón lleva a la cartera, que
+    # es de lo que habla el correo; y el enlace de la sección sobra.
+    if items or vigilados or organismos or not plazos:
         boton_texto, boton_url = "Ver todos los contratos abiertos", URL_INTERFAZ
     else:
         boton_texto, boton_url = "Ver tu cartera", URL_CARTERA
@@ -586,12 +702,14 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
                 font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
     <tr><td>
       <h1 style="margin:0 0 8px;font-size:22px;font-weight:600;color:#17171A;line-height:1.3;">
-        {asunto}
+        {html.escape(asunto)}
       </h1>
       {intro_html}
     </td></tr>
     {bloque_plazos_html}
+    {bloque_vigilados_html}
     {lista_html}
+    {bloque_organismos_html}
     {bloque_seguidas_html}
     <tr><td style="padding-top:28px;">
       <a href="{html.escape(boton_url)}"
@@ -602,7 +720,8 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
     <tr><td style="padding-top:26px;color:#8B8B92;font-size:12px;line-height:1.6;">
       Datos de la Plataforma de Contratación del Sector Público y de las
       plataformas autonómicas agregadas. Solo recibes este correo los días
-      que hay novedades o se acerca un plazo de tu cartera.
+      que hay novedades, se acerca un plazo de tu cartera o hay algo de lo
+      que sigues.
     </td></tr>
   </table>
 </td></tr></table>
@@ -610,14 +729,17 @@ def componer(items: list[dict], seguidas: list[dict] | None = None,
 
     intro_texto = ""
     if items:
-        intro_texto = ("Licitaciones abiertas que encajan con tu negocio,\n"
+        intro_texto = (("CONTRATOS NUEVOS\n" if hay_antes else "")
+                       + "Licitaciones abiertas que encajan con tu negocio,\n"
                        "detectadas esta madrugada.\n\n"
                        + "\n".join(filas_texto))
 
     cuerpo_texto = (
         f"{asunto}\n\n"
         + bloque_plazos_texto
+        + bloque_vigilados_texto
         + intro_texto
+        + bloque_organismos_texto
         + bloque_seguidas_texto
         + f"\n{boton_texto}: {boton_url}\n"
     )
@@ -738,21 +860,48 @@ def main() -> int:
         etiqueta = "perfil " + str(perfil["id"])[:8]
         items = novedades(cliente, perfil["id"])
         plazos = plazos_de_cartera(cliente, perfil["id"])
-        # Las adjudicaciones de la competencia NO van por correo: el correo
-        # es para lo que caduca, y una adjudicación ya cerrada no exige
-        # actuar hoy. Están en la pestaña de Movimientos.
-        seguidas = []
 
-        if not items and not plazos:
+        # Lo que sigue (Decisión 56). Cada licitación sale una sola vez:
+        # lo vigilado manda sobre las novedades (dice de qué contrato
+        # viene), y las novedades sobre lo de los organismos.
+        seg = novedades_de_seguimiento(cliente, perfil["id"])
+        vigilados = (seg.get("vigilado") or [])[:MAX_SEGUIMIENTO]
+        ya = {v.get("id_licitacion") for v in vigilados}
+        items = [it for it in items if it.get("id_licitacion") not in ya]
+        ya |= {it.get("id_licitacion") for it in items}
+        organismos = [o for o in (seg.get("organismo") or [])
+                      if o.get("id_licitacion") not in ya][:MAX_SEGUIMIENTO]
+
+        # Lo que gana la competencia no caduca: va con lo demás, y solo,
+        # como mucho una vez por semana (el 10/09/2026 se sacó del correo
+        # diario por eso mismo).
+        seguidas = seg.get("gana") or []
+        hay_mas = bool(items or plazos or vigilados or organismos)
+        if seguidas and not hay_mas:
+            ultimo = a_fecha(seg.get("ultimo_gana"))
+            if ultimo and datetime.now(timezone.utc) - ultimo < timedelta(days=DIAS_RESUMEN_COMPETENCIA):
+                seguidas = []
+
+        if not hay_mas and not seguidas:
             # Silencio deliberado: un correo que dice "hoy no hay nada"
             # enseña a ignorar el remitente, y con él los días que sí
             # importan.
             sin_novedades += 1
             continue
 
-        logging.info("[%s] %d novedades, %d plazos de cartera.",
-                     etiqueta, len(items), len(plazos))
-        asunto, cuerpo_html, cuerpo_texto = componer(items, seguidas, nombre, plazos)
+        logging.info("[%s] %d novedades, %d plazos de cartera, %d vigilados, "
+                     "%d de organismos, %d de la competencia.",
+                     etiqueta, len(items), len(plazos), len(vigilados),
+                     len(organismos), len(seguidas))
+        asunto, cuerpo_html, cuerpo_texto = componer(
+            items, seguidas, nombre, plazos, organismos, vigilados)
+        avisados = (
+            [{"tipo": "vigilado", "id_licitacion": v["id_licitacion"],
+              "referencia": v.get("anterior")} for v in vigilados]
+            + [{"tipo": "organismo", "id_licitacion": o["id_licitacion"],
+                "referencia": o.get("organo")} for o in organismos]
+            + [{"tipo": "gana", "id_licitacion": g["id_licitacion"],
+                "referencia": g.get("cif")} for g in seguidas])
 
         if opciones.simulacro:
             logging.info("  Asunto: %s", asunto)
@@ -773,6 +922,7 @@ def main() -> int:
 
         if enviar(asunto, cuerpo_html, cuerpo_texto, [destino]):
             enviados += 1
+            marcar_avisos_seguimiento(cliente, perfil["id"], avisados)
         else:
             fallidos += 1
 
