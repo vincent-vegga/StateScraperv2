@@ -148,9 +148,26 @@ async function descargar(url: string): Promise<Uint8Array<ArrayBuffer> | null> {
   }
 }
 
-async function subir(doc: Documento, contenido: Uint8Array<ArrayBuffer>): Promise<string | null> {
-  const ext = extensionDe(doc);
-  const nombre = /\.[a-z0-9]{2,5}$/i.test(doc.nombre) ? doc.nombre : `${doc.nombre}.${ext}`;
+// La extensión que de verdad tiene, por los primeros bytes: el portal
+// publica ".PDF" en mayúsculas (OpenAI lo rechaza, medido el 09/10/2026)
+// y a veces un ZIP con nombre de PDF.
+function extensionReal(doc: Documento, contenido: Uint8Array): string {
+  const inicio = new TextDecoder().decode(contenido.subarray(0, 4));
+  if (inicio === "%PDF") return "pdf";
+  if (inicio.startsWith("PK")) {
+    const cabeza = new TextDecoder().decode(contenido.subarray(0, 4000));
+    if (cabeza.includes("word/")) return "docx";
+    if (cabeza.includes("ppt/")) return "pptx";
+    if (cabeza.includes("opendocument.text")) return "odt";
+    return "zip";
+  }
+  return extensionDe(doc);
+}
+
+async function subir(doc: Documento, contenido: Uint8Array<ArrayBuffer>,
+                     ext: string): Promise<string | null> {
+  // Siempre con la extensión en minúsculas al final.
+  const nombre = `${(doc.nombre || "documento").replace(/\.[a-z0-9]{2,5}$/i, "")}.${ext}`;
   const formulario = () => {
     const f = new FormData();
     f.append("purpose", "assistants");
@@ -199,7 +216,12 @@ async function preparar(idLicitacion: string, docs: Documento[]):
       documentos.push({ ...base, file_id: null, motivo: "descarga" });
       continue;
     }
-    const id = await subir(d, contenido);
+    const ext = extensionReal(d, contenido);
+    if (!LEGIBLES.has(ext)) {
+      documentos.push({ ...base, file_id: null, motivo: "formato" });
+      continue;
+    }
+    const id = await subir(d, contenido, ext);
     documentos.push({ ...base, file_id: id, motivo: id ? undefined : "subida" });
   }
 
