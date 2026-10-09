@@ -26,6 +26,7 @@ En producción con primeros usuarios reales. El core funciona; hay deuda técnic
 | Viabilidad en la lista de Contratos: marca y filtro | ✅ Desde el 04/10/2026 |
 | Alerta diaria por correo | ✅ Activa, solo para quien enciende la campana |
 | Seguir avisa: lo que ganan las empresas, lo que publican los organismos y la nueva licitación de lo que vence | ✅ Desde el 10/10/2026 (Decisión 56) |
+| Pregúntale al pliego: preguntas en lenguaje normal sobre los documentos de cada contrato abierto | ✅ Desde el 10/10/2026 (Decisión 57) |
 | Histórico completo | ⚙️ Parcial (~25% del disponible) |
 | Sistemas dinámicos y acuerdos marco marcados como tales | ✅ Desde el 04/10/2026 |
 | Alta sin historial: camino estable | ⬜ Frágil |
@@ -79,6 +80,7 @@ Todo corre en GitHub Actions. No requiere instalación local ni servidor propio.
 | `rellenar_condiciones.py` | Relee los ZIP del mes y guarda las condiciones de lo abierto (Decisión 54) |
 | `web/index.html` | Interfaz web completa: todo en un solo fichero |
 | `supabase/functions/alta/index.ts` | Edge Function: onboarding guiado |
+| `supabase/functions/pliego/index.ts` | Edge Function: Pregúntale al pliego (Decisión 57) |
 | `.github/workflows/scraper.yml` | Cron y modos de ejecución |
 | `.github/workflows/condiciones.yml` | Lectura de la solvencia al acabar el scraper; relleno a mano |
 | `DECISIONES.md` | Por qué el sistema es como es. Leer antes de tocar nada |
