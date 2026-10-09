@@ -36,7 +36,8 @@ pantallas de inteligencia de mercado.
 ### Lo que ya no es exclusivo nuestro
 
 - "No necesitas saber qué es un CPV": El Vínculo lo hace por 39 €.
-- Chat o resumen de pliegos con IA: ya lo da casi todo el mundo.
+- Chat o resumen de pliegos con IA: ya lo da casi todo el mundo. Desde el
+  10/10/2026 también aquí: «Pregúntale al pliego» (Decisión 57).
 - Fichas de organismos y de adjudicatarios: estándar.
 
 ### Lo que sigue siendo nuestro

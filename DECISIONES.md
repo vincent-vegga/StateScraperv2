@@ -1944,6 +1944,59 @@ tiene la campana encendida.
 
 ---
 
+## 57. Pregúntale al pliego
+
+**Contexto.** Informe de competencia del 09/10/2026: preguntar al pliego
+lo dan casi todos, incluso gratis (Licitandum con citas de página, El
+Vínculo, LICAI, Tendios). Su ausencia se notaba en la ficha.
+
+**Decisión.** Un bloque «Pregúntale al pliego» en la ficha de cada
+contrato abierto (Contratos y Mi cartera): preguntas sugeridas
+(criterios y su peso, cómo se puntúa el precio, baja anormal, sobres,
+garantía) o una libre. Responde la función `pliego` con lo que dicen los
+documentos, la cláusula y una cita literal, y enlaza el documento del
+que sale. Lo preguntado se guarda (`preguntas_pliego`) y se ve al volver.
+
+**Quién lee el pliego.** OpenAI, no la función: una función de Supabase
+tiene 2 s de CPU y 256 MB, y sacar el texto de un pliego de 100 páginas
+no cabe. La función descarga los documentos de `condiciones.documentos`
+(Decisión 54), los sube y crea un almacén de búsqueda (file search).
+Cada pregunta busca ahí. El tipo de fichero se mira por sus primeros
+bytes: el portal publica «.PDF» en mayúsculas, que OpenAI rechaza, y a
+veces ZIP con nombre de PDF. Los ZIP no se leen y se dice.
+
+**Los pliegos no se archivan (Decisión 16).** El almacén caduca a los 7
+días sin preguntas y los ficheros a los 7 días de subirse: es una caché,
+no un archivo. Después se vuelven a descargar del portal.
+
+**Contexto que ya teníamos.** Con la pregunta van los datos del anuncio
+(presupuesto, duración, criterios con su peso) y nuestra lectura de la
+solvencia. Motivo, medido el 09/10/2026: la búsqueda no daba con los
+207.645 € de volumen de negocios que estaban en el cuadro de
+características, y nuestra lectura sí los tenía. El modelo dice de dónde
+sale cada dato y no niega algo solo porque la búsqueda no lo encuentre.
+
+**Modelo.** `gpt-4.1-mini` (`MODELO_PLIEGO`). Con `gpt-4o-mini` buscaba
+una vez y se rendía: no encontró ni la solvencia ni el peso de los
+criterios, que estaban en el cuadro.
+
+**Lo medido (09/10/2026, 10 preguntas sobre 5 licitaciones).** Primera
+pregunta de un pliego: 20-30 s (descargar, subir y leer). Las
+siguientes: 5-11 s. Coste: 0,005-0,006 $ por pregunta. Respuestas
+correctas en criterios y pesos, solvencia (con la lectura previa),
+sobres, garantía definitiva y plazo de entrega; flojas cuando el pliego
+remite a un apartado del cuadro que la búsqueda no trae (baja anormal).
+
+**Topes.** 25 preguntas al día por perfil y 2 $ al día entre todos
+(`PLIEGO_PREGUNTAS_DIA`, `PLIEGO_GASTO_DIA`), comprobados antes de
+llamar al modelo.
+
+**Lo que no se cubre.** Pliegos escaneados (sin texto) y documentos
+dentro de un ZIP. Sin números de página: el texto que devuelve la
+búsqueda no los conserva, y el modelo los inventaba.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.

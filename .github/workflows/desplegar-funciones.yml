@@ -49,7 +49,9 @@ jobs:
           deno-version: v2.x
 
       - name: Comprobar tipos
-        run: deno check supabase/functions/alta/index.ts
+        run: |
+          deno check supabase/functions/alta/index.ts
+          deno check supabase/functions/pliego/index.ts
 
       - name: Instalar las herramientas de Supabase
         uses: supabase/setup-cli@v1
@@ -77,11 +79,14 @@ jobs:
           # el saldo de OpenAI.
           supabase functions deploy alta \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          # Pregúntale al pliego (Decisión 57). Igual: con sesión.
+          supabase functions deploy pliego \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
 
       - name: Resumen
         if: always()
         run: |
-          echo "### Función de alta" >> $GITHUB_STEP_SUMMARY
+          echo "### Funciones de alta y del pliego" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Resultado: \`${{ job.status }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
