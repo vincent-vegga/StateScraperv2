@@ -6841,6 +6841,20 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   // Se guarda con el NIF para que sobreviva al cambio de periodo y al de
   // forma de los gráficos, que repintan la ficha entera.
   let vistaFicha = { cif: null, cual: null };
+  // "A quién le vende", por contratos o por importe. Como la forma de los
+  // gráficos, una preferencia: vale para todas las fichas y se guarda.
+  let ordenOrganos = (() => {
+    try { return localStorage.getItem('orden-organos') || 'contratos'; }
+    catch { return 'contratos'; }
+  })();
+  zona.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-orden-organos]');
+    if (!b || !ultimaEmpresa) return;
+    if (b.getAttribute('aria-pressed') === 'true') return;
+    ordenOrganos = b.dataset.ordenOrganos;
+    try { localStorage.setItem('orden-organos', ordenOrganos); } catch {}
+    pintarFicha(ultimaEmpresa);
+  });
   zona.addEventListener('click', ev => {
     const b = ev.target.closest('[data-forma]');
     if (!b || !ultimaEmpresa) return;
@@ -7156,8 +7170,14 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const sectores = e.sectores ?? [];
     // La base trae los 8 con más contratos, pero los empates (todos con uno,
     // a menudo) llegaban en cualquier orden: a igualdad, el de más importe.
-    const organos = [...(e.organos ?? [])].sort((a, b) =>
-      (b.contratos - a.contratos) || ((Number(b.importe) || 0) - (Number(a.importe) || 0)));
+    // Por importe trae otros 8: el que más le paga puede tener un solo
+    // contrato y no estar entre los de más contratos.
+    const porImporte = ordenOrganos === 'importe';
+    const euroDe = o => Number(o.importe) || 0;
+    const organos = [...((porImporte ? e.organos_importe : null) ?? e.organos ?? [])]
+      .sort(porImporte
+        ? (a, b) => (euroDe(b) - euroDe(a)) || (b.contratos - a.contratos)
+        : (a, b) => (b.contratos - a.contratos) || (euroDe(b) - euroDe(a)));
     const ultimos = e.ultimos ?? [];
     const marcos = e.marcos ?? [];
     const utes = e.utes ?? [];
@@ -7248,12 +7268,21 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
           <div style="margin-bottom:26px">${reparto(sectores, 'sector')}</div>` : ''}
 
         ${organos.length ? `
-          <h4 style="margin:0 0 12px;font-size:.83rem;font-weight:650;
+          <div style="display:flex;align-items:center;gap:12px;margin:0 0 12px">
+          <h4 style="margin:0;font-size:.83rem;font-weight:650;
                      color:var(--tenue);letter-spacing:.05em;
                      text-transform:uppercase">${organos.length >= 8
                        // La base corta en 8: con 14 contratos y 8 organismos
                        // parecía que faltaban cifras.
                        ? 'Los 8 organismos a los que más vende' : 'A quién le vende'}</h4>
+          ${organos.length > 1 ? `
+            <div class="forma" role="group" aria-label="Ordenar organismos por">
+              <button data-orden-organos="contratos"
+                aria-pressed="${!porImporte}">Contratos</button>
+              <button data-orden-organos="importe"
+                aria-pressed="${porImporte}">Importe</button>
+            </div>` : ''}
+          </div>
           <table class="tabla"><tbody>
             ${organos.map(o => `<tr style="cursor:default">
               <td class="quien"><a href="#" class="enlace-ficha"
