@@ -116,7 +116,11 @@ async function descargar(url: string): Promise<Uint8Array<ArrayBuffer> | null> {
   try {
     const r = await fetch(url, { signal: control.signal,
       headers: { "User-Agent": "StateScraper/1.0 (lectura de pliegos)" } });
-    if (!r.ok || !r.body) return null;
+    if (!r.ok || !r.body) {
+      console.error(`Descarga ${r.status} de ${url.slice(0, 90)}`);
+      await r.body?.cancel();
+      return null;
+    }
     const trozos: Uint8Array[] = [];
     let total = 0;
     for await (const t of r.body) {
@@ -128,7 +132,8 @@ async function descargar(url: string): Promise<Uint8Array<ArrayBuffer> | null> {
     let i = 0;
     for (const t of trozos) { todo.set(t, i); i += t.length; }
     return todo;
-  } catch {
+  } catch (error) {
+    console.error(`Descarga fallida de ${url.slice(0, 90)}:`, String(error).slice(0, 200));
     return null;
   } finally {
     clearTimeout(reloj);
