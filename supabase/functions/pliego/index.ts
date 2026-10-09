@@ -258,8 +258,11 @@ async function esperarLectura(almacen: string, hastaMs: number): Promise<"listo"
     // Recién creado, el almacén dice cero ficheros en todo: hay que mirar
     // su estado, no los contadores (el 09/10/2026 eso daba "sin texto" a
     // la primera pregunta de un pliego que sí se leía).
-    if (vs.status === "completed") {
-      return (vs.file_counts?.completed ?? 0) > 0 ? "listo" : "perdido";
+    // Y puede decir "completed" con cero ficheros dentro: aún no los ha
+    // metido. Solo vale cuando los cuenta y ninguno está a medias.
+    const fc = vs.file_counts ?? {};
+    if (vs.status === "completed" && (fc.total ?? 0) > 0 && (fc.in_progress ?? 0) === 0) {
+      return (fc.completed ?? 0) > 0 ? "listo" : "perdido";
     }
     if (Date.now() > hastaMs) return "leyendo";
     await new Promise((ok) => setTimeout(ok, 2000));
