@@ -1841,6 +1841,31 @@ select:focus{
    bajo las cifras, no arrinconado a la derecha como el de los gráficos. */
 .vista-ficha{margin:0 0 22px}
 .vista-ficha button{font-size:.84rem;padding:7px 14px}
+/* Son cuatro pestañas (Resumen, Contratos, Vigentes y lo raro): en el
+   móvil no caben y se desplazan dentro de su fila, como las de arriba. */
+.vista-ficha{overflow-x:auto;scrollbar-width:none}
+.vista-ficha::-webkit-scrollbar{display:none}
+.vista-ficha button{flex:none;white-space:nowrap}
+.vista-ficha .n{margin-left:7px;font-variant-numeric:tabular-nums;opacity:.7}
+/* Pestaña Contratos: buscador, sector, organismo y orden en una fila que
+   se parte al estrecharse. */
+.filtros-contratos{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}
+.filtros-contratos input[type=search]{flex:2 1 260px}
+.filtros-contratos select{flex:1 1 170px}
+.cuenta-contratos{color:var(--tenue);font-size:.86rem;margin:0 0 2px;min-height:1.3em}
+/* "Solo si se prorrogó", plegado: es lo dudoso. */
+.prorrogados{margin-top:26px}
+.prorrogados summary{
+  cursor:pointer;font-size:.83rem;font-weight:650;color:var(--tenue);
+  letter-spacing:.05em;text-transform:uppercase;
+}
+.prorrogados summary:hover{color:var(--texto)}
+/* El periodo no cuenta en Vigentes: se queda a la vista, pero apagado,
+   para que la página no salte al cambiar de pestaña. */
+.hueco-periodo.no-aplica{opacity:.4;pointer-events:none}
+/* "Ver sus contratos" en el detalle de un trozo del gráfico de sectores. */
+.detalle-trozo{flex-wrap:wrap}
+.detalle-trozo .ver-de-trozo{margin-left:auto;padding:0;font-size:.86rem}
 /* Nombre de otra empresa que abre su ficha. Subrayado siempre, para que
    se vea que se puede pulsar; el color de acento solo al pasar por
    encima (como texto no tiene contraste suficiente). */
@@ -4796,21 +4821,30 @@ function apilada(filas, campoNombre, campoValor, unidad, rotulo = true,
 }
 
 // Devuelve las dos barras de una misma dimensión.
-function reparto(filas, campoNombre) {
+// Con `campoClave`, cada trozo sabe a qué fila corresponde (ver
+// `activarBarras`, que con eso puede llevar a sus contratos).
+function reparto(filas, campoNombre, campoClave = null) {
   if (!filas.length) return `<p class="sin-datos">Todavía no hay datos.</p>`;
-  return apilada(filas, campoNombre, 'contratos', 'contratos')
-       + apilada(filas, campoNombre, 'importe', 'euros');
+  return apilada(filas, campoNombre, 'contratos', 'contratos', true, campoClave)
+       + apilada(filas, campoNombre, 'importe', 'euros', true, campoClave);
 }
 
 // Detalle de cada segmento de las barras apiladas. Al pasar por encima o
 // tocar, la línea de debajo dice qué es y cuánto vale. En el móvil no hay
 // cursor, así que el toque es la única forma de leer un segmento estrecho.
-function activarBarras(donde) {
+//
+// Con `elegir` ({ texto, alPulsar }), el detalle de un trozo que sabe a qué
+// fila corresponde lleva además un botón (en la ficha de empresa, "Ver sus
+// contratos" de ese sector). Para poder llegar a él con el ratón, el trozo
+// pulsado se queda fijo: al salir del gráfico vuelve a él y no al reposo.
+function activarBarras(donde, elegir = null) {
   donde.querySelectorAll('[data-reparto]').forEach(caja => {
     const hueco = caja.querySelector('[data-hueco]');
     const trozos = [...caja.querySelectorAll('.trozo')];
     if (!hueco || !trozos.length) return;
     const reposo = hueco.innerHTML;
+    let fijo = null;
+    const fijar = i => { if (elegir) fijo = i; mostrar(i); };
 
     const mostrar = i => {
       const t = trozos[i];
@@ -4822,10 +4856,13 @@ function activarBarras(donde) {
         <span class="punto" style="background:${t.style.background || t.getAttribute('stroke')}"></span>
         <span class="cual">${esc(etiqueta.slice(0, corte))}</span>
         <span class="cuanto">${esc(etiqueta.slice(corte + 2))} · ${
-          esc(t.dataset.valor ?? '')}</span>`;
+          esc(t.dataset.valor ?? '')}</span>${elegir && t.dataset.clave
+          ? `<button type="button" class="enlace ver-de-trozo"
+              data-elegir="${esc(t.dataset.clave)}">${esc(elegir.texto)} →</button>` : ''}`;
       trozos.forEach((x, j) => x.classList.toggle('activo', j === +i));
     };
     const soltar = () => {
+      if (fijo !== null) return mostrar(fijo);
       hueco.className = 'detalle-trozo callado';
       hueco.innerHTML = reposo;
       trozos.forEach(x => x.classList.remove('activo'));
@@ -4836,13 +4873,17 @@ function activarBarras(donde) {
       t.onfocus = () => mostrar(t.dataset.i);
       // En táctil el clic es lo único que hay: se queda fijo hasta que se
       // toque otro.
-      t.onclick = () => mostrar(t.dataset.i);
+      t.onclick = () => fijar(t.dataset.i);
     });
+    if (elegir) hueco.onclick = ev => {
+      const b = ev.target.closest('[data-elegir]');
+      if (b) elegir.alPulsar(b.dataset.elegir);
+    };
     caja.querySelector('.apilada, .quesito')?.addEventListener('mouseleave', soltar);
 
     caja.querySelectorAll('.leyenda button').forEach(b => {
       b.onmouseenter = () => mostrar(b.dataset.i);
-      b.onclick = () => mostrar(b.dataset.i);
+      b.onclick = () => fijar(b.dataset.i);
     });
     // Hay gráficos sin leyenda (conLeyenda === false). Sin comprobarlo,
     // el error cortaba aquí y lanzaba una excepción en cada ficha de
@@ -6837,10 +6878,32 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   // gráficos. Enganchado una sola vez sobre el contenedor, que no se
   // sustituye al redibujar.
   let ultimaEmpresa = null;
-  // Qué enseña la ficha: 'contratos' o 'otros' (UTEs y acuerdos marco).
-  // Se guarda con el NIF para que sobreviva al cambio de periodo y al de
-  // forma de los gráficos, que repintan la ficha entera.
+  // Qué enseña la ficha: 'resumen', 'contratos', 'vigentes' u 'otros'
+  // (UTEs y acuerdos marco). Se guarda con el NIF para que sobreviva al
+  // cambio de periodo y al de forma de los gráficos, que repintan la
+  // ficha entera.
   let vistaFicha = { cif: null, cual: null };
+  // Lo elegido en la pestaña Contratos. Se queda al cambiar de periodo o
+  // de pestaña; otra ficha empieza sin filtros.
+  let filtroContratos = { cif: null };
+  const POR_PAGINA = 20;
+  // Los vigentes no dependen del periodo: se piden una vez por empresa, al
+  // abrir la ficha y sin esperarlos, para poner la cifra en la pestaña.
+  const VIGENTES = new Map();
+  const pedirVigentes = cif => {
+    if (!VIGENTES.has(cif)) {
+      VIGENTES.set(cif, sb.rpc('vigentes_empresa', { cif_buscado: cif })
+        .then(({ data, error }) => {
+          if (error || !data) throw error ?? new Error('sin datos');
+          return data;
+        })
+        .catch(err => { VIGENTES.delete(cif); throw err; }));
+    }
+    return VIGENTES.get(cif);
+  };
+  // En Vigentes el periodo no cuenta: el selector se apaga.
+  const periodoAplica = si => document.getElementById('periodo-emp')
+    ?.classList.toggle('no-aplica', !si);
   // "A quién le vende", por contratos o por importe. Como la forma de los
   // gráficos, una preferencia: vale para todas las fichas y se guarda.
   let ordenOrganos = (() => {
@@ -6885,6 +6948,7 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   // quitaba el foco; así se queda donde está y la lista cambia debajo.
   async function verListas({ soloCompetencia = false } = {}) {
     repintarVista = verListas;
+    periodoAplica(true);
     const turno = ++vueltaEmp;
     const hueco = soloCompetencia ? document.getElementById('lista-competencia') : null;
     if (hueco) hueco.classList.add('cambiando');
@@ -7114,6 +7178,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       vistaFicha = { cif: null, cual: null };
     }
     repintarVista = () => verEmpresa(cif, true);
+    periodoAplica(true);
+    // Sin esperarlos: llegan mientras se pinta la ficha (ver pintarFicha).
+    pedirVigentes(cif).catch(() => {});
     // El buscador enseña el NIF de la ficha abierta: al llegar por un
     // enlace se quedaba con el de la anterior.
     campo.value = cif;
@@ -7166,6 +7233,147 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
   const textoVolver = () => history.state?.desde
     ? `← Volver a ${esc(history.state.desde)}` : '← Volver a las listas';
 
+  // Una fila de la lista de contratos: cuándo, de quién, cuánto y cuánto dura.
+  const filaContrato = u => `<div>
+      <p class="que">${tituloConEnlace(u.titulo, u.enlace)}</p>
+      <span class="quien">${[
+        u.fecha ? fechaCorta(u.fecha) : '',
+        esc(u.organo ?? ''),
+        u.importe ? euros(Number(u.importe)) : '',
+        duracionTxt(u.duracion_meses),
+        importeAnualTxt(u.importe, u.duracion_meses),
+      ].filter(Boolean).join(' · ')}</span>
+    </div>`;
+
+  // La pestaña Contratos: de 20 en 20, con lo elegido en `filtroContratos`.
+  // `mas` añade la página siguiente debajo; si no, empieza de cero.
+  let vueltaContratos = 0;
+  async function cargarContratos(e, mas = false) {
+    const lista = document.getElementById('lista-contratos');
+    const cuenta = document.getElementById('cuenta-contratos');
+    const boton = document.getElementById('mas-contratos');
+    if (!lista) return;
+    const f = filtroContratos;
+    const turno = ++vueltaContratos;
+    const saltar = mas ? lista.children.length : 0;
+    if (mas) { boton.disabled = true; boton.textContent = 'Cargando...'; }
+    else lista.classList.add('cambiando');
+    const { data, error } = await sb.rpc('contratos_empresa', {
+      cif_buscado: e.cif, ...argsPeriodo(periodoEmp),
+      buscar: f.buscar || null, sector_elegido: f.sector, organo_elegido: f.organo,
+      orden: f.orden, saltar, cuantos: POR_PAGINA });
+    if (turno !== vueltaContratos || !lista.isConnected) return;
+    lista.classList.remove('cambiando');
+    boton.disabled = false;
+    if (error || !data) {
+      // Un fallo no se enseña como "ninguno".
+      if (!mas) lista.innerHTML = '';
+      cuenta.textContent = 'No hemos podido cargar sus contratos. Inténtalo de nuevo.';
+      boton.hidden = !mas;
+      boton.textContent = 'Reintentar';
+      return;
+    }
+    const filas = (data.contratos ?? []).map(filaContrato).join('');
+    if (mas) lista.insertAdjacentHTML('beforeend', filas);
+    else lista.innerHTML = filas;
+
+    const total = Number(data.total) || 0;
+    const fuera = Number(data.fuera_del_periodo) || 0;
+    const vistos = lista.children.length;
+    const filtrado = !!(f.buscar || f.sector || f.organo);
+    const cuando = cuandoEmp() ? ` ${cuandoEmp()}` : '';
+    cuenta.textContent = !total
+      ? `Ninguno${cuando} con lo que has elegido.${fuera
+          ? ` Hay ${plural(fuera, 'otro', 'otros')} en otros años: cambia el periodo arriba.` : ''}`
+      : `${vistos < total ? `${vistos} de ` : ''}${plural(total, 'contrato', 'contratos')}${
+          filtrado ? ` que coinciden` : ''}${cuando}${
+          filtrado && fuera ? ` · ${fuera} más en otros años` : ''}`;
+    boton.hidden = vistos >= total;
+    boton.textContent = `Ver ${Math.min(POR_PAGINA, total - vistos)} más`;
+  }
+
+  // La pestaña Vigentes. "En su plazo" es seguro; "solo si se prorrogó",
+  // no: el plazo inicial ya pasó y que se prorrogara no se publica.
+  function filaVigente(v, enPlazo) {
+    const notas = [esc(v.organo ?? ''), v.importe ? euros(Number(v.importe)) : ''];
+    if (enPlazo) {
+      notas.push(`termina el ${fechaCorta(v.fin)}`);
+      if (v.prorroga === 'si' && v.fin_maximo) {
+        notas.push(`prorrogable hasta el ${fechaCorta(v.fin_maximo)}`);
+      } else if (v.prorroga === 'pliego') {
+        notas.push('puede tener prórrogas (ver el pliego)');
+      }
+    } else {
+      notas.push(`el plazo inicial terminó el ${fechaCorta(v.fin)}`,
+                 `como tarde hasta el ${fechaCorta(v.fin_maximo)}`);
+    }
+    if (v.clase === 'basado') notas.push('basado en un acuerdo marco');
+    return `<div>
+      <p class="que">${tituloConEnlace(v.titulo, v.enlace)}</p>
+      <span class="quien">${notas.filter(Boolean).join(' · ')}</span>
+    </div>`;
+  }
+
+  async function pintarVigentes(e) {
+    let v;
+    try { v = await pedirVigentes(e.cif); }
+    catch {
+      const hueco = document.getElementById('vigentes');
+      if (hueco && ultimaEmpresa?.cif === e.cif) hueco.innerHTML = `<div class="aviso mal">
+        No hemos podido cargar sus contratos vigentes. Inténtalo de nuevo.</div>`;
+      return;
+    }
+    const hueco = document.getElementById('vigentes');
+    if (!hueco || ultimaEmpresa?.cif !== e.cif) return;
+    const nPlazo = Number(v.n_en_plazo) || 0;
+    const nProrroga = Number(v.n_prorrogados) || 0;
+    const titulo = t => `<h4 style="margin:22px 0 4px;font-size:.83rem;font-weight:650;
+      color:var(--tenue);letter-spacing:.05em;text-transform:uppercase">${t}</h4>`;
+    const masDe = (grupo, vistos, total) => vistos < total
+      ? `<button type="button" class="mas" data-mas-vigentes="${grupo}">Ver ${
+          Math.min(POR_PAGINA, total - vistos)} más</button>` : '';
+    const abierto = hueco.querySelector('.prorrogados')?.open ?? false;
+
+    hueco.innerHTML = !nPlazo && !nProrroga
+      ? `<p class="sin-datos">No tiene contratos abiertos hoy, o los que tiene no
+          publican su duración.</p>`
+      : `
+        ${titulo(`En su plazo · ${nPlazo}`)}
+        ${nPlazo ? `
+          <div class="ultimos-contratos">
+            ${v.en_plazo.map(x => filaVigente(x, true)).join('')}
+          </div>
+          ${masDe('en_plazo', v.en_plazo.length, nPlazo)}`
+          : `<p class="guia" style="font-size:.86rem">Ninguno con el plazo inicial en curso.</p>`}
+        ${nProrroga ? `
+          <details class="prorrogados"${abierto ? ' open' : ''}>
+            <summary>Solo si se prorrogó · ${nProrroga}</summary>
+            <p class="guia" style="margin:10px 0 6px;font-size:.86rem">Su plazo inicial
+              ya terminó, pero el contrato prevé prórrogas que lo llevarían hasta hoy.
+              Que se haya prorrogado no se publica: puede seguir abierto o no.</p>
+            <div class="ultimos-contratos">
+              ${v.prorrogados.map(x => filaVigente(x, false)).join('')}
+            </div>
+            ${masDe('prorrogados', v.prorrogados.length, nProrroga)}
+          </details>` : ''}`;
+
+    hueco.querySelectorAll('[data-mas-vigentes]').forEach(b => b.onclick = async () => {
+      const grupo = b.dataset.masVigentes;
+      b.disabled = true;
+      b.textContent = 'Cargando...';
+      const { data, error } = await sb.rpc('vigentes_empresa', {
+        cif_buscado: e.cif, grupo, saltar: v[grupo].length, cuantos: POR_PAGINA });
+      if (error || !data) {
+        b.disabled = false;
+        b.textContent = 'Reintentar';
+        return;
+      }
+      // Se añaden a lo guardado: al volver a la pestaña siguen ahí.
+      v[grupo].push(...(data[grupo] ?? []));
+      pintarVigentes(e);
+    });
+  }
+
   function pintarFicha(e) {
     const sectores = e.sectores ?? [];
     // La base trae los 8 con más contratos, pero los empates (todos con uno,
@@ -7178,22 +7386,34 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
       .sort(porImporte
         ? (a, b) => (euroDe(b) - euroDe(a)) || (b.contratos - a.contratos)
         : (a, b) => (b.contratos - a.contratos) || (euroDe(b) - euroDe(a)));
-    const ultimos = e.ultimos ?? [];
     const marcos = e.marcos ?? [];
     const utes = e.utes ?? [];
     const socios = e.socios ?? [];
     const nUtes = Math.max(e.n_utes ?? 0, utes.length);
     const raros = nUtes + marcos.length;
 
-    // Por defecto, sus contratos. Si en el periodo no tiene ninguno pero sí
+    // Por defecto, el resumen. Si en el periodo no tiene contratos pero sí
     // UTEs o acuerdos marco, se abre en esos: una vista vacía no enseña nada.
     // Al volver atrás a esta ficha, la vista que se dejó (va en el historial).
     if (vistaFicha.cif !== e.cif || !vistaFicha.cual) {
       const guardada = history.state?.cif === e.cif ? history.state.vistaFicha : null;
       vistaFicha = { cif: e.cif,
-        cual: guardada ?? (!e.contratos && raros ? 'otros' : 'contratos') };
+        cual: guardada ?? (!e.contratos && raros ? 'otros' : 'resumen') };
     }
-    const vista = raros ? vistaFicha.cual : 'contratos';
+    const vista = vistaFicha.cual === 'otros' && !raros ? 'resumen' : vistaFicha.cual;
+    if (filtroContratos.cif !== e.cif) {
+      filtroContratos = { cif: e.cif, buscar: '', sector: null, organo: null, orden: 'fecha' };
+    }
+    const fc = filtroContratos;
+    // Los organismos para el filtro: los de más contratos y los de más
+    // importe, sin repetir. Son los que la ficha trae (8 y 8).
+    const nombresOrganos = [...new Set([...(e.organos ?? []), ...(e.organos_importe ?? [])]
+      .sort((a, b) => b.contratos - a.contratos).map(o => o.organo).filter(Boolean))];
+    if (fc.organo && !nombresOrganos.includes(fc.organo)) nombresOrganos.unshift(fc.organo);
+    const nombresSectores = sectores.map(x => x.sector).filter(Boolean);
+    if (fc.sector && !nombresSectores.includes(fc.sector)) nombresSectores.unshift(fc.sector);
+    const opcion = (valor, texto, elegido) => `<option value="${esc(valor)}"${
+      valor === elegido ? ' selected' : ''}>${esc(texto)}</option>`;
 
     // Otra empresa que se abre al pulsar: solo el nombre, con aspecto de
     // enlace. `desde` deja dicho en el historial de dónde se viene.
@@ -7244,15 +7464,18 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
               ${e.sigo ? 'Siguiendo' : 'Seguir'}</button>`}
         </div>
 
-        ${raros ? `
-          <div class="forma vista-ficha" role="group" aria-label="Qué enseñar de esta empresa">
-            <button data-vista="contratos"
-              aria-pressed="${vista === 'contratos'}">Contratos</button>
-            <button data-vista="otros"
-              aria-pressed="${vista === 'otros'}">${etiquetaRaros} · ${raros}</button>
-          </div>` : ''}
+        <div class="forma vista-ficha" role="group" aria-label="Qué enseñar de esta empresa">
+          <button data-vista="resumen"
+            aria-pressed="${vista === 'resumen'}">Resumen</button>
+          <button data-vista="contratos"
+            aria-pressed="${vista === 'contratos'}">Contratos<span class="n">${e.contratos}</span></button>
+          <button data-vista="vigentes"
+            aria-pressed="${vista === 'vigentes'}">Vigentes<span class="n" id="n-vigentes"></span></button>
+          ${raros ? `<button data-vista="otros"
+            aria-pressed="${vista === 'otros'}">${etiquetaRaros}<span class="n">${raros}</span></button>` : ''}
+        </div>
 
-        ${vista === 'contratos' ? `
+        ${vista === 'resumen' ? `
           ${!e.contratos ? `<p class="sin-datos">Sin contratos propios${
             cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}.</p>` : ''}
 
@@ -7265,7 +7488,7 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
                 aria-pressed="${formaActual() === 'quesito'}">Circular</button>
             </div>
           </div>
-          <div style="margin-bottom:26px">${reparto(sectores, 'sector')}</div>` : ''}
+          <div style="margin-bottom:26px">${reparto(sectores, 'sector', 'sector')}</div>` : ''}
 
         ${organos.length ? `
           <div style="display:flex;align-items:center;gap:12px;margin:0 0 12px">
@@ -7287,7 +7510,9 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
             ${organos.map(o => `<tr style="cursor:default">
               <td class="quien"><a href="#" class="enlace-ficha"
                 data-a-organismo="${esc(o.organo)}">${esc(o.organo)}</a></td>
-              <td class="num">${o.contratos}</td>
+              <td class="num"><a href="#" class="enlace-ficha"
+                data-contratos-organo="${esc(o.organo)}"
+                title="Ver sus contratos con este organismo">${o.contratos}</a></td>
               <td class="num">${o.importe ? euros(Number(o.importe))
                 // Corto: la columna mide 112 px (92 en el móvil) y no parte
                 // líneas. El porqué va en el texto flotante.
@@ -7295,22 +7520,40 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
             </tr>`).join('')}
           </tbody></table>` : ''}
 
-        ${ultimos.length ? `
-          <h4 style="margin:26px 0 4px;font-size:.83rem;font-weight:650;
-                     color:var(--tenue);letter-spacing:.05em;
-                     text-transform:uppercase">Sus últimos contratos</h4>
-          <div class="ultimos-contratos">
-            ${ultimos.map(u => `<div>
-              <p class="que">${tituloConEnlace(u.titulo, u.enlace)}</p>
-              <span class="quien">${esc(u.organo ?? '')}${
-                u.importe ? ` · ${euros(Number(u.importe))}` : ''}${
-                duracionTxt(u.duracion_meses)
-                  ? ` · ${duracionTxt(u.duracion_meses)}` : ''}${
-                importeAnualTxt(u.importe, u.duracion_meses)
-                  ? ` · ${importeAnualTxt(u.importe, u.duracion_meses)}` : ''}</span>
-            </div>`).join('')}
-          </div>` : ''}
-        ` : `
+        ` : ''}
+
+        ${vista === 'contratos' ? (!e.contratos ? `<p class="sin-datos">Sin contratos propios${
+            cuandoEmp() ? ` ${esc(cuandoEmp())}` : ''}.</p>` : `
+          <div class="filtros-contratos">
+            <input type="search" id="buscar-contratos" value="${esc(fc.buscar)}"
+              placeholder="Buscar por título u organismo" aria-label="Buscar en sus contratos">
+            ${nombresSectores.length > 1 || fc.sector ? `
+              <select id="sector-contratos" aria-label="Sector">
+                ${opcion('', 'Todos los sectores', fc.sector ?? '')}
+                ${nombresSectores.map(x => opcion(x, x, fc.sector)).join('')}
+              </select>` : ''}
+            ${nombresOrganos.length > 1 || fc.organo ? `
+              <select id="organo-contratos" aria-label="Organismo">
+                ${opcion('', 'Todos los organismos', fc.organo ?? '')}
+                ${nombresOrganos.map(x => opcion(x, x, fc.organo)).join('')}
+              </select>` : ''}
+            <select id="orden-contratos" aria-label="Ordenar">
+              ${opcion('fecha', 'Más recientes', fc.orden)}
+              ${opcion('importe', 'Mayor importe', fc.orden)}
+            </select>
+          </div>
+          <p class="cuenta-contratos" id="cuenta-contratos" aria-live="polite"></p>
+          <div class="ultimos-contratos" id="lista-contratos"></div>
+          <button type="button" class="mas" id="mas-contratos" hidden></button>`) : ''}
+
+        ${vista === 'vigentes' ? `
+          <p class="guia" style="margin:0 0 6px;font-size:.86rem">Lo que tiene abierto
+            hoy, sin mirar el periodo de arriba. El final se calcula con la fecha de
+            formalización y la duración publicada: los contratos que no publican su
+            duración no salen.</p>
+          <div id="vigentes"><p class="guia">Cargando...</p></div>` : ''}
+
+        ${vista === 'otros' ? `
           ${utes.length ? `
             ${titulo('UTEs en las que participa')}
             <p class="guia" style="margin:0 0 6px;font-size:.86rem">Uniones temporales
@@ -7342,7 +7585,7 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
                 m.valor_marco ? ` · marco de ${euros(Number(m.valor_marco))} en total` : ''}</span>
             </div>`).join('')}
           </div>` : ''}
-        `}
+        ` : ''}
       </div>`;
 
     zona.querySelectorAll('[data-ver-cif]').forEach(a => {
@@ -7370,8 +7613,59 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
       };
     });
 
-    activarBarras(zona);
+    // Del resumen a la lista: un sector del gráfico o el número de
+    // contratos de un organismo abren la pestaña Contratos ya filtrada.
+    const aContratos = filtro => {
+      filtroContratos = { ...filtroContratos, buscar: '', sector: null, organo: null, ...filtro };
+      vistaFicha = { cif: e.cif, cual: 'contratos' };
+      history.replaceState({ ...history.state, vistaFicha: 'contratos' }, '');
+      pintarFicha(e);
+      const pestanas = zona.querySelector('.vista-ficha');
+      if (pestanas && pestanas.getBoundingClientRect().top < 0) {
+        pestanas.scrollIntoView({ block: 'start', behavior: 'instant' });
+      }
+    };
+    activarBarras(zona, vista === 'resumen'
+      ? { texto: 'Ver sus contratos', alPulsar: sector => aContratos({ sector }) } : null);
+    zona.querySelectorAll('[data-contratos-organo]').forEach(a => {
+      a.onclick = ev => {
+        ev.preventDefault();
+        aContratos({ organo: a.dataset.contratosOrgano });
+      };
+    });
     alPulsar('volver-listas', () => history.back());
+    periodoAplica(vista !== 'vigentes');
+
+    // La cifra de la pestaña Vigentes llega cuando llega.
+    pedirVigentes(e.cif).then(v => {
+      const n = document.getElementById('n-vigentes');
+      if (n && ultimaEmpresa?.cif === e.cif) n.textContent = v.n_en_plazo + v.n_prorrogados;
+    }, () => {});
+
+    if (vista === 'contratos' && e.contratos) {
+      // Escribir no repinta la ficha (se perdería el foco): solo la lista,
+      // y un rato después de la última tecla.
+      let espera = null;
+      const buscador = document.getElementById('buscar-contratos');
+      buscador.oninput = () => {
+        clearTimeout(espera);
+        espera = setTimeout(() => {
+          filtroContratos.buscar = buscador.value.trim();
+          cargarContratos(e);
+        }, 300);
+      };
+      [['sector-contratos', 'sector'], ['organo-contratos', 'organo'],
+       ['orden-contratos', 'orden']].forEach(([id, campo]) => {
+        const sel = document.getElementById(id);
+        if (sel) sel.onchange = () => {
+          filtroContratos[campo] = sel.value || (campo === 'orden' ? 'fecha' : null);
+          cargarContratos(e);
+        };
+      });
+      alPulsar('mas-contratos', () => cargarContratos(e, true));
+      cargarContratos(e);
+    }
+    if (vista === 'vigentes') pintarVigentes(e);
 
     // El interruptor se atiende por delegación, más abajo: volver a
     // engancharlo en cada dibujado lo duplicaba.
@@ -7413,6 +7707,7 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
     .test(t.replace(/[^a-zA-Z0-9]/g, '').toUpperCase());
   const mensajeBusqueda = html => {
     repintarVista = null;
+    periodoAplica(true);
     zona.classList.remove('cambiando');
     zona.innerHTML = `<button class="volver-listas" id="volver-busqueda">
       ← Volver a las listas</button>${html}`;
