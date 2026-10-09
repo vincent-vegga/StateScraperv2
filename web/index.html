@@ -7261,7 +7261,9 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
     const { data, error } = await sb.rpc('contratos_empresa', {
       cif_buscado: e.cif, ...argsPeriodo(periodoEmp),
       buscar: f.buscar || null, sector_elegido: f.sector, organo_elegido: f.organo,
-      orden: f.orden, saltar, cuantos: POR_PAGINA });
+      orden: f.orden, saltar, cuantos: POR_PAGINA,
+      // "N más en otros años" solo cuenta años que el selector ofrece.
+      rango_desde: aniosEmp[0]?.anio ?? null, rango_hasta: aniosEmp.at(-1)?.anio ?? null });
     if (turno !== vueltaContratos || !lista.isConnected) return;
     lista.classList.remove('cambiando');
     boton.disabled = false;
