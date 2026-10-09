@@ -25,6 +25,7 @@ En producción con primeros usuarios reales. El core funciona; hay deuda técnic
 | Viabilidad: puntuación por contrato, rango de precio y contratos enlazados | ✅ |
 | Viabilidad en la lista de Contratos: marca y filtro | ✅ Desde el 04/10/2026 |
 | Alerta diaria por correo | ✅ Activa, solo para quien enciende la campana |
+| Seguir avisa: lo que ganan las empresas, lo que publican los organismos y la nueva licitación de lo que vence | ✅ Desde el 10/10/2026 (Decisión 56) |
 | Histórico completo | ⚙️ Parcial (~25% del disponible) |
 | Sistemas dinámicos y acuerdos marco marcados como tales | ✅ Desde el 04/10/2026 |
 | Alta sin historial: camino estable | ⬜ Frágil |
@@ -148,7 +149,7 @@ La caché existe porque calcular competencia o fichas sobre 25.000 contratos cad
 
 ### Cron diario
 
-Cada mañana a las 06:00 UTC (08:00 peninsular en verano). Ejecuta el scraper, el cribado y la alerta por correo. Solo recibe correo quien haya encendido la campana: `perfiles.avisos` nace apagado. El correo sale si hay contratos nuevos o si algo de su cartera cierra dentro de 7, 3 o 1 día.
+Cada mañana a las 06:00 UTC (08:00 peninsular en verano). Ejecuta el scraper, el cribado y la alerta por correo. Solo recibe correo quien haya encendido la campana: `perfiles.avisos` nace apagado. El correo sale si hay contratos nuevos, si algo de su cartera cierra dentro de 7, 3 o 1 día, o si hay algo de lo que sigue: una licitación de un organismo seguido o la nueva de un contrato vigilado. Lo que gana la competencia va con lo demás o, solo, como mucho una vez por semana (Decisión 56).
 
 Al acabar el scraper, `condiciones.yml` lee la solvencia de lo nuevo (anuncio o pliego), con un tope de 0,50 $ al día y 10 $ al mes.
 

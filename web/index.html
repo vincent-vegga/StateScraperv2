@@ -1317,6 +1317,26 @@ select:focus{
 .movimiento .cuando .falta{
   display:block;font-weight:400;color:var(--tenue);font-size:.8rem;
 }
+/* Vigilar un contrato que vence (Decisión 56): avisa por correo cuando
+   sale su nueva licitación. Debajo de la fecha, que es lo que decide. */
+.movimiento .vigilar{margin-top:9px}
+
+/* Lo que sigues, en la configuración de avisos (Decisión 56). */
+.lo-que-sigues h4{
+  margin:20px 0 6px;font-size:.9rem;font-weight:650;
+}
+.lo-que-sigues h4 .n{color:var(--tenue);font-weight:400;margin-left:4px}
+.lo-que-sigues ul{list-style:none;margin:0;padding:0}
+.lo-que-sigues li{
+  display:flex;justify-content:space-between;align-items:center;gap:14px;
+  padding:9px 0;border-bottom:1px solid var(--linea);font-size:.9rem;
+}
+.lo-que-sigues li:last-child{border-bottom:0}
+.lo-que-sigues li .detalle{
+  display:block;color:var(--tenue);font-size:.8rem;margin-top:2px;
+}
+.lo-que-sigues li .nueva{color:var(--si);font-weight:600}
+.lo-que-sigues .vacio-seg{color:var(--tenue);font-size:.86rem;margin:4px 0 0}
 
 /* Ningún bloque ancho arrastra la página entera.
    Una tabla o un gráfico que no cabe debe desplazarse DENTRO de su
@@ -1416,6 +1436,7 @@ select:focus{
   /* En una columna, la fecha va en una sola línea bajo el importe: dos
      líneas a la izquierda alargaban cada fila sin decir más. */
   .movimiento .cuando .falta{display:inline;margin-left:6px}
+  .lo-que-sigues li{flex-wrap:wrap}
   .filtros-viene{gap:12px}
   /* Los tres plazos a todo el ancho: con su cifra al lado no cabían en
      320 px a su tamaño natural. */
@@ -5805,6 +5826,8 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
               ${d.provincia ? `<span>${esc(d.provincia)}</span>` : ''}
             </p>
           </div>
+          <button class="seguir" id="seguir-organo" aria-pressed="false" hidden
+                  title="Te avisamos por correo de lo que publique en tu sector">Seguir</button>
         </div>
         <div class="hueco-periodo" id="periodo-org"></div>
         <div class="cuerpo-ficha">
@@ -5845,6 +5868,7 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
     ultimoOrgano = cual; ultimaFicha = d; ultimasEmpresas = empresas;
     ultimosContratos = contratos;
     ponerSelector(cual);
+    activarSeguirOrgano(d.organo);
 
     // ---------- Los contratos siguen a lo que señalas ----------
     //
@@ -5907,6 +5931,41 @@ async function pantallaOrganismos(perfil, session, volviendo = false,
 
     activarBarras(zona);
 
+  }
+
+  // Seguir el organismo (Decisión 56): avisa de lo que publique en las
+  // familias del perfil. El botón sale oculto y se enseña cuando se sabe
+  // si ya lo sigue; sin la función en la base (web publicada antes que la
+  // migración) no aparece.
+  async function activarSeguirOrgano(cual) {
+    const b = document.getElementById('seguir-organo');
+    if (!b) return;
+    const r = await pedir('mis_seguimientos');
+    // Se ha repintado otra ficha mientras tanto.
+    if (r.error || document.getElementById('seguir-organo') !== b) return;
+    const marcar = sigo => {
+      b.setAttribute('aria-pressed', String(sigo));
+      b.textContent = sigo ? 'Siguiendo' : 'Seguir';
+    };
+    marcar((r.data?.organismos ?? []).some(o => o.organo === cual));
+    b.hidden = false;
+    b.onclick = async () => {
+      // Quieto mientras responde: `seguir_organismo` alterna.
+      if (b.disabled) return;
+      b.disabled = true;
+      let respuesta;
+      try { respuesta = await sb.rpc('seguir_organismo', { organo_elegido: cual }); }
+      catch (error) { respuesta = { error }; }
+      b.disabled = false;
+      if (respuesta.error) {
+        recado('No se ha podido guardar. Inténtalo de nuevo.');
+        return;
+      }
+      marcar(!!respuesta.data);
+      olvidar('mis_seguimientos');
+      if (respuesta.data) recadoSeguir('de lo que publique en tu sector');
+      else recado('Has dejado de seguir este organismo');
+    };
   }
 
   if (organo) { campo.value = organo; abrir(organo); }
@@ -6085,6 +6144,9 @@ async function seccionLoQueViene(perfil, session) {
   const TANDA = 300, TECHO = 1500;
   let tope = TANDA;
   let vuelta = 0;
+  // Los contratos que vigila (Decisión 56), por su identificador. Null si
+  // la función aún no existe: entonces no se enseña el botón.
+  let vigilo = null;
 
   cuerpo.innerHTML = `
     <div class="cabeza-movimientos">
@@ -6107,9 +6169,12 @@ async function seccionLoQueViene(perfil, session) {
     if (!datos) return;
     if (!mas) tope = TANDA;
     datos.classList.add('cambiando');
-    const r = await pedir('lo_que_viene',
-      { meses: plazo, provincia_elegida: provincia, tope });
+    const [r, seg] = await Promise.all([
+      pedir('lo_que_viene', { meses: plazo, provincia_elegida: provincia, tope }),
+      pedir('mis_seguimientos')]);
     if (t !== vuelta || turno !== turnoMov) return;
+    vigilo = seg.error ? null
+      : new Set((seg.data?.vigilados ?? []).map(v => v.id_licitacion));
     const ahora = document.getElementById('datos-viene');
     if (!ahora) return;
     ahora.classList.remove('cambiando');
@@ -6209,6 +6274,10 @@ async function seccionLoQueViene(perfil, session) {
           ${anual ? `<span class="baja">${anual}</span>` : ''}
           <span class="cuando">${enProrroga ? 'como tarde' : 'vence'} ${esc(fecha(m.vence))}
             <span class="falta">${faltaPara(m.vence)}</span></span>
+          ${vigilo && !m.es_mia ? `<button type="button" class="seguir chico vigilar"
+            data-vigilar="${esc(m.id_licitacion)}" aria-pressed="${vigilo.has(m.id_licitacion)}"
+            title="Te avisamos por correo cuando salga su nueva licitación">${
+            vigilo.has(m.id_licitacion) ? 'Vigilando' : 'Vigilar'}</button>` : ''}
         </div>
       </div>`;
     };
@@ -6245,7 +6314,8 @@ async function seccionLoQueViene(perfil, session) {
           contratos menores, los basados en un acuerdo marco (solo pueden
           pedirlos las empresas homologadas), las obras ni los de menos de
           seis meses. ${d.mios ? '<strong>Los tuyos</strong> van marcados: son los que te toca defender. ' : ''}Se
-          recalcula cada día.</p>
+          recalcula cada día.${vigilo ? ` Pulsa <strong>Vigilar</strong> en un
+          contrato y te avisaremos por correo cuando salga su nueva licitación.` : ''}</p>
         </dl>
       </div>
 
@@ -6286,6 +6356,8 @@ async function seccionLoQueViene(perfil, session) {
     // La empresa abre su ficha en Empresas y el organismo la suya, igual
     // que en lo adjudicado.
     datos.onclick = ev => {
+      const v = ev.target.closest('[data-vigilar]');
+      if (v) { vigilar(v); return; }
       const e = ev.target.closest('[data-a-mercado]');
       const o = ev.target.closest('[data-a-organismo]');
       if (!e && !o) return;
@@ -6298,6 +6370,35 @@ async function seccionLoQueViene(perfil, session) {
       }
       window.scrollTo({ top: 0, behavior: 'instant' });
     };
+  }
+
+  // Vigilar alterna. Se pinta al instante y se corrige si el servidor
+  // dice otra cosa; quieto mientras responde, como seguir.
+  async function vigilar(b) {
+    if (b.disabled) return;
+    const id = b.dataset.vigilar;
+    const antes = b.getAttribute('aria-pressed') === 'true';
+    const marcar = si => {
+      b.setAttribute('aria-pressed', String(si));
+      b.textContent = si ? 'Vigilando' : 'Vigilar';
+    };
+    marcar(!antes);
+    b.disabled = true;
+    let respuesta;
+    try { respuesta = await sb.rpc('vigilar', { licitacion: id }); }
+    catch (error) { respuesta = { error }; }
+    b.disabled = false;
+    if (respuesta.error) {
+      marcar(antes);
+      recado('No se ha podido guardar. Inténtalo de nuevo.');
+      return;
+    }
+    const si = !!respuesta.data;
+    marcar(si);
+    if (vigilo) si ? vigilo.add(id) : vigilo.delete(id);
+    olvidar('mis_seguimientos');
+    if (si) recadoSeguir('cuando salga su nueva licitación');
+    else recado('Has dejado de vigilar este contrato');
   }
 
   await cargar();
@@ -7116,11 +7217,10 @@ async function pantallaMercado(perfil, session, volviendo = false, cif = null) {
         b.disabled = false;
         b.setAttribute('aria-pressed', String(!!data));
         b.textContent = data ? 'Siguiendo' : 'Seguir';
-        recado(data
-          ? 'Añadida a tu lista de seguimiento'
-          : 'Quitada de tu lista de seguimiento');
+        if (data) recadoSeguir('de lo que gane');
+        else recado('Quitada de tu lista de seguimiento');
         olvidar('seguimiento_periodo', 'competencia_periodo',
-                'movimientos_periodo', 'resumen_periodo');
+                'movimientos_periodo', 'resumen_periodo', 'mis_seguimientos');
 
         // Al seguirla desde la competencia, su fila se va: ya está arriba
         // en la lista de seguimiento y saldría dos veces. Si deja de
@@ -7693,12 +7793,11 @@ Cuánto le toca a cada socio no se publica.">· puede haber más socios</span></
       e.sigo = !!data;
       b.setAttribute('aria-pressed', String(!!data));
       b.textContent = data ? 'Siguiendo' : 'Seguir';
-      recado(data
-        ? 'Añadida a tu lista de seguimiento'
-        : 'Quitada de tu lista de seguimiento');
+      if (data) recadoSeguir('de lo que gane');
+      else recado('Quitada de tu lista de seguimiento');
       olvidar('mi_seguimiento', 'competencia', 'movimientos_mercado',
               'seguimiento_periodo', 'competencia_periodo',
-              'movimientos_periodo', 'resumen_periodo');
+              'movimientos_periodo', 'resumen_periodo', 'mis_seguimientos');
     });
   }
 
@@ -7828,6 +7927,18 @@ function recado(texto, accion = null, duracion = 3200) {
   requestAnimationFrame(() => caja.classList.add('visible'));
   clearTimeout(recadoTemporizador);
   recadoTemporizador = setTimeout(() => caja.classList.remove('visible'), duracion);
+}
+
+// Seguir avisa (Decisión 56). Lo que se dice al empezar a seguir algo
+// depende de la campana: con ella apagada no llega ningún correo, y
+// decir "te avisaremos" sería prometer algo que no va a pasar.
+function recadoSeguir(deQue) {
+  const encendida = document.getElementById('campana')
+    ?.getAttribute('aria-pressed') === 'true';
+  recado(encendida
+    ? `Te avisaremos por correo ${deQue}`
+    : `Guardado. Enciende la campana para que te avisemos ${deQue}`,
+    null, 4200);
 }
 
 // La campana enciende y apaga el correo diario. Va suelta y no dentro
@@ -8282,9 +8393,10 @@ async function pantallaPanel(perfil, session, volviendo = false, seccion = 'cuen
 // (novedades_de_perfil) y la lista al filtrar: el recuento de abajo dice
 // la verdad sobre lo que llegará.
 async function montarAvisos(perfil, encendido) {
-  const [cfg, zonas, sectores, contratos] = await Promise.all([
+  const [cfg, zonas, sectores, contratos, seg] = await Promise.all([
     sb.rpc('mis_avisos'), pedir('zonas_espana'),
-    cargarSectores(perfil), pedirContratos(perfil.id)]);
+    cargarSectores(perfil), pedirContratos(perfil.id),
+    sb.rpc('mis_seguimientos')]);
   const zona = document.getElementById('avisos-panel');
   // Se ha ido a otra pantalla o a otra empresa mientras cargaba.
   if (!zona || perfil.id !== perfilActivoId) return;
@@ -8357,6 +8469,7 @@ async function montarAvisos(perfil, encendido) {
           </div>`).join('')}
       </div>
     </div>
+    ${seg.error ? '' : bloqueLoQueSigues(seg.data ?? {})}
     <div class="bloque resumen-avisos">
       <p id="avisos-cuenta"></p>
       <!-- Con la campana apagada, guardar sin encenderla dejaba a alguien
@@ -8467,7 +8580,93 @@ async function montarAvisos(perfil, encendido) {
     recado('Avisos guardados. Te llegarán cada mañana por correo');
   });
 
+  activarLoQueSigues(zona);
   pintarZona();
+}
+
+// Lo que sigue, dentro de la configuración de avisos (Decisión 56): qué
+// más trae el correo además de los contratos nuevos, y dónde se deja de
+// seguir algo sin ir a buscarlo a su ficha.
+function bloqueLoQueSigues(d) {
+  const empresas = d.empresas ?? [], organismos = d.organismos ?? [],
+        vigilados = d.vigilados ?? [];
+  const quitar = (tipo, valor, extra = '') => `<button type="button"
+    class="seguir chico" aria-pressed="true" data-quitar="${tipo}"
+    data-valor="${esc(valor)}" ${extra}>Dejar de ${
+    tipo === 'vigilado' ? 'vigilar' : 'seguir'}</button>`;
+  const lista = (filas, vacio) => filas.length
+    ? `<ul>${filas.join('')}</ul>` : `<p class="vacio-seg">${vacio}</p>`;
+  return `
+    <div class="bloque lo-que-sigues">
+      <h3>Lo que sigues</h3>
+      <p class="guia" style="margin:0">Además de los contratos nuevos, el correo
+      te avisa de esto. Lo que publican los organismos y la nueva licitación de
+      un contrato vigilado llegan en el correo del día. Lo que ganan las
+      empresas va con lo demás y, si no hay nada más, en un resumen semanal.</p>
+
+      <h4>Empresas<span class="n">${empresas.length}</span></h4>
+      ${lista(empresas.map(e => `<li><span>${esc(e.nombre ?? e.cif)}
+        <span class="detalle">Te avisamos de lo que gane</span></span>
+        ${quitar('empresa', e.cif, `data-nombre="${esc(e.nombre ?? e.cif)}"`)}</li>`),
+        'Síguelas desde Empresas, en su ficha o en la lista de tu competencia.')}
+
+      <h4>Organismos<span class="n">${organismos.length}</span></h4>
+      ${lista(organismos.map(o => `<li><span>${esc(o.organo)}
+        <span class="detalle">Te avisamos de lo que publique en tu sector</span></span>
+        ${quitar('organismo', o.organo)}</li>`),
+        'Síguelos desde la ficha de cada organismo.')}
+
+      <h4>Contratos que vigilas<span class="n">${vigilados.length}</span></h4>
+      ${lista(vigilados.map(v => `<li><span>${tituloConEnlace(v.titulo, v.enlace)}
+        <span class="detalle">${esc(v.organo ?? '')}${v.vence
+          ? ` · vence el ${esc(fechaCorta(String(v.vence)))}` : ''}${v.nueva
+          ? ` · <span class="nueva">ya ha salido su nueva licitación:</span>
+              ${tituloConEnlace(v.nueva.titulo, v.nueva.enlace)}` : ''}</span></span>
+        ${quitar('vigilado', v.id_licitacion)}</li>`),
+        'Vigílalos desde «Lo que viene»: te avisamos cuando salga su nueva licitación.')}
+    </div>`;
+}
+
+function activarLoQueSigues(zona) {
+  zona.querySelectorAll('[data-quitar]').forEach(b => b.onclick = async () => {
+    if (b.disabled) return;
+    b.disabled = true;
+    const tipo = b.dataset.quitar, valor = b.dataset.valor;
+    // Las tres alternan: llamadas sobre algo que se sigue, lo quitan.
+    const llamada = tipo === 'empresa'
+      ? sb.rpc('seguir', { cif_empresa: valor, nombre_empresa: b.dataset.nombre })
+      : tipo === 'organismo'
+        ? sb.rpc('seguir_organismo', { organo_elegido: valor })
+        : sb.rpc('vigilar', { licitacion: valor });
+    let respuesta;
+    try { respuesta = await llamada; } catch (error) { respuesta = { error }; }
+    // Si devuelve true es que no lo seguía (otra pestaña lo quitó antes):
+    // se deshace para dejarlo como estaba.
+    if (!respuesta.error && respuesta.data === true) {
+      try {
+        await (tipo === 'empresa'
+          ? sb.rpc('seguir', { cif_empresa: valor, nombre_empresa: b.dataset.nombre })
+          : tipo === 'organismo'
+            ? sb.rpc('seguir_organismo', { organo_elegido: valor })
+            : sb.rpc('vigilar', { licitacion: valor }));
+      } catch { /* queda como estaba al recargar */ }
+    }
+    if (respuesta.error) {
+      b.disabled = false;
+      recado('No se ha podido guardar. Inténtalo de nuevo.');
+      return;
+    }
+    olvidar('mis_seguimientos', 'mi_seguimiento', 'seguimiento_periodo',
+            'competencia_periodo', 'movimientos_periodo', 'resumen_periodo');
+    const fila = b.closest('li');
+    const ul = fila.parentElement;
+    fila.remove();
+    const cuenta = ul.previousElementSibling?.querySelector('.n');
+    if (cuenta) cuenta.textContent = ul.children.length;
+    recado(tipo === 'vigilado' ? 'Has dejado de vigilar este contrato'
+      : tipo === 'organismo' ? 'Has dejado de seguir este organismo'
+      : 'Quitada de tu lista de seguimiento');
+  });
 }
 
 // ============================================================
