@@ -1,0 +1,31 @@
+-- ============================================================
+-- El índice del marcador de la ventana adaptativa, que faltaba
+-- ============================================================
+--
+-- APLICADO el 09/10/2026 con `create index concurrently`, 77 MB.
+--
+-- `fecha_ultima_guardada` (lector_atom.py) pregunta cada mañana, fuente
+-- por fuente, cuál es la última publicación guardada: es el marcador de
+-- la ventana adaptativa (Decisión 8). `esquema.sql` ya traía el índice
+-- para esa consulta, con ese mismo comentario, pero en producción no
+-- existía. No hay rastro de que se quitara a propósito: ninguna decisión,
+-- migración ni commit lo menciona. La definición es la de `esquema.sql`,
+-- letra por letra.
+--
+-- Sin él, cada pregunta recorría la tabla entera (2 GB):
+--
+--   pg_stat_statements, 01/10 al 09/10/2026, service_role:
+--   14 llamadas, 13.789 ms de media, 6,8 % desde caché
+--
+--   con el índice: 1 ms, Index Only Scan
+--
+-- Además de los segundos del robot, cada recorrido sacaba de la caché
+-- lo que usa la web, justo antes de que entre la gente por la mañana.
+--
+-- Cuesta 77 MB y un índice más en cada escritura de `licitaciones`;
+-- el 07/10 se quitaron cuatro que nadie usaba
+-- (20261007212000_indices_sin_uso_y_autovacuum.sql).
+-- ============================================================
+
+create index concurrently if not exists idx_licitaciones_fuente_actualizacion
+    on public.licitaciones (fuente, fecha_actualizacion desc);
