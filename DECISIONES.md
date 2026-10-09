@@ -1848,6 +1848,47 @@ leía como "lo has ganado".
 
 ---
 
+## 55. Ficha de empresa: todos sus contratos y los que tiene abiertos
+
+**Contexto.** "Sus últimos contratos" eran los 8 más recientes del
+periodo. De una empresa con 2.000 adjudicaciones no se podía llegar a la
+que interesaba, y no se veía qué tiene en marcha hoy, que es lo que dice
+qué le va a quedar libre.
+
+**Decisión.** La ficha pasa a pestañas: **Resumen** (sectores y
+organismos, sin lista), **Contratos**, **Vigentes** y, si las hay, UTEs y
+acuerdos marco. Contratos trae los del periodo de 20 en 20
+(`contratos_empresa`), con buscador por título y organismo (todas las
+palabras, sin acentos), filtro por sector y por organismo y orden por
+fecha o importe. Del Resumen se llega filtrado: el número de contratos de
+un organismo, o "Ver sus contratos" en el detalle de un sector del
+gráfico. Si lo buscado no está en el periodo pero sí en otros años, se
+dice cuántos.
+
+**Vigentes** (`vigentes_empresa`) no mira el periodo: el selector se
+apaga. El fin se calcula como en Lo que viene (Decisión 48): inicio +
+duración, y las prórrogas leídas del texto. Dos grupos: **en su plazo**
+(seguro) y **solo si se prorrogó** (el plazo inicial pasó y las prórrogas
+previstas lo llevarían a hoy; plegado, porque que se prorrogara no se
+publica). Aquí sí entran obras, basados y lo que dura menos de 6 meses:
+no se vuelven a licitar, pero mientras duran son contratos abiertos.
+Fuera los menores y las homologaciones, como en las cifras de la ficha, y
+lo que no publica duración.
+
+**Medido (09/10/2026).** La empresa con más contratos (2.865): la lista,
+0,2 s; el buscador, 0,3 s; los vigentes, 1,4 s en frío (1.233 en plazo y
+82 prorrogables). Por eso vigentes también va por páginas (20 KB en vez
+de 650) y se pide sin esperarlo al abrir la ficha, solo para poner la
+cifra en la pestaña. Sin índice nuevo: se filtra entre las filas de una
+empresa, no en la tabla.
+
+**Lo que no se cubre.** Los contratos largos ganados antes del histórico
+cargado no salen como vigentes hasta que se cargue su año. Las
+participaciones en UTE no cuentan como vigentes de la empresa: están en
+la ficha de la UTE.
+
+---
+
 ## Deuda técnica anotada
 
 Cosas conocidas que se decidió no hacer, y por qué.
