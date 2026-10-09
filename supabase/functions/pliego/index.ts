@@ -27,7 +27,11 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const MODELO = Deno.env.get("MODELO_PLIEGO") ?? "gpt-4o-mini";
+// gpt-4o-mini buscaba una vez y se rendía: medido el 09/10/2026, no
+// encontró en el cuadro de características ni la solvencia (207.645 €)
+// ni el peso de los criterios, que estaban. El mini de la 4.1 busca
+// mejor y sigue costando céntimos por pregunta.
+const MODELO = Deno.env.get("MODELO_PLIEGO") ?? "gpt-4.1-mini";
 // Dólares por millón de fichas (entrada, salida), y por búsqueda.
 const PRECIOS: Record<string, [number, number]> = {
   "gpt-4o-mini": [0.15, 0.60],
@@ -61,7 +65,10 @@ const ORDEN_TIPO: Record<string, number> = {
   pliego_administrativo: 0, DOC_PCAP: 0, pliego_tecnico: 1, DOC_PPT: 1,
 };
 
-const INSTRUCCIONES = `Respondes preguntas sobre los documentos de una licitación pública española (pliegos de cláusulas administrativas, de prescripciones técnicas y anexos). Usa SOLO lo que encuentres en esos documentos con la herramienta de búsqueda; búscalo siempre antes de responder.
+const INSTRUCCIONES = `Respondes preguntas sobre los documentos de una licitación pública española (pliegos de cláusulas administrativas, de prescripciones técnicas, cuadro de características y anexos). Usa SOLO lo que encuentres en esos documentos con la herramienta de búsqueda; búscalo siempre antes de responder.
+
+- Busca varias veces con palabras distintas antes de decir que no está. Los pliegos usan su propio vocabulario y a menudo el dato está en el cuadro de características o en un anexo: por ejemplo "volumen anual de negocios", "solvencia económica y financiera", "criterios de adjudicación", "criterios de valoración", "ponderación", "puntos", "fórmula", "ofertas anormalmente bajas", "valores anormales o desproporcionados", "garantía definitiva", "plazo de ejecución", "sobre", "archivo electrónico".
+- Si el documento remite a otro apartado ("ver apartado 12 del cuadro"), busca ese apartado.
 
 - Responde en castellano llano y breve: 120 palabras como mucho, salvo que pidan una lista.
 - Di de qué documento sale cada dato y, si aparece, la cláusula o el apartado.
@@ -328,7 +335,7 @@ Deno.serve(async (peticion) => {
         model: MODELO,
         instructions: INSTRUCCIONES,
         input: `Licitación: ${lic.titulo ?? ""}\nÓrgano: ${lic.organo ?? ""}\n\nPregunta: ${texto}`,
-        tools: [{ type: "file_search", vector_store_ids: [almacen], max_num_results: 10 }],
+        tools: [{ type: "file_search", vector_store_ids: [almacen], max_num_results: 16 }],
         temperature: 0,
         max_output_tokens: 900,
       }),
