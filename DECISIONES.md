@@ -2035,7 +2035,12 @@ dentro de un ZIP se suben primero el pliego, el cuadro y los criterios, y
 al final los modelos y declaraciones para rellenar (`interes()`, igual
 en `zip.ts` y en `relevo_pliego.py`): en un ZIP catalán de 27 ficheros,
 12 eran formularios y el PCAP quedaba fuera. Hasta 10 documentos por
-licitación (antes 6).
+licitación (antes 6), y cada ZIP deja un hueco a cada documento suelto
+que falta (sin eso, los anexos dejaban fuera el pliego técnico); lo que
+no entra se dice en una línea. Probado con ese PCAP catalán, por la
+función y por el relevo: 10 documentos leídos (anexo de criterios del
+ZIP interior incluido) y la pregunta por los criterios respondida por
+lote en 6,9 s.
 
 **Lo que no se cubre.** Pliegos escaneados (sin texto), y PDF sueltos de
 más de 25 MB (casi siempre escaneados). Sin números de página: el texto que
