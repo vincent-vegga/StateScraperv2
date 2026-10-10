@@ -81,6 +81,7 @@ Todo corre en GitHub Actions. No requiere instalación local ni servidor propio.
 | `web/index.html` | Interfaz web completa: todo en un solo fichero |
 | `supabase/functions/alta/index.ts` | Edge Function: onboarding guiado |
 | `supabase/functions/pliego/index.ts` | Edge Function: Pregúntale al pliego (Decisión 57) |
+| `relevo_pliego.py` | Descarga desde GitHub los pliegos que la función no alcanza (portal vasco) y los deja un momento en el almacén `relevo` (Decisión 57) |
 | `.github/workflows/scraper.yml` | Cron y modos de ejecución |
 | `.github/workflows/condiciones.yml` | Lectura de la solvencia al acabar el scraper; relleno a mano |
 | `DECISIONES.md` | Por qué el sistema es como es. Leer antes de tocar nada |
