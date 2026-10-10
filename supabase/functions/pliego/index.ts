@@ -300,8 +300,13 @@ async function preparar(admin: any, idLicitacion: string, docs: Documento[], rel
   // Lo recogido del almacén del relevo, para borrarlo después.
   const claves: string[] = [];
   let relevo = false;
-  for (const d of elegidos) {
+  // Los documentos sueltos que quedan por mirar, para que un ZIP lleno de
+  // anexos no se coma sus huecos (el 10/10/2026 dejó fuera el pliego técnico).
+  const cuentan = (x: Documento) => !DEUC.test(x.nombre || "")
+    && (LEGIBLES.has(extensionDe(x)) || extensionDe(x) === "zip");
+  for (const [i, d] of elegidos.entries()) {
     const base = { nombre: d.nombre || "documento", url: d.url, tipo: d.tipo };
+    const quedan = elegidos.slice(i + 1).filter(cuentan).length;
     if (subidos() >= MAX_DOCUMENTOS) {
       documentos.push({ ...base, file_id: null, motivo: "demasiados" });
       continue;
@@ -317,17 +322,22 @@ async function preparar(admin: any, idLicitacion: string, docs: Documento[], rel
       continue;
     }
     // Sube lo de dentro de un ZIP (abierto aquí o por el relevo).
+    // Lo de dentro llega ya en orden de interés; entra lo que cabe dejando
+    // un hueco a cada documento suelto que falta, y lo demás se resume en
+    // una sola línea (no 17 nombres de formularios).
     const subirEntradas = async (entradas: Entrada[]) => {
-      for (const e of entradas) {
+      const caben = Math.max(2, MAX_DOCUMENTOS - subidos() - quedan);
+      const fuera = entradas.length - caben;
+      for (const e of entradas.slice(0, caben)) {
         const nombre = `${base.nombre} › ${e.nombre}`;
-        if (subidos() >= MAX_DOCUMENTOS) {
-          documentos.push({ nombre, url: d.url, tipo: d.tipo, file_id: null, motivo: "demasiados" });
-          continue;
-        }
         const id = await subir({ nombre: e.nombre.split(" › ").pop() ?? e.nombre, url: d.url },
                                e.contenido, e.ext);
         documentos.push({ nombre, url: d.url, tipo: d.tipo, file_id: id,
                           motivo: id ? undefined : "subida" });
+      }
+      if (fuera > 0) {
+        documentos.push({ nombre: `${base.nombre} (${fuera} ${fuera === 1 ? "fichero" : "ficheros"} más)`,
+                          url: d.url, tipo: d.tipo, file_id: null, motivo: "demasiados" });
       }
     };
 
