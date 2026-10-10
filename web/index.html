@@ -9010,8 +9010,12 @@ function pintarPliego(hueco, id, clave) {
       `<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.nombre)}</a>`);
     espera.querySelector('.r').innerHTML = {
       sin_documentos: 'Esta licitación no tiene documentos publicados en el portal.',
-      sin_texto: `No hemos podido leer sus documentos: pueden estar escaneados o
-        comprimidos.${docs.length ? ` Ábrelos en el portal: ${enumerar(docs)}.` : ''}`,
+      sin_texto: (datos.documentos ?? []).length
+          && datos.documentos.every(d => d.motivo === 'descarga')
+        ? `El portal de esta licitación no nos deja descargar sus documentos.
+          Ábrelos allí: ${enumerar(docs)}.`
+        : `No hemos podido leer sus documentos: pueden estar escaneados o en un
+          formato que no leemos.${docs.length ? ` Ábrelos en el portal: ${enumerar(docs)}.` : ''}`,
       tope_perfil: `Has hecho ${datos.tope ?? 'todas las'} preguntas de hoy. Mañana puedes seguir.`,
       tope_dia: 'Hoy no podemos responder más preguntas. Vuelve a intentarlo mañana.',
       leyendo: 'El pliego es largo y aún lo estamos leyendo. Vuelve a preguntar en un minuto.',

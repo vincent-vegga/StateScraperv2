@@ -2009,8 +2009,20 @@ OpenAI, pero ahí ya se notaría.
 Word de dentro, lo que parece el pliego primero (`zip.ts`). Medido con
 un PCAP catalán de 12 MB: 38 ms. El DEUC no se sube (es un formulario).
 
+**Medido con sesión (10/10/2026).** Al abrir la ficha de un contrato
+con el técnico en un ZIP, el pliego quedó leído en 8 s, ZIP abierto
+incluido. La primera pregunta, hecha después desde la ficha, tardó 6,8 s
+(antes, 20-30 s) y respondió con lo que estaba dentro del ZIP.
+
+**El portal vasco no se puede descargar desde Supabase.** El cliente de
+red de las funciones rechaza su certificado («invalid peer certificate:
+BadSignature»); desde GitHub Actions y en local se descarga bien, y el
+lector de solvencia (Decisión 54) lee 328 pliegos suyos. Es cerca del
+7 % de los pliegos. La web lo dice así ("el portal no nos deja
+descargar") en vez de culpar al documento, y no se reintenta en 24 h.
+
 **Lo que no se cubre.** Pliegos escaneados (sin texto), ZIP de más de
-15 MB y ZIP dentro de otro ZIP. Sin números de página: el texto que
+15 MB, ZIP dentro de otro ZIP y el portal vasco. Sin números de página: el texto que
 devuelve la búsqueda no los conserva, y el modelo los inventaba.
 
 ---
