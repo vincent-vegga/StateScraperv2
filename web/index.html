@@ -8878,7 +8878,8 @@ const PREGUNTAS_SUGERIDAS = [
 const PREGUNTAS_PLIEGO = new Map();   // "perfil|id" -> lo ya preguntado
 
 const MOTIVO_SIN_LEER = {
-  formato: 'comprimido o en un formato que no leemos',
+  formato: 'en un formato que no leemos',
+  zip_grande: 'comprimido y demasiado grande para abrirlo',
   descarga: 'no se ha podido descargar del portal',
   subida: 'no se ha podido leer',
   demasiados: 'no ha entrado, hay muchos documentos',
@@ -8912,6 +8913,28 @@ async function montarPliego(hueco) {
     PREGUNTAS_PLIEGO.set(clave, r.data ?? []);
   }
   pintarPliego(hueco, id, clave);
+  // Quien abre la ficha suele leerla un rato antes de preguntar: en ese
+  // rato se lee el pliego, y la primera respuesta llega como las demás.
+  precalentarPliego(id);
+}
+
+// Pide que se empiece a leer el pliego, una vez por contrato y sesión. No
+// se espera a nada: la función responde al momento y sigue por su cuenta.
+const PLIEGOS_PEDIDOS = new Set();
+async function precalentarPliego(id) {
+  const clave = `${perfilActivoId}|${id}`;
+  if (PLIEGOS_PEDIDOS.has(clave)) return;
+  PLIEGOS_PEDIDOS.add(clave);
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    await fetch(`${SUPABASE_URL}/functions/v1/pliego`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${session.access_token}`,
+                 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'preparar', id_licitacion: id, perfil_id: perfilActivoId }),
+    });
+  } catch { /* si falla, se leerá al preguntar, como antes */ }
 }
 
 function pintarPliego(hueco, id, clave) {
@@ -8920,8 +8943,7 @@ function pintarPliego(hueco, id, clave) {
   hueco.innerHTML = `
     <h3>Pregúntale al pliego</h3>
     <p class="guia-pliego">Te respondemos con lo que dicen los documentos de esta
-    licitación y te decimos de cuál sale. La primera pregunta tarda hasta un
-    minuto: hay que leer el pliego.</p>
+    licitación y te decimos de cuál sale.</p>
     <div class="sugeridas">${PREGUNTAS_SUGERIDAS.map(p =>
       `<button type="button" data-sugerida="${esc(p)}">${esc(p)}</button>`).join('')}</div>
     <form data-preguntar>
@@ -10003,6 +10025,8 @@ async function pantallaOportunidades(perfil, session, volviendo = false,
     }
     olvidar('contratos', 'analizables');
     refrescarCartera();
+    // Si va a presentarse, el pliego se empieza a leer ya (Decisión 57).
+    if (estado === 'interesa' || estado === 'preparando') precalentarPliego(id);
 
     if (antes) {
       recado(`Marcado como «${ESTADOS_CARTERA[estado]}»`);
