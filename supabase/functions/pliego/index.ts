@@ -26,6 +26,10 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { abrirZip, extensionPorContenido } from "./zip.ts";
+
+// Para seguir leyendo el pliego después de responder (acción "preparar").
+declare const EdgeRuntime: { waitUntil(promesa: Promise<unknown>): void } | undefined;
 
 // gpt-4o-mini buscaba una vez y se rendía: medido el 09/10/2026, no
 // encontró en el cuadro de características ni la solvencia (207.645 €)
@@ -47,9 +51,16 @@ const DIAS_CACHE = 7;
 // Un pliego de más de 25 MB suele ser escaneado (sin texto que buscar), y
 // la función tiene 256 MB de memoria.
 const MAX_DOCUMENTO = 25 * 1024 * 1024;
-const MAX_DOCUMENTOS = 5;
-// Lo que OpenAI sabe leer para buscar. Un ZIP no: se dice cuál se quedó
-// fuera.
+const MAX_DOCUMENTOS = 6;
+// Lecturas por adelantado al día por perfil: abrir fichas no cuesta
+// preguntas, pero cada una descarga y sube el pliego.
+// Un ZIP de más de esto no se abre: descomprimir cuesta CPU (2 s por
+// petición) y memoria (256 MB).
+const MAX_ZIP = 15 * 1024 * 1024;
+const PREPARADOS_DIA = Number(Deno.env.get("PLIEGO_PREPARADOS_DIA") ?? 80);
+// Un pliego que no se pudo leer no se reintenta en este tiempo.
+const HORAS_FALLO = 24;
+// Lo que OpenAI sabe leer para buscar.
 const LEGIBLES = new Set(["pdf", "docx", "doc", "txt", "html", "htm", "odt", "rtf", "pptx"]);
 const TIPOS: Record<string, string> = {
   pdf: "application/pdf",
@@ -94,6 +105,10 @@ const corsHeaders = (o: string | null) => ({
 
 type Documento = { nombre: string; url: string; tipo?: string; extension?: string;
                    file_id?: string | null; motivo?: string };
+type Almacen = { estado: "listo" | "leyendo" | "sin_texto"; almacen?: string;
+                 documentos: Documento[] };
+
+const dormir = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
 function clave(): string {
   const c = Deno.env.get("OPENAI_API_KEY");
@@ -150,20 +165,9 @@ async function descargar(url: string): Promise<Uint8Array<ArrayBuffer> | null> {
   }
 }
 
-// La extensión que de verdad tiene, por los primeros bytes: el portal
-// publica ".PDF" en mayúsculas (OpenAI lo rechaza, medido el 09/10/2026)
-// y a veces un ZIP con nombre de PDF.
+// La extensión que de verdad tiene, por sus primeros bytes (zip.ts).
 function extensionReal(doc: Documento, contenido: Uint8Array): string {
-  const inicio = new TextDecoder().decode(contenido.subarray(0, 4));
-  if (inicio === "%PDF") return "pdf";
-  if (inicio.startsWith("PK")) {
-    const cabeza = new TextDecoder().decode(contenido.subarray(0, 4000));
-    if (cabeza.includes("word/")) return "docx";
-    if (cabeza.includes("ppt/")) return "pptx";
-    if (cabeza.includes("opendocument.text")) return "odt";
-    return "zip";
-  }
-  return extensionDe(doc);
+  return extensionPorContenido(contenido) ?? extensionDe(doc);
 }
 
 async function subir(doc: Documento, contenido: Uint8Array<ArrayBuffer>,
@@ -194,22 +198,30 @@ async function subir(doc: Documento, contenido: Uint8Array<ArrayBuffer>,
   return (await r.json()).id ?? null;
 }
 
-// Sube los documentos y crea el almacén. Devuelve su id y lo que se leyó.
+// Sube los documentos y crea el almacén. Devuelve su id (o null si no se
+// pudo leer nada) y lo que se leyó de cada documento.
 async function preparar(idLicitacion: string, docs: Documento[]):
-    Promise<{ almacen: string; documentos: Documento[] } | null> {
+    Promise<{ almacen: string | null; documentos: Documento[] }> {
   const vistos = new Set<string>();
   const elegidos = docs
     .filter((d) => d?.url && !vistos.has(d.url) && vistos.add(d.url))
     .sort((a, b) => (ORDEN_TIPO[a.tipo ?? ""] ?? 2) - (ORDEN_TIPO[b.tipo ?? ""] ?? 2));
 
   const documentos: Documento[] = [];
+  const subidos = () => documentos.filter((x) => x.file_id).length;
   for (const d of elegidos) {
     const base = { nombre: d.nombre || "documento", url: d.url, tipo: d.tipo };
-    if (documentos.filter((x) => x.file_id).length >= MAX_DOCUMENTOS) {
+    if (subidos() >= MAX_DOCUMENTOS) {
       documentos.push({ ...base, file_id: null, motivo: "demasiados" });
       continue;
     }
-    if (!LEGIBLES.has(extensionDe(d))) {
+    const declarada = extensionDe(d);
+    if (!LEGIBLES.has(declarada) && declarada !== "zip") {
+      documentos.push({ ...base, file_id: null, motivo: "formato" });
+      continue;
+    }
+    // El DEUC es un formulario: no responde a nada del pliego.
+    if (declarada === "zip" && /deuc|espd/i.test(base.nombre)) {
       documentos.push({ ...base, file_id: null, motivo: "formato" });
       continue;
     }
@@ -219,6 +231,28 @@ async function preparar(idLicitacion: string, docs: Documento[]):
       continue;
     }
     const ext = extensionReal(d, contenido);
+    if (ext === "zip") {
+      if (contenido.length > MAX_ZIP) {
+        documentos.push({ ...base, file_id: null, motivo: "zip_grande" });
+        continue;
+      }
+      const dentro = abrirZip(base.nombre, contenido, LEGIBLES, MAX_DOCUMENTO);
+      if (!dentro.length) {
+        documentos.push({ ...base, file_id: null, motivo: "formato" });
+        continue;
+      }
+      for (const e of dentro) {
+        const nombre = `${base.nombre} › ${e.nombre}`;
+        if (subidos() >= MAX_DOCUMENTOS) {
+          documentos.push({ nombre, url: d.url, tipo: d.tipo, file_id: null, motivo: "demasiados" });
+          continue;
+        }
+        const id = await subir({ nombre: e.nombre, url: d.url }, e.contenido, e.ext);
+        documentos.push({ nombre, url: d.url, tipo: d.tipo, file_id: id,
+                          motivo: id ? undefined : "subida" });
+      }
+      continue;
+    }
     if (!LEGIBLES.has(ext)) {
       documentos.push({ ...base, file_id: null, motivo: "formato" });
       continue;
@@ -228,7 +262,7 @@ async function preparar(idLicitacion: string, docs: Documento[]):
   }
 
   const ficheros = documentos.filter((d) => d.file_id).map((d) => d.file_id!);
-  if (!ficheros.length) return null;
+  if (!ficheros.length) return { almacen: null, documentos };
 
   const r = await openai("/vector_stores", {
     method: "POST",
@@ -241,10 +275,60 @@ async function preparar(idLicitacion: string, docs: Documento[]):
   });
   if (!r.ok) {
     console.error(`No se pudo crear el almacén: ${r.status} ${(await r.text()).slice(0, 200)}`);
-    return null;
+    return { almacen: null, documentos };
   }
-  const almacen = (await r.json()).id as string;
-  return { almacen, documentos };
+  return { almacen: (await r.json()).id as string, documentos };
+}
+
+// El almacén de una licitación: el que hay si sigue vivo, o uno nuevo.
+// Quien consigue el reclamo (`reclamar_pliego`) prepara; los demás
+// esperan a que termine. `esperar` = esperar también a que OpenAI acabe
+// de leerlo (para preguntar); sin esperar, basta con dejarlo en marcha.
+// deno-lint-ignore no-explicit-any
+async function obtenerAlmacen(admin: any, id: string, perfil: string, docs: Documento[],
+                              hastaMs: number, esperar: boolean): Promise<Almacen> {
+  const limite = () => (esperar ? hastaMs : 0);
+  while (true) {
+    const { data: fila } = await admin.from("pliegos_openai").select("*")
+      .eq("id_licitacion", id).maybeSingle();
+    if (fila?.vector_store_id) {
+      const estado = await esperarLectura(fila.vector_store_id, limite());
+      if (estado !== "perdido") {
+        return { estado, almacen: fila.vector_store_id, documentos: fila.documentos ?? [] };
+      }
+    } else if (fila?.fallo && Date.now() - Date.parse(fila.fallo) < HORAS_FALLO * 3600_000) {
+      return { estado: "sin_texto", documentos: fila.documentos ?? [] };
+    } else if (fila?.preparando && Date.now() - Date.parse(fila.preparando) < 3 * 60_000) {
+      // Otra petición lo está preparando: se espera a que acabe.
+      if (Date.now() > hastaMs) return { estado: "leyendo", documentos: [] };
+      await dormir(2000);
+      continue;
+    }
+
+    const { data: mio } = await admin.rpc("reclamar_pliego",
+      { licitacion: id, perfil, viejo: fila?.vector_store_id ?? null });
+    if (!mio) {
+      if (Date.now() > hastaMs) return { estado: "leyendo", documentos: [] };
+      await dormir(1500);
+      continue;
+    }
+
+    const nuevo = await preparar(id, docs);
+    const ahora = new Date().toISOString();
+    if (!nuevo.almacen) {
+      await admin.from("pliegos_openai").update({
+        vector_store_id: null, documentos: nuevo.documentos, preparando: null, fallo: ahora,
+      }).eq("id_licitacion", id);
+      return { estado: "sin_texto", documentos: nuevo.documentos };
+    }
+    await admin.from("pliegos_openai").update({
+      vector_store_id: nuevo.almacen, documentos: nuevo.documentos,
+      preparando: null, fallo: null, usado: ahora,
+    }).eq("id_licitacion", id);
+    const estado = await esperarLectura(nuevo.almacen, limite());
+    return { estado: estado === "perdido" ? "sin_texto" : estado,
+             almacen: nuevo.almacen, documentos: nuevo.documentos };
+  }
 }
 
 // Espera a que OpenAI termine de leer los ficheros. Si tarda más de lo
@@ -312,7 +396,7 @@ Deno.serve(async (peticion) => {
   try {
     const autorizacion = peticion.headers.get("Authorization");
     if (!autorizacion) return responder({ error: "sin_sesion" }, 401, origen);
-    const { pregunta, id_licitacion, perfil_id } = await peticion.json();
+    const { pregunta, id_licitacion, perfil_id, accion } = await peticion.json();
 
     const comoUsuario = createClient(
       Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -332,16 +416,38 @@ Deno.serve(async (peticion) => {
       .eq("id", perfil_id).eq("usuario_id", user.id).maybeSingle();
     if (!perfil) return responder({ error: "sin_perfil" }, 403, origen);
 
+    if (typeof id_licitacion !== "string" || !id_licitacion) {
+      return responder({ error: "sin_licitacion" }, 400, origen);
+    }
+    const hoy = new Date(); hoy.setUTCHours(0, 0, 0, 0);
+
+    // Leer el pliego por adelantado (al abrir la ficha o guardar en la
+    // cartera): se responde al momento y se sigue leyendo en segundo plano.
+    if (accion === "preparar") {
+      const { count: preparados } = await admin.from("pliegos_openai")
+        .select("id_licitacion", { count: "exact", head: true })
+        .eq("preparado_por", perfil.id).gte("creado", hoy.toISOString());
+      if ((preparados ?? 0) >= PREPARADOS_DIA) return responder({ estado: "tope" }, 200, origen);
+      const { data: cond } = await admin.from("condiciones").select("documentos")
+        .eq("id_licitacion", id_licitacion).maybeSingle();
+      const docs: Documento[] = Array.isArray(cond?.documentos) ? cond!.documentos : [];
+      if (!docs.length) return responder({ estado: "sin_documentos" }, 200, origen);
+      const trabajo = obtenerAlmacen(admin, id_licitacion, perfil.id, docs, Date.now() + 300_000, false)
+        .catch((error) => console.error("Error preparando el pliego:", error));
+      if (typeof EdgeRuntime !== "undefined") {
+        EdgeRuntime.waitUntil(trabajo);
+        return responder({ estado: "pedido" }, 202, origen);
+      }
+      await trabajo;
+      return responder({ estado: "pedido" }, 200, origen);
+    }
+
     const texto = typeof pregunta === "string" ? pregunta.trim().replace(/\s+/g, " ") : "";
     if (texto.length < 3 || texto.length > 500) {
       return responder({ error: "pregunta" }, 400, origen);
     }
-    if (typeof id_licitacion !== "string" || !id_licitacion) {
-      return responder({ error: "sin_licitacion" }, 400, origen);
-    }
 
     // Topes: por perfil y entre todos, desde la medianoche UTC.
-    const hoy = new Date(); hoy.setUTCHours(0, 0, 0, 0);
     const { count: suyas } = await admin.from("preguntas_pliego")
       .select("id", { count: "exact", head: true })
       .eq("perfil_id", perfil.id).gte("creado", hoy.toISOString());
@@ -353,38 +459,23 @@ Deno.serve(async (peticion) => {
     const gastado = (gastos ?? []).reduce((s, g) => s + Number(g.coste || 0), 0);
     if (gastado >= GASTO_DIA) return responder({ error: "tope_dia" }, 429, origen);
 
-    const [{ data: lic }, { data: cond }, { data: guardado }] = await Promise.all([
+    const [{ data: lic }, { data: cond }] = await Promise.all([
       admin.from("licitaciones").select("titulo, organo, procedimiento, presupuesto_base, valor_estimado, duracion_meses, fecha_limite, criterios")
         .eq("id_licitacion", id_licitacion).maybeSingle(),
       admin.from("condiciones").select("documentos, lectura").eq("id_licitacion", id_licitacion).maybeSingle(),
-      admin.from("pliegos_openai").select("*").eq("id_licitacion", id_licitacion).maybeSingle(),
     ]);
     if (!lic) return responder({ error: "sin_licitacion" }, 404, origen);
     const docs: Documento[] = Array.isArray(cond?.documentos) ? cond!.documentos : [];
     if (!docs.length) return responder({ error: "sin_documentos" }, 200, origen);
 
-    // El almacén de esta licitación, o uno nuevo si no hay o caducó.
-    let almacen: string | null = guardado?.vector_store_id ?? null;
-    let documentos: Documento[] = guardado?.documentos ?? [];
-    let estado = almacen ? await esperarLectura(almacen, inicio + 90_000) : "perdido";
-    if (estado === "perdido") {
-      const nuevo = await preparar(id_licitacion, docs);
-      if (!nuevo) {
-        return responder({ error: "sin_texto",
-          documentos: docs.map((d) => ({ nombre: d.nombre, url: d.url })) }, 200, origen);
-      }
-      almacen = nuevo.almacen;
-      documentos = nuevo.documentos;
-      await admin.from("pliegos_openai").upsert({
-        id_licitacion, vector_store_id: almacen, documentos,
-        creado: new Date().toISOString(), usado: new Date().toISOString(),
-      });
-      estado = await esperarLectura(almacen, inicio + 110_000);
-    }
+    // El almacén de esta licitación (ya leído si se abrió la ficha antes),
+    // o uno nuevo si no hay o caducó.
+    const { estado, almacen, documentos } =
+      await obtenerAlmacen(admin, id_licitacion, perfil.id, docs, inicio + 110_000, true);
     if (estado === "leyendo") return responder({ error: "leyendo" }, 202, origen);
-    if (estado === "perdido") {
+    if (estado === "sin_texto" || !almacen) {
       return responder({ error: "sin_texto",
-        documentos: documentos.map((d) => ({ nombre: d.nombre, url: d.url })) }, 200, origen);
+        documentos: docs.map((d) => ({ nombre: d.nombre, url: d.url })) }, 200, origen);
     }
 
     const r = await openai("/responses", {
@@ -430,7 +521,7 @@ Deno.serve(async (peticion) => {
         for (const a of c.annotations ?? []) {
           if (a.type !== "file_citation") continue;
           const doc = documentos.find((d) => d.file_id === a.file_id);
-          if (doc && !citados.has(doc.url)) citados.set(doc.url, { nombre: doc.nombre, url: doc.url });
+          if (doc && !citados.has(doc.nombre)) citados.set(doc.nombre, { nombre: doc.nombre, url: doc.url });
         }
       }
     }
@@ -442,7 +533,7 @@ Deno.serve(async (peticion) => {
     if (!citados.size) {
       for (const e of encontrados.sort((a, b) => b.score - a.score)) {
         const doc = documentos.find((d) => d.file_id === e.file_id);
-        if (doc && !citados.has(doc.url)) citados.set(doc.url, { nombre: doc.nombre, url: doc.url });
+        if (doc && !citados.has(doc.nombre)) citados.set(doc.nombre, { nombre: doc.nombre, url: doc.url });
         if (citados.size >= 2) break;
       }
     }
