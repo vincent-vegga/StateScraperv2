@@ -158,7 +158,11 @@ async function descargar(url: string): Promise<Uint8Array<ArrayBuffer> | null> {
     for (const t of trozos) { todo.set(t, i); i += t.length; }
     return todo;
   } catch (error) {
-    console.error(`Descarga fallida de ${url.slice(0, 90)}:`, String(error).slice(0, 200));
+    // Con la causa: "client error" a secas no dice si es el certificado o
+    // la conexión.
+    const causa = (error as { cause?: unknown })?.cause;
+    console.error(`Descarga fallida de ${url.slice(0, 60)}: ${String(error).slice(-300)}`
+      + (causa ? ` | causa: ${String(causa).slice(0, 300)}` : ""));
     return null;
   } finally {
     clearTimeout(reloj);
