@@ -57,6 +57,8 @@ const MAX_DOCUMENTOS = 6;
 // Un ZIP de más de esto no se abre: descomprimir cuesta CPU (2 s por
 // petición) y memoria (256 MB).
 const MAX_ZIP = 15 * 1024 * 1024;
+// El DEUC es un formulario: ni se sube ni se dice que no se leyó.
+const DEUC = /deuc|espd/i;
 const PREPARADOS_DIA = Number(Deno.env.get("PLIEGO_PREPARADOS_DIA") ?? 80);
 // Un pliego que no se pudo leer no se reintenta en este tiempo.
 const HORAS_FALLO = 24;
@@ -225,7 +227,7 @@ async function preparar(idLicitacion: string, docs: Documento[]):
       continue;
     }
     // El DEUC es un formulario: no responde a nada del pliego.
-    if (declarada === "zip" && /deuc|espd/i.test(base.nombre)) {
+    if (DEUC.test(base.nombre)) {
       documentos.push({ ...base, file_id: null, motivo: "formato" });
       continue;
     }
@@ -478,8 +480,12 @@ Deno.serve(async (peticion) => {
       await obtenerAlmacen(admin, id_licitacion, perfil.id, docs, inicio + 110_000, true);
     if (estado === "leyendo") return responder({ error: "leyendo" }, 202, origen);
     if (estado === "sin_texto" || !almacen) {
+      // Con el motivo de cada uno: no es lo mismo un escaneado que un
+      // portal que no deja descargar (el vasco, desde aquí: Decisión 57).
+      const lista = documentos.length ? documentos : docs;
       return responder({ error: "sin_texto",
-        documentos: docs.map((d) => ({ nombre: d.nombre, url: d.url })) }, 200, origen);
+        documentos: lista.filter((d) => !DEUC.test(d.nombre))
+          .map((d) => ({ nombre: d.nombre, url: d.url, motivo: d.motivo })) }, 200, origen);
     }
 
     const r = await openai("/responses", {
@@ -560,7 +566,7 @@ Deno.serve(async (peticion) => {
       respuesta, citas,
       // Lo que no se pudo leer, para decirlo: una respuesta "no lo dice"
       // puede deberse a que el documento que lo dice no entró.
-      sin_leer: documentos.filter((d) => !d.file_id)
+      sin_leer: documentos.filter((d) => !d.file_id && !DEUC.test(d.nombre))
         .map((d) => ({ nombre: d.nombre, url: d.url, motivo: d.motivo })),
       quedan: Math.max(0, PREGUNTAS_DIA - (suyas ?? 0) - 1),
     }, 200, origen);
