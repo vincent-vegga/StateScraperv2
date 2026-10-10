@@ -1991,9 +1991,27 @@ remite a un apartado del cuadro que la búsqueda no trae (baja anormal).
 (`PLIEGO_PREGUNTAS_DIA`, `PLIEGO_GASTO_DIA`), comprobados antes de
 llamar al modelo.
 
-**Lo que no se cubre.** Pliegos escaneados (sin texto) y documentos
-dentro de un ZIP. Sin números de página: el texto que devuelve la
-búsqueda no los conserva, y el modelo los inventaba.
+**Leerlo antes de que pregunten (10/10/2026).** Licitandum carga los
+pliegos al seguir una licitación y El Vínculo al abrirla: cuando se
+pregunta, ya están leídos. Aquí se empieza a leer al abrir la ficha y al
+guardar el contrato en la cartera (acción `preparar` de la función, que
+responde al momento y sigue en segundo plano). Quien abre la ficha suele
+leerla un rato antes de preguntar, así que la primera respuesta llega en
+lo que tardan las demás (5-11 s) en vez de 20-30 s. Como la ficha y la
+pregunta pueden preparar el mismo pliego a la vez, `reclamar_pliego`
+deja prepararlo a uno solo; los demás esperan. Un pliego que no se pudo
+leer no se reintenta en 24 h. Tope: 80 lecturas por adelantado al día
+por perfil (`PLIEGO_PREPARADOS_DIA`). No se leen por adelantado todos
+los contratos abiertos (unos 5.000): solo cuesta el almacenamiento de
+OpenAI, pero ahí ya se notaría.
+
+**ZIP (10/10/2026).** Se abren los de hasta 15 MB y se suben los PDF y
+Word de dentro, lo que parece el pliego primero (`zip.ts`). Medido con
+un PCAP catalán de 12 MB: 38 ms. El DEUC no se sube (es un formulario).
+
+**Lo que no se cubre.** Pliegos escaneados (sin texto), ZIP de más de
+15 MB y ZIP dentro de otro ZIP. Sin números de página: el texto que
+devuelve la búsqueda no los conserva, y el modelo los inventaba.
 
 ---
 

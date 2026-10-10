@@ -26,7 +26,7 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { unzipSync } from "https://esm.sh/fflate@0.8.2";
+import { abrirZip, extensionPorContenido } from "./zip.ts";
 
 // Para seguir leyendo el pliego después de responder (acción "preparar").
 declare const EdgeRuntime: { waitUntil(promesa: Promise<unknown>): void } | undefined;
@@ -52,16 +52,11 @@ const DIAS_CACHE = 7;
 // la función tiene 256 MB de memoria.
 const MAX_DOCUMENTO = 25 * 1024 * 1024;
 const MAX_DOCUMENTOS = 6;
-// Los ZIP se abren si son pequeños: descomprimir cuesta CPU (2 s por
-// petición) y memoria (256 MB). Dentro, solo lo legible y hasta un total.
-const MAX_ZIP = 15 * 1024 * 1024;
-const MAX_DESCOMPRIMIDO = 40 * 1024 * 1024;
-// Dentro de un ZIP, primero lo que parece el pliego o el cuadro; el DEUC
-// (un formulario sin contenido propio) no.
-const PATRON_PLIEGO = /pliego|pcap|ppt|cuadro|caracter|car[aà]tula|anexo|annex|prescrip|cl[aà]usul|plec|memoria/i;
-const PATRON_FUERA = /deuc|espd|__macosx|(^|\/)\./i;
 // Lecturas por adelantado al día por perfil: abrir fichas no cuesta
 // preguntas, pero cada una descarga y sube el pliego.
+// Un ZIP de más de esto no se abre: descomprimir cuesta CPU (2 s por
+// petición) y memoria (256 MB).
+const MAX_ZIP = 15 * 1024 * 1024;
 const PREPARADOS_DIA = Number(Deno.env.get("PLIEGO_PREPARADOS_DIA") ?? 80);
 // Un pliego que no se pudo leer no se reintenta en este tiempo.
 const HORAS_FALLO = 24;
@@ -170,21 +165,9 @@ async function descargar(url: string): Promise<Uint8Array<ArrayBuffer> | null> {
   }
 }
 
-// La extensión que de verdad tiene, por los primeros bytes: el portal
-// publica ".PDF" en mayúsculas (OpenAI lo rechaza, medido el 09/10/2026)
-// y a veces un ZIP con nombre de PDF.
+// La extensión que de verdad tiene, por sus primeros bytes (zip.ts).
 function extensionReal(doc: Documento, contenido: Uint8Array): string {
-  if (contenido.length < 4) return extensionDe(doc);
-  const inicio = new TextDecoder().decode(contenido.subarray(0, 4));
-  if (inicio === "%PDF") return "pdf";
-  if (inicio.startsWith("PK")) {
-    const cabeza = new TextDecoder().decode(contenido.subarray(0, 4000));
-    if (cabeza.includes("word/")) return "docx";
-    if (cabeza.includes("ppt/")) return "pptx";
-    if (cabeza.includes("opendocument.text")) return "odt";
-    return "zip";
-  }
-  return extensionDe(doc);
+  return extensionPorContenido(contenido) ?? extensionDe(doc);
 }
 
 async function subir(doc: Documento, contenido: Uint8Array<ArrayBuffer>,
@@ -215,38 +198,6 @@ async function subir(doc: Documento, contenido: Uint8Array<ArrayBuffer>,
   return (await r.json()).id ?? null;
 }
 
-// Lo legible de dentro de un ZIP pequeño: [nombre, contenido, extensión].
-// Los nombres dentro del ZIP pueden venir en otra codificación; da igual,
-// solo se usan para enseñar de dónde sale la respuesta.
-function abrirZip(nombreZip: string, contenido: Uint8Array):
-    { nombre: string; contenido: Uint8Array<ArrayBuffer>; ext: string }[] {
-  let total = 0;
-  let dentro: Record<string, Uint8Array>;
-  try {
-    dentro = unzipSync(contenido, {
-      filter: (f) => {
-        const ext = (f.name.split(".").pop() ?? "").toLowerCase();
-        if (!LEGIBLES.has(ext) || PATRON_FUERA.test(f.name)) return false;
-        if (f.originalSize > MAX_DOCUMENTO || total + f.originalSize > MAX_DESCOMPRIMIDO) return false;
-        total += f.originalSize;
-        return true;
-      },
-    });
-  } catch (error) {
-    console.error(`No se pudo abrir ${nombreZip}:`, String(error).slice(0, 200));
-    return [];
-  }
-  return Object.entries(dentro)
-    .map(([ruta, datos]) => {
-      const nombre = ruta.split("/").pop() || ruta;
-      const copia = new Uint8Array(datos.length);
-      copia.set(datos);
-      return { nombre, contenido: copia, ext: extensionReal({ nombre, url: "" }, copia) };
-    })
-    .filter((e) => LEGIBLES.has(e.ext))
-    .sort((x, y) => Number(!PATRON_PLIEGO.test(x.nombre)) - Number(!PATRON_PLIEGO.test(y.nombre)));
-}
-
 // Sube los documentos y crea el almacén. Devuelve su id (o null si no se
 // pudo leer nada) y lo que se leyó de cada documento.
 async function preparar(idLicitacion: string, docs: Documento[]):
@@ -270,7 +221,7 @@ async function preparar(idLicitacion: string, docs: Documento[]):
       continue;
     }
     // El DEUC es un formulario: no responde a nada del pliego.
-    if (declarada === "zip" && PATRON_FUERA.test(base.nombre)) {
+    if (declarada === "zip" && /deuc|espd/i.test(base.nombre)) {
       documentos.push({ ...base, file_id: null, motivo: "formato" });
       continue;
     }
@@ -285,7 +236,7 @@ async function preparar(idLicitacion: string, docs: Documento[]):
         documentos.push({ ...base, file_id: null, motivo: "zip_grande" });
         continue;
       }
-      const dentro = abrirZip(base.nombre, contenido);
+      const dentro = abrirZip(base.nombre, contenido, LEGIBLES, MAX_DOCUMENTO);
       if (!dentro.length) {
         documentos.push({ ...base, file_id: null, motivo: "formato" });
         continue;
