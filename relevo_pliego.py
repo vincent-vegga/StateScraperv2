@@ -187,6 +187,10 @@ def limpiar_viejos(cli) -> None:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(message)s",
                         datefmt="%H:%M:%S", stream=sys.stdout)
+    # La librería de Supabase escribe cada petición (con la licitación y los
+    # nombres de los ficheros) en un registro que es público: fuera.
+    for ruidoso in ("httpx", "httpcore", "hpack"):
+        logging.getLogger(ruidoso).setLevel(logging.WARNING)
     licitacion = os.environ.get("LICITACION", "").strip()
     if not licitacion:
         logging.error("Falta LICITACION.")
