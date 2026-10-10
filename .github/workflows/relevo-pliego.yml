@@ -1,0 +1,50 @@
+# ============================================================
+# RELEVO DE PLIEGOS · descargar lo que Supabase no alcanza
+# ============================================================
+# La función `pliego` (Pregúntale al pliego, Decisión 57) no puede
+# descargar del portal vasco: su cliente de red rechaza el certificado.
+# Cuando le pasa, lanza este workflow con la licitación; aquí se
+# descargan los documentos y se dejan un momento en el almacén privado
+# `relevo` de Supabase, de donde la función los recoge y los borra.
+# Ver relevo_pliego.py.
+# ============================================================
+
+name: Relevo de pliegos
+
+on:
+  workflow_dispatch:
+    inputs:
+      licitacion:
+        description: "id_licitacion cuyos documentos hay que descargar"
+        required: true
+
+# Dos relevos de la misma licitación a la vez harían lo mismo dos veces.
+concurrency:
+  group: relevo-${{ inputs.licitacion }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  relevo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      # Por variable y no dentro del comando: el texto del input no se
+      # interpreta nunca como parte de la orden.
+      LICITACION: ${{ inputs.licitacion }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # Solo lo que hace falta: cuanto antes acabe, antes responde la ficha.
+      - run: pip install requests "supabase>=2.10,<3"
+
+      - run: python relevo_pliego.py

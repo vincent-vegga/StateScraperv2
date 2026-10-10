@@ -137,7 +137,9 @@ const extensionDe = (d: Documento) =>
   (d.extension || d.nombre.split(".").pop() || "").toLowerCase().trim();
 
 // Descarga un documento del portal, con tope de tamaño.
-async function descargar(url: string): Promise<Uint8Array<ArrayBuffer> | null> {
+type Descarga = { datos: Uint8Array<ArrayBuffer> | null; certificado: boolean };
+
+async function descargar(url: string): Promise<Descarga> {
   const control = new AbortController();
   const reloj = setTimeout(() => control.abort(), 45_000);
   try {
@@ -146,26 +148,27 @@ async function descargar(url: string): Promise<Uint8Array<ArrayBuffer> | null> {
     if (!r.ok || !r.body) {
       console.error(`Descarga ${r.status} de ${url.slice(0, 90)}`);
       await r.body?.cancel();
-      return null;
+      return { datos: null, certificado: false };
     }
     const trozos: Uint8Array[] = [];
     let total = 0;
     for await (const t of r.body) {
       total += t.length;
-      if (total > MAX_DOCUMENTO) { control.abort(); return null; }
+      if (total > MAX_DOCUMENTO) { control.abort(); return { datos: null, certificado: false }; }
       trozos.push(t);
     }
     const todo = new Uint8Array(total);
     let i = 0;
     for (const t of trozos) { todo.set(t, i); i += t.length; }
-    return todo;
+    return { datos: todo, certificado: false };
   } catch (error) {
     // Con la causa: "client error" a secas no dice si es el certificado o
     // la conexión.
     const causa = (error as { cause?: unknown })?.cause;
     console.error(`Descarga fallida de ${url.slice(0, 60)}: ${String(error).slice(-300)}`
       + (causa ? ` | causa: ${String(causa).slice(0, 300)}` : ""));
-    return null;
+    // El portal vasco: desde aquí no, desde GitHub sí (relevo).
+    return { datos: null, certificado: /certificate/i.test(`${error} ${causa ?? ""}`) };
   } finally {
     clearTimeout(reloj);
   }
@@ -204,10 +207,57 @@ async function subir(doc: Documento, contenido: Uint8Array<ArrayBuffer>,
   return (await r.json()).id ?? null;
 }
 
+// ------------------------------------------------------------
+// El relevo de GitHub (relevo_pliego.py) para lo que no se puede
+// descargar desde aquí por el certificado: el portal vasco.
+// ------------------------------------------------------------
+const ALMACEN_RELEVO = "relevo";
+const REPO = "vincent-vegga/StateScraperv2";
+// Cuánto se espera al relevo antes de darlo por perdido y reintentarlo.
+const MINUTOS_RELEVO = 5;
+
+async function claveRelevo(url: string): Promise<string> {
+  const huella = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url));
+  return [...new Uint8Array(huella)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// deno-lint-ignore no-explicit-any
+async function desdeRelevo(admin: any, url: string): Promise<Uint8Array<ArrayBuffer> | null> {
+  const { data, error } = await admin.storage.from(ALMACEN_RELEVO).download(await claveRelevo(url));
+  if (error || !data) return null;
+  return new Uint8Array(await data.arrayBuffer());
+}
+
+async function pedirRelevo(id: string): Promise<boolean> {
+  const token = Deno.env.get("GITHUB_DISPATCH_TOKEN");
+  if (!token) return false;
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${REPO}/actions/workflows/relevo-pliego.yml/dispatches`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Accept": "application/vnd.github+json",
+                   "User-Agent": "StateScraper/1.0" },
+        body: JSON.stringify({ ref: "main", inputs: { licitacion: id } }),
+      });
+    if (r.status !== 204) {
+      console.error(`No se pudo pedir el relevo: ${r.status} ${(await r.text()).slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("No se pudo pedir el relevo:", error);
+    return false;
+  }
+}
+
 // Sube los documentos y crea el almacén. Devuelve su id (o null si no se
 // pudo leer nada) y lo que se leyó de cada documento.
-async function preparar(idLicitacion: string, docs: Documento[]):
-    Promise<{ almacen: string | null; documentos: Documento[] }> {
+// Con `relevado`, los documentos se buscan primero en el almacén del
+// relevo. Sin él, si alguno no se puede descargar por el certificado, no
+// se crea nada a medias: se devuelve `relevo` para pedirlo.
+// deno-lint-ignore no-explicit-any
+async function preparar(admin: any, idLicitacion: string, docs: Documento[], relevado: boolean):
+    Promise<{ almacen: string | null; documentos: Documento[]; relevo: boolean; claves: string[] }> {
   const vistos = new Set<string>();
   const elegidos = docs
     .filter((d) => d?.url && !vistos.has(d.url) && vistos.add(d.url))
@@ -215,6 +265,9 @@ async function preparar(idLicitacion: string, docs: Documento[]):
 
   const documentos: Documento[] = [];
   const subidos = () => documentos.filter((x) => x.file_id).length;
+  // Lo recogido del almacén del relevo, para borrarlo después.
+  const claves: string[] = [];
+  let relevo = false;
   for (const d of elegidos) {
     const base = { nombre: d.nombre || "documento", url: d.url, tipo: d.tipo };
     if (subidos() >= MAX_DOCUMENTOS) {
@@ -231,7 +284,14 @@ async function preparar(idLicitacion: string, docs: Documento[]):
       documentos.push({ ...base, file_id: null, motivo: "formato" });
       continue;
     }
-    const contenido = await descargar(d.url);
+    let contenido = relevado ? await desdeRelevo(admin, d.url) : null;
+    if (contenido) {
+      claves.push(await claveRelevo(d.url));
+    } else {
+      const descarga = await descargar(d.url);
+      contenido = descarga.datos;
+      if (!contenido && descarga.certificado && !relevado) relevo = true;
+    }
     if (!contenido) {
       documentos.push({ ...base, file_id: null, motivo: "descarga" });
       continue;
@@ -267,8 +327,12 @@ async function preparar(idLicitacion: string, docs: Documento[]):
     documentos.push({ ...base, file_id: id, motivo: id ? undefined : "subida" });
   }
 
+  // Falta algo que solo el relevo puede bajar: mejor esperar que leer a
+  // medias (lo que ya se subió caduca solo a los 7 días).
+  if (relevo) return { almacen: null, documentos, relevo, claves };
+
   const ficheros = documentos.filter((d) => d.file_id).map((d) => d.file_id!);
-  if (!ficheros.length) return { almacen: null, documentos };
+  if (!ficheros.length) return { almacen: null, documentos, relevo, claves };
 
   const r = await openai("/vector_stores", {
     method: "POST",
@@ -281,9 +345,9 @@ async function preparar(idLicitacion: string, docs: Documento[]):
   });
   if (!r.ok) {
     console.error(`No se pudo crear el almacén: ${r.status} ${(await r.text()).slice(0, 200)}`);
-    return { almacen: null, documentos };
+    return { almacen: null, documentos, relevo, claves };
   }
-  return { almacen: (await r.json()).id as string, documentos };
+  return { almacen: (await r.json()).id as string, documentos, relevo, claves };
 }
 
 // El almacén de una licitación: el que hay si sigue vivo, o uno nuevo.
@@ -309,6 +373,11 @@ async function obtenerAlmacen(admin: any, id: string, perfil: string, docs: Docu
       if (Date.now() > hastaMs) return { estado: "leyendo", documentos: [] };
       await dormir(2000);
       continue;
+    } else if (fila?.relevo && Date.now() - Date.parse(fila.relevo) < MINUTOS_RELEVO * 60_000) {
+      // GitHub está descargando lo que desde aquí no se puede.
+      if (Date.now() > hastaMs) return { estado: "leyendo", documentos: [] };
+      await dormir(3000);
+      continue;
     }
 
     const { data: mio } = await admin.rpc("reclamar_pliego",
@@ -319,8 +388,24 @@ async function obtenerAlmacen(admin: any, id: string, perfil: string, docs: Docu
       continue;
     }
 
-    const nuevo = await preparar(id, docs);
+    // Recién relevado (en la última hora): los ficheros están en el almacén.
+    const relevado = !!fila?.relevo_hecho
+      && Date.now() - Date.parse(fila.relevo_hecho) < 3600_000;
+    const nuevo = await preparar(admin, id, docs, relevado);
     const ahora = new Date().toISOString();
+    if (nuevo.claves.length) {
+      // Los pliegos no se archivan: fuera del almacén en cuanto se suben.
+      await admin.storage.from(ALMACEN_RELEVO).remove(nuevo.claves);
+    }
+    if (nuevo.relevo) {
+      const pedido = await pedirRelevo(id);
+      await admin.from("pliegos_openai").update({
+        vector_store_id: null, documentos: nuevo.documentos, preparando: null,
+        relevo: pedido ? ahora : null, fallo: pedido ? null : ahora,
+      }).eq("id_licitacion", id);
+      if (!pedido) return { estado: "sin_texto", documentos: nuevo.documentos };
+      continue;
+    }
     if (!nuevo.almacen) {
       await admin.from("pliegos_openai").update({
         vector_store_id: null, documentos: nuevo.documentos, preparando: null, fallo: ahora,

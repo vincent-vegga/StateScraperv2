@@ -2018,11 +2018,16 @@ incluido. La primera pregunta, hecha después desde la ficha, tardó 6,8 s
 red de las funciones rechaza su certificado («invalid peer certificate:
 BadSignature»); desde GitHub Actions y en local se descarga bien, y el
 lector de solvencia (Decisión 54) lee 328 pliegos suyos. Es cerca del
-7 % de los pliegos. La web lo dice así ("el portal no nos deja
-descargar") en vez de culpar al documento, y no se reintenta en 24 h.
+7 % de los pliegos. Se resuelve con un relevo (10/10/2026): cuando una
+descarga falla por el certificado, la función lanza el workflow
+`relevo-pliego.yml`, que descarga los documentos desde GitHub y los deja
+en el almacén privado `relevo` de Supabase; la función, que espera, los
+recoge, los sube a OpenAI y los borra del almacén (Decisión 16: no se
+archivan). Si ni desde GitHub se puede, la web dice que el portal no deja
+descargar y no se reintenta en 24 h.
 
 **Lo que no se cubre.** Pliegos escaneados (sin texto), ZIP de más de
-15 MB, ZIP dentro de otro ZIP y el portal vasco. Sin números de página: el texto que
+15 MB y ZIP dentro de otro ZIP. Sin números de página: el texto que
 devuelve la búsqueda no los conserva, y el modelo los inventaba.
 
 ---
