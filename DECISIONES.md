@@ -2026,8 +2026,19 @@ recoge, los sube a OpenAI y los borra del almacén (Decisión 16: no se
 archivan). Si ni desde GitHub se puede, la web dice que el portal no deja
 descargar y no se reintenta en 24 h.
 
-**Lo que no se cubre.** Pliegos escaneados (sin texto), ZIP de más de
-15 MB y ZIP dentro de otro ZIP. Sin números de página: el texto que
+**ZIP dentro de ZIP y ZIP grandes (10/10/2026).** Se abren dos niveles
+de ZIP (el portal catalán mete los anexos del PCAP en otro ZIP). Un ZIP
+de más de 15 MB, o que no cabe en la descarga de la función, va por el
+relevo de GitHub: allí se abre de cualquier tamaño (hasta 300 MB) y se
+deja en el almacén solo lo útil de dentro, como mucho 10 ficheros. De
+dentro de un ZIP se suben primero el pliego, el cuadro y los criterios, y
+al final los modelos y declaraciones para rellenar (`interes()`, igual
+en `zip.ts` y en `relevo_pliego.py`): en un ZIP catalán de 27 ficheros,
+12 eran formularios y el PCAP quedaba fuera. Hasta 10 documentos por
+licitación (antes 6).
+
+**Lo que no se cubre.** Pliegos escaneados (sin texto), y PDF sueltos de
+más de 25 MB (casi siempre escaneados). Sin números de página: el texto que
 devuelve la búsqueda no los conserva, y el modelo los inventaba.
 
 ---

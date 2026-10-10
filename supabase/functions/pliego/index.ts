@@ -51,7 +51,9 @@ const DIAS_CACHE = 7;
 // Un pliego de más de 25 MB suele ser escaneado (sin texto que buscar), y
 // la función tiene 256 MB de memoria.
 const MAX_DOCUMENTO = 25 * 1024 * 1024;
-const MAX_DOCUMENTOS = 6;
+// Con ZIP llenos de anexos hacen falta más: el almacén no cobra por
+// fichero, solo por lo que ocupa.
+const MAX_DOCUMENTOS = 10;
 // Lecturas por adelantado al día por perfil: abrir fichas no cuesta
 // preguntas, pero cada una descarga y sube el pliego.
 // Un ZIP de más de esto no se abre: descomprimir cuesta CPU (2 s por
@@ -137,7 +139,9 @@ const extensionDe = (d: Documento) =>
   (d.extension || d.nombre.split(".").pop() || "").toLowerCase().trim();
 
 // Descarga un documento del portal, con tope de tamaño.
-type Descarga = { datos: Uint8Array<ArrayBuffer> | null; certificado: boolean };
+// `certificado`: el portal no deja (el vasco, desde aquí). `grande`: pasa
+// del tope y se cortó. Los dos se arreglan con el relevo de GitHub.
+type Descarga = { datos: Uint8Array<ArrayBuffer> | null; certificado: boolean; grande?: boolean };
 
 async function descargar(url: string): Promise<Descarga> {
   const control = new AbortController();
@@ -154,7 +158,7 @@ async function descargar(url: string): Promise<Descarga> {
     let total = 0;
     for await (const t of r.body) {
       total += t.length;
-      if (total > MAX_DOCUMENTO) { control.abort(); return { datos: null, certificado: false }; }
+      if (total > MAX_DOCUMENTO) { control.abort(); return { datos: null, certificado: false, grande: true }; }
       trozos.push(t);
     }
     const todo = new Uint8Array(total);
@@ -221,11 +225,39 @@ async function claveRelevo(url: string): Promise<string> {
   return [...new Uint8Array(huella)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+type Entrada = { nombre: string; contenido: Uint8Array<ArrayBuffer>; ext: string };
+type Relevado = { archivo?: Uint8Array<ArrayBuffer>; entradas?: Entrada[]; claves: string[] };
+
+// Lo que dejó el relevo para una URL: el fichero entero (con el nombre de
+// su huella) o, si era un ZIP, lo útil de dentro (en una carpeta con ese
+// nombre: "NN-<nombre en base64url>", ya en orden de interés).
 // deno-lint-ignore no-explicit-any
-async function desdeRelevo(admin: any, url: string): Promise<Uint8Array<ArrayBuffer> | null> {
-  const { data, error } = await admin.storage.from(ALMACEN_RELEVO).download(await claveRelevo(url));
-  if (error || !data) return null;
-  return new Uint8Array(await data.arrayBuffer());
+async function desdeRelevo(admin: any, url: string): Promise<Relevado | null> {
+  const huella = await claveRelevo(url);
+  const almacen = admin.storage.from(ALMACEN_RELEVO);
+  const { data: entero } = await almacen.download(huella);
+  if (entero) return { archivo: new Uint8Array(await entero.arrayBuffer()), claves: [huella] };
+
+  const { data: lista } = await almacen.list(huella, { limit: 100, sortBy: { column: "name", order: "asc" } });
+  const ficheros = (lista ?? []).filter((f: { id?: string | null }) => f.id);
+  if (!ficheros.length) return null;
+  const entradas: Entrada[] = [];
+  const claves: string[] = [];
+  for (const f of ficheros) {
+    const ruta = `${huella}/${f.name}`;
+    claves.push(ruta);
+    const { data } = await almacen.download(ruta);
+    if (!data) continue;
+    const contenido = new Uint8Array(await data.arrayBuffer());
+    const codificado = f.name.replace(/^\d+-/, "").replace(/-/g, "+").replace(/_/g, "/");
+    let nombre = "documento";
+    try {
+      nombre = new TextDecoder().decode(Uint8Array.from(atob(codificado), (c) => c.charCodeAt(0)));
+    } catch { /* nombre ilegible: se queda "documento" */ }
+    const ext = extensionPorContenido(contenido) ?? (nombre.split(".").pop() ?? "").toLowerCase();
+    if (LEGIBLES.has(ext)) entradas.push({ nombre, contenido, ext });
+  }
+  return { entradas, claves };
 }
 
 async function pedirRelevo(id: string): Promise<boolean> {
@@ -284,21 +316,52 @@ async function preparar(admin: any, idLicitacion: string, docs: Documento[], rel
       documentos.push({ ...base, file_id: null, motivo: "formato" });
       continue;
     }
-    let contenido = relevado ? await desdeRelevo(admin, d.url) : null;
+    // Sube lo de dentro de un ZIP (abierto aquí o por el relevo).
+    const subirEntradas = async (entradas: Entrada[]) => {
+      for (const e of entradas) {
+        const nombre = `${base.nombre} › ${e.nombre}`;
+        if (subidos() >= MAX_DOCUMENTOS) {
+          documentos.push({ nombre, url: d.url, tipo: d.tipo, file_id: null, motivo: "demasiados" });
+          continue;
+        }
+        const id = await subir({ nombre: e.nombre.split(" › ").pop() ?? e.nombre, url: d.url },
+                               e.contenido, e.ext);
+        documentos.push({ nombre, url: d.url, tipo: d.tipo, file_id: id,
+                          motivo: id ? undefined : "subida" });
+      }
+    };
+
+    const delRelevo = relevado ? await desdeRelevo(admin, d.url) : null;
+    if (delRelevo?.entradas) {
+      claves.push(...delRelevo.claves);
+      if (!delRelevo.entradas.length) documentos.push({ ...base, file_id: null, motivo: "formato" });
+      await subirEntradas(delRelevo.entradas);
+      continue;
+    }
+    let contenido = delRelevo?.archivo ?? null;
+    let grande = false;
     if (contenido) {
-      claves.push(await claveRelevo(d.url));
+      claves.push(...delRelevo!.claves);
     } else {
       const descarga = await descargar(d.url);
       contenido = descarga.datos;
-      if (!contenido && descarga.certificado && !relevado) relevo = true;
+      grande = !!descarga.grande;
+      // Lo que solo GitHub puede bajar: el portal vasco (certificado) o un
+      // ZIP de más de lo que cabe aquí. Se para: mejor esperar al relevo
+      // que leer a medias.
+      if (!contenido && !relevado && (descarga.certificado || (grande && declarada === "zip"))) {
+        relevo = true;
+        break;
+      }
     }
     if (!contenido) {
-      documentos.push({ ...base, file_id: null, motivo: "descarga" });
+      documentos.push({ ...base, file_id: null, motivo: grande && declarada === "zip" ? "zip_grande" : "descarga" });
       continue;
     }
     const ext = extensionReal(d, contenido);
     if (ext === "zip") {
       if (contenido.length > MAX_ZIP) {
+        if (!relevado) { relevo = true; break; }
         documentos.push({ ...base, file_id: null, motivo: "zip_grande" });
         continue;
       }
@@ -307,16 +370,7 @@ async function preparar(admin: any, idLicitacion: string, docs: Documento[], rel
         documentos.push({ ...base, file_id: null, motivo: "formato" });
         continue;
       }
-      for (const e of dentro) {
-        const nombre = `${base.nombre} › ${e.nombre}`;
-        if (subidos() >= MAX_DOCUMENTOS) {
-          documentos.push({ nombre, url: d.url, tipo: d.tipo, file_id: null, motivo: "demasiados" });
-          continue;
-        }
-        const id = await subir({ nombre: e.nombre, url: d.url }, e.contenido, e.ext);
-        documentos.push({ nombre, url: d.url, tipo: d.tipo, file_id: id,
-                          motivo: id ? undefined : "subida" });
-      }
+      await subirEntradas(dentro);
       continue;
     }
     if (!LEGIBLES.has(ext)) {
